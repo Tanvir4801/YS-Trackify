@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../services/attendance_service.dart';
 import '../../services/scanner_service.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -14,6 +16,7 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserver {
   final ScannerService _scannerService = ScannerService();
+  final AttendanceService _attendanceService = AttendanceService();
   final MobileScannerController _cameraController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
@@ -23,14 +26,14 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   bool _isProcessing = false;
   ScanResult? _lastResult;
   int _pendingCount = 0;
-  List<Map<String, dynamic>> _todayScans = <Map<String, dynamic>>[];
+  late Stream<List<Map<String, dynamic>>> _liveScansStream;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _liveScansStream = _attendanceService.attendanceStreamForDate(_todayString());
     _loadPendingCount();
-    _loadTodayScans();
     _autoSync();
   }
 
@@ -40,18 +43,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     });
   }
 
-  void _loadTodayScans() {
+  List<Map<String, dynamic>> _offlinePendingForToday() {
     final box = Hive.box('pending_attendance');
     final today = _todayString();
-
-    final scans = box.values
+    return box.values
         .map((value) => Map<String, dynamic>.from(value as Map))
-        .where((value) => value['date'] == today)
+        .where((value) => value['date'] == today && value['isSynced'] == false)
         .toList();
-
-    setState(() {
-      _todayScans = scans;
-    });
   }
 
   Future<void> _autoSync() async {
@@ -100,7 +98,6 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       _isProcessing = false;
     });
 
-    _loadTodayScans();
     _loadPendingCount();
 
     await Future<void>.delayed(const Duration(seconds: 2));
@@ -246,87 +243,117 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             child: Container(
               color: AppColors.background,
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _liveScansStream,
+                builder: (context, snap) {
+                  final liveRecords = (snap.data ?? const <Map<String, dynamic>>[])
+                      .where((r) => (r['markedVia'] as String?) == 'qr')
+                      .toList();
+                  final offlineQueued = _offlinePendingForToday();
+
+                  // Merge: nested-path live docs are the source of truth; any
+                  // offline-only Hive scans (not yet synced) are appended.
+                  final liveLabourIds = liveRecords
+                      .map((r) => (r['labourId'] as String?) ?? '')
+                      .toSet();
+                  final unsyncedOnly = offlineQueued
+                      .where((q) => !liveLabourIds.contains(q['labourId']))
+                      .toList();
+
+                  // Sort live records by markedAt timestamp desc.
+                  liveRecords.sort((a, b) {
+                    final ta = _toMillis(a['markedAt']);
+                    final tb = _toMillis(b['markedAt']);
+                    return tb.compareTo(ta);
+                  });
+
+                  final totalCount = liveRecords.length + unsyncedOnly.length;
+                  final isLoading = snap.connectionState == ConnectionState.waiting;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "Today's Scans (${_todayScans.length})",
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (_pendingCount > 0)
-                        Text(
-                          '$_pendingCount pending sync',
-                          style: const TextStyle(
-                            color: AppColors.halfDay,
-                            fontSize: 12,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: _todayScans.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No scans yet today.\nPoint camera at labour QR code.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: _todayScans.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final scan = _todayScans[_todayScans.length - 1 - index];
-                              final isSynced = (scan['isSynced'] as bool?) ?? false;
-                              return ListTile(
-                                tileColor: Colors.white,
-                                dense: true,
-                                leading: CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: isSynced
-                                      ? AppColors.present.withValues(alpha: 0.2)
-                                      : AppColors.halfDay.withValues(alpha: 0.2),
-                                  child: Icon(
-                                    isSynced ? Icons.cloud_done : Icons.cloud_off,
-                                    size: 16,
-                                    color: isSynced ? AppColors.present : AppColors.halfDay,
-                                  ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                "Today's Scans ($totalCount)",
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                title: Text(
-                                  (scan['labourId'] as String?) ?? 'Unknown',
-                                  style: const TextStyle(fontSize: 13),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.present.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
-                                subtitle: Text(
-                                  _scanTime(scan['scannedAt'] as String?),
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.present.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    (scan['status'] as String?) ?? 'present',
-                                    style: const TextStyle(
+                                child: Row(
+                                  children: const [
+                                    Icon(
+                                      Icons.bolt,
+                                      size: 11,
                                       color: AppColors.present,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
                                     ),
-                                  ),
+                                    SizedBox(width: 2),
+                                    Text(
+                                      'LIVE',
+                                      style: TextStyle(
+                                        color: AppColors.present,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              );
-                            },
+                              ),
+                            ],
                           ),
-                  ),
-                ],
+                          if (_pendingCount > 0)
+                            Text(
+                              '$_pendingCount pending sync',
+                              style: const TextStyle(
+                                color: AppColors.halfDay,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: isLoading && totalCount == 0
+                            ? const Center(child: CircularProgressIndicator())
+                            : totalCount == 0
+                                ? const Center(
+                                    child: Text(
+                                      'No scans yet today.\nPoint camera at a labour QR code.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    itemCount: totalCount,
+                                    separatorBuilder: (_, __) =>
+                                        const Divider(height: 1),
+                                    itemBuilder: (context, index) {
+                                      if (index < liveRecords.length) {
+                                        return _buildLiveTile(liveRecords[index]);
+                                      }
+                                      final off =
+                                          unsyncedOnly[index - liveRecords.length];
+                                      return _buildOfflineTile(off);
+                                    },
+                                  ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -362,5 +389,111 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       return '';
     }
     return scannedAt.substring(11, 16);
+  }
+
+  int _toMillis(dynamic raw) {
+    if (raw == null) return 0;
+    try {
+      // Firestore Timestamp on web exposes toDate().
+      final dt = (raw as dynamic).toDate() as DateTime?;
+      if (dt != null) return dt.millisecondsSinceEpoch;
+    } catch (_) {/* not a Timestamp */}
+    if (raw is DateTime) return raw.millisecondsSinceEpoch;
+    if (raw is int) return raw;
+    if (raw is String) {
+      final parsed = DateTime.tryParse(raw);
+      if (parsed != null) return parsed.millisecondsSinceEpoch;
+    }
+    return 0;
+  }
+
+  String _formatLiveTime(dynamic raw) {
+    final ms = _toMillis(raw);
+    if (ms == 0) return '';
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
+    return DateFormat('HH:mm:ss').format(dt);
+  }
+
+  Widget _buildLiveTile(Map<String, dynamic> record) {
+    final labourName =
+        (record['labourName'] as String?)?.trim().isNotEmpty == true
+            ? record['labourName'] as String
+            : (record['labourId'] as String? ?? 'Labour');
+    final status = (record['status'] as String?) ?? 'present';
+    final markedVia = (record['markedVia'] as String?) ?? 'manual';
+    final time = _formatLiveTime(record['markedAt']);
+
+    return ListTile(
+      tileColor: Colors.white,
+      dense: true,
+      leading: CircleAvatar(
+        radius: 16,
+        backgroundColor: AppColors.present.withValues(alpha: 0.2),
+        child: const Icon(
+          Icons.cloud_done,
+          size: 16,
+          color: AppColors.present,
+        ),
+      ),
+      title: Text(labourName, style: const TextStyle(fontSize: 13)),
+      subtitle: Text(
+        time.isEmpty ? markedVia : '$time  •  $markedVia',
+        style: const TextStyle(fontSize: 11),
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.present.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          status,
+          style: const TextStyle(
+            color: AppColors.present,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOfflineTile(Map<String, dynamic> scan) {
+    return ListTile(
+      tileColor: Colors.white,
+      dense: true,
+      leading: CircleAvatar(
+        radius: 16,
+        backgroundColor: AppColors.halfDay.withValues(alpha: 0.2),
+        child: const Icon(
+          Icons.cloud_off,
+          size: 16,
+          color: AppColors.halfDay,
+        ),
+      ),
+      title: Text(
+        (scan['labourId'] as String?) ?? 'Unknown',
+        style: const TextStyle(fontSize: 13),
+      ),
+      subtitle: Text(
+        '${_scanTime(scan['scannedAt'] as String?)}  •  offline',
+        style: const TextStyle(fontSize: 11),
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.halfDay.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          (scan['status'] as String?) ?? 'present',
+          style: const TextStyle(
+            color: AppColors.halfDay,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
   }
 }
