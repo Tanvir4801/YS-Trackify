@@ -53,3 +53,55 @@ Configured for **Static** publishing:
 - Some plugins (mobile scanner, vibration, native notifications) are mobile-only and will be inactive in the browser.
 - Hive runs on IndexedDB on web – data is per-browser.
 - Firebase web config uses a placeholder `appId` reused from the Android config; for full production web auth you should register a dedicated Web app in the Firebase console and replace the values in `lib/firebase_options.dart` (`web` block).
+
+## Layered Data-Model Upgrade (April 2026)
+
+A backward-compatible upgrade was applied so the Flutter app honours the new
+multi-tenant Firestore model used by the React admin panel, **without breaking
+any of the existing screens**.
+
+### New core types
+- `lib/models/app_user.dart` – authenticated user with `contractorId`,
+  `supervisorRef`, `labourId`, role, etc.
+- `lib/services/session_service.dart` – process-wide cache of the current
+  `AppUser` for synchronous access by services.
+- `lib/services/firestore_paths.dart` – central path helpers, including the
+  new attendance subcollection layout.
+
+### Auth & routing
+- `AuthService._fetchUserRole` now resolves `contractorId` with priority:
+  `users.contractorId → labours.contractorId → users.supervisorId → uid`,
+  caches the resulting `AppUser` in `SessionService`, and surfaces it on
+  `AuthResult.appUser`.
+- Splash and login route unknown roles to a new `/unauthorized`
+  (`lib/screens/unauthorized_screen.dart`) which says "use the web admin
+  panel" and offers Sign Out. Supervisors → `/supervisor-home`, labours →
+  `/labour-home` (unchanged).
+
+### New attendance path (dual-write)
+All attendance writes now go to **both**:
+- legacy: `attendance/{autoId}` (kept so existing screens keep working)
+- new:    `attendance/{contractorId}/dates/{dateKey}/records/{labourId}`
+  with fields `{labourId, contractorId, supervisorId, supervisorRef, date,
+  status, overtimeHours, markedVia, markedAt}`.
+
+`AttendanceService.attendanceStreamForDate(dateKey)` exposes a real-time
+stream over the new path.
+
+### QR system
+- `QRService.generateJsonQrPayload` produces JSON
+  `{labourId, contractorId, labourName, expiresAt, v:2}` (60s lifetime).
+- `lib/screens/qr/qr_screen.dart` now displays this JSON QR (with a clear
+  empty-state if `labourId`/`contractorId` aren't linked yet).
+- `ScannerService` parses the JSON QR first, validates contractor isolation
+  + expiry, writes directly to the new nested path with `markedVia: "qr"`,
+  and mirrors a legacy flat doc. The old HMAC token + Cloud Function flow
+  is kept as a fallback.
+- Hive `pending_attendance` offline queue is preserved; `syncPendingScans`
+  prefers a direct nested write before falling back to the callable.
+
+### Labour service
+- `addLabour` / `updateLabour` now stamp every doc with `contractorId` and
+  `supervisorRef` (DocumentReference to `users/{uid}`).
+- `fetchAndSyncLabours` reads via both `contractorId` and `supervisorId` and
+  de-duplicates, so legacy data still flows in.

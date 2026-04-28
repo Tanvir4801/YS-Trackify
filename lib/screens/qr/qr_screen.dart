@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../services/qr_service.dart';
+import '../../services/session_service.dart';
 
 class QRScreen extends StatefulWidget {
   const QRScreen({
@@ -22,10 +23,15 @@ class _QRScreenState extends State<QRScreen> {
   final QRService _qrService = QRService();
   Timer? _ticker;
 
-  String _qrToken = '';
-  int _secondsLeft = 30;
-  int _activeWindow = -1;
+  static const Duration _qrLifetime = Duration(seconds: 60);
+
+  String _qrPayload = '';
+  int _secondsLeft = _qrLifetime.inSeconds;
   Map<String, dynamic>? _labourProfile;
+  String _resolvedLabourId = '';
+  String _resolvedContractorId = '';
+  String _resolvedLabourName = 'Labour';
+  String? _missingReason;
 
   bool _isLoading = true;
   String? _error;
@@ -39,7 +45,8 @@ class _QRScreenState extends State<QRScreen> {
   Future<void> _loadInitialState() async {
     try {
       _labourProfile = await _qrService.getLabourProfile();
-      _refreshTokenIfNeeded(force: true);
+      _resolveLabourFields();
+      _refreshPayload();
       _startTicker();
     } catch (e) {
       _error = 'Unable to load QR code. Please sign in again.';
@@ -52,29 +59,58 @@ class _QRScreenState extends State<QRScreen> {
     }
   }
 
+  void _resolveLabourFields() {
+    final session = SessionService.instance.current;
+    final p = _labourProfile ?? const <String, dynamic>{};
+
+    _resolvedLabourId = ((p['labourId'] as String?) ?? '').trim();
+    if (_resolvedLabourId.isEmpty && session != null) {
+      _resolvedLabourId = session.labourId;
+    }
+
+    _resolvedContractorId = ((p['contractorId'] as String?) ?? '').trim();
+    if (_resolvedContractorId.isEmpty && session != null) {
+      _resolvedContractorId = session.contractorId;
+    }
+
+    _resolvedLabourName = ((p['name'] as String?) ?? '').trim();
+    if (_resolvedLabourName.isEmpty) {
+      _resolvedLabourName = session?.name ?? 'Labour';
+    }
+    if (_resolvedLabourName.isEmpty) _resolvedLabourName = 'Labour';
+
+    if (_resolvedLabourId.isEmpty) {
+      _missingReason = 'Labour profile not linked. Contact your supervisor.';
+    } else if (_resolvedContractorId.isEmpty) {
+      _missingReason = 'Contractor not assigned yet. Contact your supervisor.';
+    } else {
+      _missingReason = null;
+    }
+  }
+
   void _startTicker() {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
-        _secondsLeft = _qrService.secondsUntilRefresh();
+        _secondsLeft -= 1;
       });
-      _refreshTokenIfNeeded();
+      if (_secondsLeft <= 0) {
+        _refreshPayload();
+      }
     });
   }
 
-  void _refreshTokenIfNeeded({bool force = false}) {
-    final currentWindow = _qrService.currentWindow();
-    if (!force && currentWindow == _activeWindow) {
-      return;
-    }
-
+  void _refreshPayload() {
+    if (_missingReason != null) return;
     setState(() {
-      _activeWindow = currentWindow;
-      _qrToken = _qrService.generateQRToken();
-      _secondsLeft = _qrService.secondsUntilRefresh();
+      _qrPayload = _qrService.generateJsonQrPayload(
+        labourId: _resolvedLabourId,
+        contractorId: _resolvedContractorId,
+        labourName: _resolvedLabourName,
+        lifetime: _qrLifetime,
+      );
+      _secondsLeft = _qrLifetime.inSeconds;
     });
   }
 
@@ -103,9 +139,6 @@ class _QRScreenState extends State<QRScreen> {
       );
     }
 
-    final labourName = (_labourProfile?['name'] as String?)?.trim().isNotEmpty == true
-        ? (_labourProfile?['name'] as String)
-        : 'Labour';
     final phone = (_labourProfile?['phone'] as String?) ?? '';
 
     final body = SingleChildScrollView(
@@ -116,7 +149,7 @@ class _QRScreenState extends State<QRScreen> {
             radius: 36,
             backgroundColor: AppColors.primary.withValues(alpha: 0.14),
             child: Text(
-              labourName[0].toUpperCase(),
+              _resolvedLabourName[0].toUpperCase(),
               style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -126,7 +159,7 @@ class _QRScreenState extends State<QRScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            labourName,
+            _resolvedLabourName,
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
           if (phone.isNotEmpty) ...[
@@ -137,65 +170,79 @@ class _QRScreenState extends State<QRScreen> {
             ),
           ],
           const SizedBox(height: 32),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
+          if (_missingReason != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                _missingReason!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.absent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          else ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: QrImageView(
+                data: _qrPayload,
+                version: QrVersions.auto,
+                size: 240,
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(
+                  eyeShape: QrEyeShape.square,
+                  color: Colors.black,
+                ),
+                dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.refresh,
+                  size: 16,
+                  color: _secondsLeft <= 5 ? AppColors.absent : AppColors.secondary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Refreshes in $_secondsLeft seconds',
+                  style: TextStyle(
+                    color: _secondsLeft <= 5 ? AppColors.absent : AppColors.secondary,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
-            child: QrImageView(
-              data: _qrToken,
-              version: QrVersions.auto,
-              size: 240,
-              backgroundColor: Colors.white,
-              eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square,
-                color: Colors.black,
-              ),
-              dataModuleStyle: const QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
-                color: Colors.black,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.refresh,
-                size: 16,
-                color: _secondsLeft <= 5 ? AppColors.absent : AppColors.secondary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Refreshes in $_secondsLeft seconds',
-                style: TextStyle(
-                  color: _secondsLeft <= 5 ? AppColors.absent : AppColors.secondary,
-                  fontWeight: FontWeight.w500,
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: _secondsLeft / _qrLifetime.inSeconds,
+                minHeight: 6,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  _secondsLeft <= 5 ? AppColors.absent : AppColors.present,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: _secondsLeft / 30,
-              minHeight: 6,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                _secondsLeft <= 5 ? AppColors.absent : AppColors.present,
-              ),
             ),
-          ),
+          ],
           const SizedBox(height: 32),
           Container(
             width: double.infinity,

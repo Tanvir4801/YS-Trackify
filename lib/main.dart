@@ -19,6 +19,7 @@ import 'screens/app_shell.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/labour_home_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/unauthorized_screen.dart';
 import 'services/hive_service.dart';
 
 class AppRoutes {
@@ -26,6 +27,7 @@ class AppRoutes {
   static const String login = '/login';
   static const String supervisorHome = '/supervisor-home';
   static const String labourHome = '/labour-home';
+  static const String unauthorized = '/unauthorized';
 }
 
 Future<void> main() async {
@@ -120,6 +122,7 @@ class _TrackifyAppState extends ConsumerState<TrackifyApp> {
         AppRoutes.login: (_) => const LoginScreen(),
         AppRoutes.supervisorHome: (_) => const AppShell(),
         AppRoutes.labourHome: (_) => const LabourHomeScreen(),
+        AppRoutes.unauthorized: (_) => const UnauthorizedScreen(),
       },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00695C)),

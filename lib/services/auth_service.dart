@@ -3,6 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/app_user.dart';
+import 'firestore_paths.dart';
+import 'session_service.dart';
+
 class AuthService {
   AuthService({FirebaseAuth? auth, FirebaseFirestore? firestore})
       : _auth = auth ?? FirebaseAuth.instance,
@@ -137,17 +141,34 @@ class AuthService {
 
           if (labourSnap.docs.isNotEmpty) {
             final labourDoc = labourSnap.docs.first;
+            final labourData = labourDoc.data();
+            final supId = (labourData['supervisorId'] as String? ?? '').trim();
+            final contractorIdFromLabour =
+                (labourData['contractorId'] as String? ?? '').trim();
             await _db.collection('users').doc(uid).set({
               'labourId': labourDoc.id,
-              'supervisorId': labourDoc.data()['supervisorId'],
+              'supervisorId': supId,
+              if (contractorIdFromLabour.isNotEmpty)
+                'contractorId': contractorIdFromLabour,
               'phone': phoneClean,
               'uid': uid,
             }, SetOptions(merge: true));
           }
         }
 
-        await _cacheUserData(uid, role, name, phoneClean);
-        return AuthResult.success(uid: uid, role: role, name: name);
+        final refreshed = await _db.collection('users').doc(uid).get();
+        final freshData = refreshed.data() ?? data;
+        final appUser = await _buildAppUser(uid, freshData, phoneClean);
+        SessionService.instance.set(appUser);
+
+        await _cacheUserData(uid, role, name, phoneClean,
+            contractorId: appUser.contractorId);
+        return AuthResult.success(
+          uid: uid,
+          role: role,
+          name: name,
+          appUser: appUser,
+        );
       }
 
       final phoneClean = _phoneDigits(phone);
@@ -179,8 +200,19 @@ class AuthService {
           await doc.reference.delete();
         }
 
-        await _cacheUserData(uid, role, name, phoneClean);
-        return AuthResult.success(uid: uid, role: role, name: name);
+        final refreshed = await _db.collection('users').doc(uid).get();
+        final freshData = refreshed.data() ?? data;
+        final appUser = await _buildAppUser(uid, freshData, phoneClean);
+        SessionService.instance.set(appUser);
+
+        await _cacheUserData(uid, role, name, phoneClean,
+            contractorId: appUser.contractorId);
+        return AuthResult.success(
+          uid: uid,
+          role: role,
+          name: name,
+          appUser: appUser,
+        );
       }
 
       final labourSnap = await _db
@@ -193,6 +225,9 @@ class AuthService {
       if (labourSnap.docs.isNotEmpty) {
         final labourData = labourSnap.docs.first.data();
         final name = (labourData['name'] as String? ?? 'Labour').trim();
+        final supId = (labourData['supervisorId'] as String? ?? '').trim();
+        final contractorIdFromLabour =
+            (labourData['contractorId'] as String? ?? '').trim();
 
         await _db.collection('users').doc(uid).set({
           'uid': uid,
@@ -200,13 +235,26 @@ class AuthService {
           'name': name,
           'role': 'labour',
           'isActive': true,
-          'supervisorId': labourData['supervisorId'],
+          'supervisorId': supId,
+          if (contractorIdFromLabour.isNotEmpty)
+            'contractorId': contractorIdFromLabour,
           'labourId': labourSnap.docs.first.id,
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        await _cacheUserData(uid, 'labour', name, phoneClean);
-        return AuthResult.success(uid: uid, role: 'labour', name: name);
+        final refreshed = await _db.collection('users').doc(uid).get();
+        final freshData = refreshed.data() ?? <String, dynamic>{};
+        final appUser = await _buildAppUser(uid, freshData, phoneClean);
+        SessionService.instance.set(appUser);
+
+        await _cacheUserData(uid, 'labour', name, phoneClean,
+            contractorId: appUser.contractorId);
+        return AuthResult.success(
+          uid: uid,
+          role: 'labour',
+          name: name,
+          appUser: appUser,
+        );
       }
 
       await _auth.signOut();
@@ -226,6 +274,54 @@ class AuthService {
     }
   }
 
+  /// Build an AppUser by resolving contractorId with priority:
+  /// user.contractorId → labour.contractorId → user.supervisorId → uid.
+  Future<AppUser> _buildAppUser(
+    String uid,
+    Map<String, dynamic> userData,
+    String phoneClean,
+  ) async {
+    final role = (userData['role'] as String? ?? '').trim();
+    final name = (userData['name'] as String? ?? '').trim();
+    final labourId = (userData['labourId'] as String? ?? '').trim();
+    final supervisorId = (userData['supervisorId'] as String? ?? '').trim();
+    final isActive = userData['isActive'] as bool? ?? true;
+
+    var contractorId = (userData['contractorId'] as String? ?? '').trim();
+
+    if (contractorId.isEmpty && labourId.isNotEmpty) {
+      try {
+        final labourDoc = await _db.collection('labours').doc(labourId).get();
+        final ld = labourDoc.data();
+        if (ld != null) {
+          contractorId = (ld['contractorId'] as String? ?? '').trim();
+        }
+      } catch (_) {/* fall through to next fallback */}
+    }
+
+    if (contractorId.isEmpty && supervisorId.isNotEmpty) {
+      contractorId = supervisorId;
+    }
+    if (contractorId.isEmpty) {
+      // Final fallback: supervisors who pre-date contractor concept act as
+      // their own contractor (so new nested attendance writes keep working).
+      contractorId = uid;
+    }
+
+    final supervisorRefId = supervisorId.isNotEmpty ? supervisorId : uid;
+    return AppUser(
+      uid: uid,
+      role: role,
+      contractorId: contractorId,
+      supervisorId: supervisorId,
+      supervisorRef: FirestorePaths.userRef(supervisorRefId),
+      labourId: labourId,
+      name: name,
+      phone: phoneClean,
+      isActive: isActive,
+    );
+  }
+
   Future<AuthResult?> checkCurrentUser() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -236,17 +332,27 @@ class AuthService {
 
   Future<void> logout() async {
     await _auth.signOut();
+    SessionService.instance.clear();
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     debugPrint('User logged out and cache cleared');
   }
 
-  Future<void> _cacheUserData(String uid, String role, String name, String phone) async {
+  Future<void> _cacheUserData(
+    String uid,
+    String role,
+    String name,
+    String phone, {
+    String contractorId = '',
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('uid', uid);
     await prefs.setString('role', role);
     await prefs.setString('name', name);
     await prefs.setString('phone', phone);
+    if (contractorId.isNotEmpty) {
+      await prefs.setString('contractorId', contractorId);
+    }
   }
 
   Future<Map<String, String>?> _getCachedRole() async {
@@ -287,6 +393,7 @@ class AuthResult {
     this.name,
     this.errorMessage,
     this.fromCache = false,
+    this.appUser,
   });
 
   final bool success;
@@ -295,12 +402,14 @@ class AuthResult {
   final String? name;
   final String? errorMessage;
   final bool fromCache;
+  final AppUser? appUser;
 
   factory AuthResult.success({
     required String uid,
     required String role,
     required String name,
     bool fromCache = false,
+    AppUser? appUser,
   }) {
     return AuthResult._(
       success: true,
@@ -308,6 +417,7 @@ class AuthResult {
       role: role,
       name: name,
       fromCache: fromCache,
+      appUser: appUser,
     );
   }
 

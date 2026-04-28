@@ -5,6 +5,8 @@ import 'package:hive/hive.dart';
 
 import '../models/attendance_model.dart';
 import '../models/labour_model.dart';
+import 'firestore_paths.dart';
+import 'session_service.dart';
 
 class AttendanceService {
   AttendanceService({
@@ -30,14 +32,21 @@ class AttendanceService {
     return uid;
   }
 
+  String _contractorScope(String uid) {
+    final cached = SessionService.instance.contractorId;
+    if (cached != null && cached.isNotEmpty) return cached;
+    return uid;
+  }
+
   void _logWrite(String collection, String operation, String docId) {
     debugPrint(
       '🔥 FIRESTORE | $collection | $operation | $docId | user: ${_auth.currentUser?.uid}',
     );
   }
 
-  Future<void> markAttendance(Attendance attendance) async {
+  Future<void> markAttendance(Attendance attendance, {String markedVia = 'manual'}) async {
     final uid = _requireUid();
+    final contractorId = _contractorScope(uid);
     if (attendance.labourId.trim().isEmpty) {
       throw Exception('labourId must not be empty');
     }
@@ -48,6 +57,7 @@ class AttendanceService {
     await _attendanceBox.put(attendance.id, attendance);
 
     try {
+      // 1) Legacy flat write (for backward compatibility with old screens).
       final existing = await _db
           .collection('attendance')
           .where('labourId', isEqualTo: attendance.labourId)
@@ -56,32 +66,68 @@ class AttendanceService {
           .limit(1)
           .get();
 
+      String legacyId;
       if (existing.docs.isNotEmpty) {
+        legacyId = existing.docs.first.id;
         await existing.docs.first.reference.update({
           'status': attendance.status.firestoreValue,
           'overtimeHours': attendance.overtimeHours,
           'isSynced': true,
           'supervisorId': uid,
+          'contractorId': contractorId,
+          'markedVia': markedVia,
           'syncedAt': FieldValue.serverTimestamp(),
         });
-        _logWrite('attendance', 'UPDATE', existing.docs.first.id);
-        attendance.firestoreId = existing.docs.first.id;
+        _logWrite('attendance', 'UPDATE', legacyId);
       } else {
         final docRef = await _db.collection('attendance').add({
           'id': '',
           'labourId': attendance.labourId,
           'supervisorId': uid,
+          'supervisorRef': FirestorePaths.userRef(uid),
+          'contractorId': contractorId,
           'date': attendance.date.toString(),
           'status': attendance.status.firestoreValue,
           'overtimeHours': attendance.overtimeHours,
+          'markedVia': markedVia,
           'isSynced': true,
           'syncedAt': FieldValue.serverTimestamp(),
         });
-        _logWrite('attendance', 'ADD', docRef.id);
-        await docRef.update({'id': docRef.id});
-        _logWrite('attendance', 'UPDATE_ID', docRef.id);
-        attendance.firestoreId = docRef.id;
+        legacyId = docRef.id;
+        _logWrite('attendance', 'ADD', legacyId);
+        await docRef.update({'id': legacyId});
+        _logWrite('attendance', 'UPDATE_ID', legacyId);
       }
+      attendance.firestoreId = legacyId;
+
+      // 2) New nested write: attendance/{contractorId}/dates/{dateKey}/records/{labourId}
+      final nestedRef = FirestorePaths.attendanceRecordRef(
+        contractorId,
+        attendance.date,
+        attendance.labourId,
+      );
+      await nestedRef.set({
+        'labourId': attendance.labourId,
+        'contractorId': contractorId,
+        'supervisorId': uid,
+        'supervisorRef': FirestorePaths.userRef(uid),
+        'date': attendance.date,
+        'status': attendance.status.firestoreValue,
+        'overtimeHours': attendance.overtimeHours,
+        'markedVia': markedVia,
+        'markedAt': FieldValue.serverTimestamp(),
+        'legacyId': legacyId,
+      }, SetOptions(merge: true));
+      _logWrite('attendance/$contractorId/dates/${attendance.date}/records',
+          'SET', attendance.labourId);
+
+      // Stamp the parent date doc so the dates collection is queryable.
+      await FirestorePaths.attendanceDateDoc(contractorId, attendance.date).set({
+        'date': attendance.date,
+        'contractorId': contractorId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
       attendance.isSynced = true;
       await _attendanceBox.put(attendance.id, attendance);
     } catch (e) {
@@ -94,7 +140,7 @@ class AttendanceService {
     final uid = _requireUid();
     final parsedStatus = AttendanceStatusX.fromFirestoreValue(status);
     final labours = _labourBox.values
-      .where((l) => l.supervisorId == uid && l.isActive)
+        .where((l) => l.supervisorId == uid && l.isActive)
         .toList();
 
     for (final labour in labours) {
@@ -134,6 +180,33 @@ class AttendanceService {
   Future<void> fetchAttendanceForDate(String date) async {
     try {
       final uid = _requireUid();
+      final contractorId = _contractorScope(uid);
+      final ids = <String>{};
+
+      // Try the new nested path first.
+      try {
+        final nested = await FirestorePaths
+            .attendanceRecordsCol(contractorId, date)
+            .get();
+        for (final doc in nested.docs) {
+          final data = doc.data();
+          final att = Attendance(
+            id: '${data['labourId']}_$date',
+            labourId: (data['labourId'] as String?) ?? doc.id,
+            supervisorId: (data['supervisorId'] as String?) ?? uid,
+            date: date,
+            status: AttendanceStatusX.fromFirestoreValue(
+                (data['status'] as String?) ?? 'absent'),
+            overtimeHours: (data['overtimeHours'] as num?)?.toDouble() ?? 0,
+          )..isSynced = true;
+          await _attendanceBox.put(att.id, att);
+          ids.add(att.id);
+        }
+      } catch (e) {
+        debugPrint('nested fetchAttendanceForDate failed: $e');
+      }
+
+      // Always also pull legacy docs so older data still flows in.
       final snap = await _db
           .collection('attendance')
           .where('supervisorId', isEqualTo: uid)
@@ -142,6 +215,7 @@ class AttendanceService {
 
       for (final doc in snap.docs) {
         final att = Attendance.fromFirestore(doc);
+        if (ids.contains(att.id)) continue;
         await _attendanceBox.put(att.id, att);
       }
     } catch (e) {
@@ -167,6 +241,15 @@ class AttendanceService {
     } catch (e) {
       debugPrint('Fetch range failed: $e');
     }
+  }
+
+  /// Real-time stream of attendance records for a single date (new path).
+  Stream<List<Map<String, dynamic>>> attendanceStreamForDate(String dateKey) {
+    final uid = _requireUid();
+    final contractorId = _contractorScope(uid);
+    return FirestorePaths.attendanceRecordsCol(contractorId, dateKey)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => {...d.data(), 'docId': d.id}).toList());
   }
 
   String cycleStatus(String current) {

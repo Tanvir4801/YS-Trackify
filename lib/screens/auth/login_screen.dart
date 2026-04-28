@@ -121,10 +121,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _errorMessage = 'Unknown role. Contact admin.';
-      _isLoading = false;
-    });
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/unauthorized',
+      (route) => false,
+    );
   }
 
   @override

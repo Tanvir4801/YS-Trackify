@@ -4,12 +4,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'session_service.dart';
+
 class QRService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Secret salt — same must be used in Cloud Function
+  // Secret salt — same must be used in Cloud Function for legacy HMAC tokens.
   static const String _salt = 'TRACKIFY_QR_SECRET_2026';
+
+  /// Window the new JSON QR is valid for. Refreshed by the labour app.
+  static const Duration _jsonQrLifetime = Duration(seconds: 60);
 
   String get labourUid {
     final user = _auth.currentUser;
@@ -18,6 +23,56 @@ class QRService {
     }
     return user.uid;
   }
+
+  // ---- New JSON-encoded QR ---------------------------------------------------
+
+  /// Builds the JSON QR payload required by the layered upgrade spec:
+  ///   { "labourId": ..., "contractorId": ..., "labourName": ..., "expiresAt": <epochMs> }
+  ///
+  /// Pass [labourId], [contractorId] and [labourName] from the loaded labour
+  /// session — this avoids an extra Firestore round-trip every refresh.
+  String generateJsonQrPayload({
+    required String labourId,
+    required String contractorId,
+    required String labourName,
+    Duration? lifetime,
+  }) {
+    final ttl = lifetime ?? _jsonQrLifetime;
+    final expiresAt = DateTime.now().add(ttl).millisecondsSinceEpoch;
+    final payload = <String, dynamic>{
+      'labourId': labourId,
+      'contractorId': contractorId,
+      'labourName': labourName,
+      'expiresAt': expiresAt,
+      'v': 2,
+    };
+    return jsonEncode(payload);
+  }
+
+  /// Convenience wrapper that resolves contractor/labour from the session.
+  String? generateJsonQrPayloadFromSession({String? labourNameOverride}) {
+    final user = SessionService.instance.current;
+    if (user == null) return null;
+    final labourId = user.labourId.isNotEmpty ? user.labourId : user.uid;
+    final contractorId = user.contractorId;
+    if (contractorId.isEmpty) return null;
+    return generateJsonQrPayload(
+      labourId: labourId,
+      contractorId: contractorId,
+      labourName: labourNameOverride ?? (user.name.isEmpty ? 'Labour' : user.name),
+    );
+  }
+
+  /// How many seconds until the next JSON QR refresh would be due.
+  int jsonQrSecondsUntilRefresh({Duration? lifetime}) {
+    final ttl = lifetime ?? _jsonQrLifetime;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final windowMs = ttl.inMilliseconds;
+    final msIntoWindow = now % windowMs;
+    return ((windowMs - msIntoWindow) / 1000).ceil();
+  }
+
+  // ---- Legacy HMAC-rotating token (kept for backward compatibility) ---------
 
   // Token changes every 30 seconds.
   // Format before base64Url encoding: labourId|timestamp_window|hmac_signature
@@ -41,7 +96,7 @@ class QRService {
     return DateTime.now().millisecondsSinceEpoch ~/ 30000;
   }
 
-  // How many seconds until next QR refresh.
+  // How many seconds until next legacy QR refresh.
   int secondsUntilRefresh() {
     final now = DateTime.now().millisecondsSinceEpoch;
     const windowMs = 30000;

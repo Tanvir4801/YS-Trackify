@@ -9,6 +9,9 @@ import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:vibration/vibration.dart';
 
+import 'firestore_paths.dart';
+import 'session_service.dart';
+
 class ScannerService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
@@ -20,6 +23,47 @@ class ScannerService {
       throw StateError('No authenticated supervisor found.');
     }
     return user.uid;
+  }
+
+  String get _contractorId {
+    final cached = SessionService.instance.contractorId;
+    if (cached != null && cached.isNotEmpty) return cached;
+    return supervisorId; // fallback (legacy supervisor with no contractorId)
+  }
+
+  // ---- Decoders --------------------------------------------------------------
+
+  /// Tries to parse the new v2 JSON QR payload.
+  ///
+  /// Returns null when the input is not JSON. Returns a map with `error: ...`
+  /// when JSON parses but is invalid/expired/cross-contractor.
+  Map<String, dynamic>? decodeJsonQr(String raw) {
+    try {
+      final dynamic parsed = jsonDecode(raw);
+      if (parsed is! Map) return null;
+      final labourId = (parsed['labourId'] as String?)?.trim() ?? '';
+      final contractorId = (parsed['contractorId'] as String?)?.trim() ?? '';
+      final labourName = (parsed['labourName'] as String?) ?? 'Labour';
+      final expiresAt = (parsed['expiresAt'] as num?)?.toInt() ?? 0;
+
+      if (labourId.isEmpty || contractorId.isEmpty) {
+        return {'error': 'invalid'};
+      }
+      if (expiresAt > 0 && DateTime.now().millisecondsSinceEpoch > expiresAt) {
+        return {'error': 'expired'};
+      }
+      if (contractorId != _contractorId) {
+        return {'error': 'wrong_contractor'};
+      }
+      return {
+        'labourId': labourId,
+        'contractorId': contractorId,
+        'labourName': labourName,
+        'expiresAt': expiresAt,
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   Map<String, String>? decodeQRToken(String rawToken) {
@@ -49,6 +93,8 @@ class ScannerService {
     }
   }
 
+  // ---- Duplicate check -------------------------------------------------------
+
   Future<bool> isAlreadyMarkedToday(String labourId) async {
     final today = _todayString();
 
@@ -57,6 +103,14 @@ class ScannerService {
     if (box.containsKey(localKey)) {
       return true;
     }
+
+    // New nested path is the source of truth when present.
+    try {
+      final nested = await FirestorePaths
+          .attendanceRecordRef(_contractorId, today, labourId)
+          .get();
+      if (nested.exists) return true;
+    } catch (_) {/* fall through */}
 
     try {
       final snap = await _db
@@ -72,7 +126,57 @@ class ScannerService {
     }
   }
 
+  // ---- Main entry point ------------------------------------------------------
+
   Future<ScanResult> processScan(String rawToken) async {
+    // 1) Try new JSON format first.
+    final json = decodeJsonQr(rawToken);
+    if (json != null) {
+      final err = json['error'] as String?;
+      if (err == 'expired') {
+        return ScanResult(
+          success: false,
+          message: 'QR Code Expired. Ask labour to refresh.',
+          type: ScanResultType.expired,
+        );
+      }
+      if (err == 'invalid') {
+        return ScanResult(
+          success: false,
+          message: 'Invalid QR Code',
+          type: ScanResultType.invalid,
+        );
+      }
+      if (err == 'wrong_contractor') {
+        return ScanResult(
+          success: false,
+          message: 'This labour belongs to a different contractor',
+          type: ScanResultType.invalid,
+        );
+      }
+
+      final labourId = json['labourId'] as String;
+      final labourName = json['labourName'] as String;
+      final alreadyMarked = await isAlreadyMarkedToday(labourId);
+      if (alreadyMarked) {
+        return ScanResult(
+          success: false,
+          message: '$labourName already marked today',
+          type: ScanResultType.duplicate,
+          labourName: labourName,
+        );
+      }
+
+      final connectivityResults = await Connectivity().checkConnectivity();
+      final isOnline = !connectivityResults.contains(ConnectivityResult.none);
+
+      if (isOnline) {
+        return _markViaNewPath(labourId, labourName);
+      }
+      return _markOffline(labourId, labourName: labourName);
+    }
+
+    // 2) Fall back to legacy HMAC token decoding.
     final decoded = decodeQRToken(rawToken);
     if (decoded == null || decoded['error'] == 'invalid') {
       return ScanResult(
@@ -112,12 +216,87 @@ class ScannerService {
     return _markOffline(labourId);
   }
 
+  // ---- Write paths -----------------------------------------------------------
+
+  /// Direct Firestore write for the new JSON QR flow.
+  ///
+  /// Writes to the new nested path AND mirrors a legacy flat doc so existing
+  /// supervisor screens (which still query `attendance` flat) keep showing
+  /// today's attendance until everything is migrated.
+  Future<ScanResult> _markViaNewPath(String labourId, String labourName) async {
+    final today = _todayString();
+    try {
+      final contractorId = _contractorId;
+      final supId = supervisorId;
+      final supRef = FirestorePaths.userRef(supId);
+
+      final nestedRef =
+          FirestorePaths.attendanceRecordRef(contractorId, today, labourId);
+      await nestedRef.set({
+        'labourId': labourId,
+        'labourName': labourName,
+        'contractorId': contractorId,
+        'supervisorId': supId,
+        'supervisorRef': supRef,
+        'date': today,
+        'status': 'present',
+        'overtimeHours': 0,
+        'markedVia': 'qr',
+        'markedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await FirestorePaths.attendanceDateDoc(contractorId, today).set({
+        'date': today,
+        'contractorId': contractorId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Mirror to legacy flat collection for compatibility.
+      try {
+        final existing = await _db
+            .collection('attendance')
+            .where('labourId', isEqualTo: labourId)
+            .where('date', isEqualTo: today)
+            .where('supervisorId', isEqualTo: supId)
+            .limit(1)
+            .get();
+        if (existing.docs.isEmpty) {
+          await _db.collection('attendance').add({
+            'labourId': labourId,
+            'supervisorId': supId,
+            'supervisorRef': supRef,
+            'contractorId': contractorId,
+            'date': today,
+            'status': 'present',
+            'overtimeHours': 0,
+            'markedVia': 'qr',
+            'isSynced': true,
+            'syncedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } catch (e) {
+        // Legacy mirror is best-effort; new path already succeeded.
+      }
+
+      _saveToHive(labourId, 'present', isSynced: true);
+      return ScanResult(
+        success: true,
+        message: '$labourName marked Present ✓',
+        type: ScanResultType.success,
+        labourName: labourName,
+      );
+    } catch (_) {
+      return _markOffline(labourId, labourName: labourName);
+    }
+  }
+
   Future<ScanResult> _markViaCloudFunction(String labourId, String rawToken) async {
     try {
       final callable = _functions.httpsCallable('validateAndMarkAttendance');
       final result = await callable.call(<String, dynamic>{
         'token': rawToken,
         'supervisorId': supervisorId,
+        'contractorId': _contractorId,
         'date': _todayString(),
         'status': 'present',
       });
@@ -153,8 +332,8 @@ class ScannerService {
     }
   }
 
-  Future<ScanResult> _markOffline(String labourId) async {
-    final name = await _getLabourName(labourId);
+  Future<ScanResult> _markOffline(String labourId, {String? labourName}) async {
+    final name = labourName ?? await _getLabourName(labourId);
     _saveToHive(labourId, 'present', isSynced: false);
 
     return ScanResult(
@@ -171,6 +350,7 @@ class ScannerService {
     box.put('${labourId}_$today', {
       'labourId': labourId,
       'supervisorId': supervisorId,
+      'contractorId': _contractorId,
       'date': today,
       'status': status,
       'isSynced': isSynced,
@@ -189,11 +369,38 @@ class ScannerService {
       }
 
       try {
-        final callable = _functions.httpsCallable('validateAndMarkAttendance');
-        await callable.call(<String, dynamic>{
-          ...record,
-          'offlineSync': true,
-        });
+        final labourId = (record['labourId'] as String?) ?? '';
+        final date = (record['date'] as String?) ?? _todayString();
+        final contractorId =
+            (record['contractorId'] as String?)?.trim().isNotEmpty == true
+                ? record['contractorId'] as String
+                : _contractorId;
+
+        // Prefer direct nested write for offline-queued scans.
+        try {
+          await FirestorePaths
+              .attendanceRecordRef(contractorId, date, labourId)
+              .set({
+            'labourId': labourId,
+            'contractorId': contractorId,
+            'supervisorId': record['supervisorId'] ?? supervisorId,
+            'supervisorRef':
+                FirestorePaths.userRef(record['supervisorId'] as String? ?? supervisorId),
+            'date': date,
+            'status': record['status'] ?? 'present',
+            'overtimeHours': 0,
+            'markedVia': 'qr',
+            'markedAt': FieldValue.serverTimestamp(),
+            'offlineSync': true,
+          }, SetOptions(merge: true));
+        } catch (_) {
+          // Fall back to the legacy callable.
+          final callable = _functions.httpsCallable('validateAndMarkAttendance');
+          await callable.call(<String, dynamic>{
+            ...record,
+            'offlineSync': true,
+          });
+        }
 
         record['isSynced'] = true;
         await box.put(key, record);

@@ -78,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
       return;
     }
 
-    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    Navigator.of(context).pushNamedAndRemoveUntil('/unauthorized', (route) => false);
   }
 
   @override

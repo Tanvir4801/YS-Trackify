@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../models/labour_model.dart';
+import 'firestore_paths.dart';
+import 'session_service.dart';
 
 class LabourService {
   LabourService({
@@ -26,6 +28,16 @@ class LabourService {
     return uid;
   }
 
+  /// Resolves the contractor scope for queries/writes.
+  ///
+  /// Falls back to the supervisor uid when no SessionService user is cached
+  /// (e.g. legacy supervisor account whose user doc has no contractorId yet).
+  String _contractorScope(String uid) {
+    final cached = SessionService.instance.contractorId;
+    if (cached != null && cached.isNotEmpty) return cached;
+    return uid;
+  }
+
   void _logWrite(String collection, String operation, String docId) {
     debugPrint(
       '🔥 FIRESTORE | $collection | $operation | $docId | user: ${_auth.currentUser?.uid}',
@@ -35,6 +47,7 @@ class LabourService {
   Future<void> addLabour(Labour labour) async {
     try {
       final uid = _requireUid();
+      final contractorId = _contractorScope(uid);
       final oldLocalId = labour.id;
 
       labour.supervisorId = uid;
@@ -45,6 +58,8 @@ class LabourService {
       final docRef = await _db.collection('labours').add({
         'id': '',
         'supervisorId': uid,
+        'supervisorRef': FirestorePaths.userRef(uid),
+        'contractorId': contractorId,
         'name': labour.name,
         'phone': labour.phone,
         'dailyWage': labour.dailyWage,
@@ -78,6 +93,7 @@ class LabourService {
 
   Future<void> updateLabour(Labour labour) async {
     final uid = _requireUid();
+    final contractorId = _contractorScope(uid);
     labour.supervisorId = uid;
     labour.isSynced = false;
     await _labourBox.put(labour.id, labour);
@@ -87,6 +103,8 @@ class LabourService {
       await _db.collection('labours').doc(docId).set({
         'id': docId,
         'supervisorId': uid,
+        'supervisorRef': FirestorePaths.userRef(uid),
+        'contractorId': contractorId,
         'name': labour.name,
         'phone': labour.phone,
         'dailyWage': labour.dailyWage,
@@ -148,17 +166,37 @@ class LabourService {
   Future<void> fetchAndSyncLabours() async {
     try {
       final uid = _requireUid();
-      final snap = await _db
+      final contractorId = _contractorScope(uid);
+
+      // Prefer contractorId scope; fall back to legacy supervisorId filter for
+      // labours that haven't been re-saved with the new field yet.
+      final docs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+      try {
+        final byContractor = await _db
+            .collection('labours')
+            .where('contractorId', isEqualTo: contractorId)
+            .where('isActive', isEqualTo: true)
+            .get();
+        docs.addAll(byContractor.docs);
+      } catch (e) {
+        debugPrint('contractorId labour query failed: $e');
+      }
+
+      final bySupervisor = await _db
           .collection('labours')
           .where('supervisorId', isEqualTo: uid)
           .where('isActive', isEqualTo: true)
           .get();
 
-      for (final doc in snap.docs) {
-        final labour = Labour.fromFirestore(doc);
-        await _labourBox.put(labour.id, labour);
+      final seen = <String>{};
+      for (final d in [...docs, ...bySupervisor.docs]) {
+        if (seen.add(d.id)) {
+          final labour = Labour.fromFirestore(d);
+          await _labourBox.put(labour.id, labour);
+        }
       }
-      debugPrint('Synced ${snap.docs.length} labours from Firebase');
+      debugPrint('Synced ${seen.length} labours from Firebase');
     } catch (e) {
       debugPrint('Fetch labours failed: $e - using local data');
       rethrow;
@@ -167,9 +205,26 @@ class LabourService {
 
   Stream<List<Labour>> labourStream() {
     final uid = _requireUid();
+    // Legacy supervisorId is universally present; contractorId isn't yet on
+    // older docs. Use supervisorId for the live stream so existing UI keeps
+    // working; writes are dual-tagged (supervisorId + contractorId) so the
+    // new admin queries also see fresh data.
     return _db
         .collection('labours')
-      .where('supervisorId', isEqualTo: uid)
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(Labour.fromFirestore).toList());
+  }
+
+  /// Newer-style stream filtered purely by contractorId. Use this when the
+  /// caller is sure their data is migrated.
+  Stream<List<Labour>> labourStreamByContractor() {
+    final uid = _requireUid();
+    final contractorId = _contractorScope(uid);
+    return _db
+        .collection('labours')
+        .where('contractorId', isEqualTo: contractorId)
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snap) => snap.docs.map(Labour.fromFirestore).toList());
