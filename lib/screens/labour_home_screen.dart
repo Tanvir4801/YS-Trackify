@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 import '../services/auth_service.dart';
+import '../services/session_service.dart';
+import 'labour/my_attendance_screen.dart';
 import 'qr/qr_screen.dart';
 
 class LabourHomeScreen extends StatefulWidget {
@@ -59,6 +61,7 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
       final userName = (data['name'] as String? ?? 'Labour').trim();
       var labourId = (data['labourId'] as String? ?? '').trim();
       var supervisorId = (data['supervisorId'] as String? ?? '').trim();
+      var contractorId = (data['contractorId'] as String? ?? '').trim();
 
       if (labourId.isEmpty && phone.length == 10) {
         final labourSnap = await _db
@@ -84,6 +87,19 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
         throw Exception('Labour profile not found. Contact supervisor.');
       }
 
+      // Resolve contractorId: user doc → labour doc → supervisorId → cached session.
+      if (contractorId.isEmpty) {
+        try {
+          final labourDoc =
+              await _db.collection('labours').doc(labourId).get();
+          contractorId =
+              (labourDoc.data()?['contractorId'] as String? ?? '').trim();
+        } catch (_) {/* ignore */}
+      }
+      if (contractorId.isEmpty) {
+        contractorId = SessionService.instance.contractorId ?? supervisorId;
+      }
+
       _session = _LabourSession(
         uid: user.uid,
         phone: phone,
@@ -91,6 +107,7 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
         userName: userName,
         labourId: labourId,
         supervisorId: supervisorId,
+        contractorId: contractorId,
       );
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
@@ -188,7 +205,10 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
 
     final tabs = <Widget>[
       _LabourDashboardTab(session: session),
-      _LabourAttendanceTab(session: session),
+      LabourMyAttendanceScreen(
+        labourId: session.labourId,
+        contractorId: session.contractorId,
+      ),
       _LabourPaymentsTab(session: session),
       const QRScreen(showAppBar: false),
     ];
@@ -245,6 +265,7 @@ class _LabourSession {
     required this.userName,
     required this.labourId,
     required this.supervisorId,
+    required this.contractorId,
   });
 
   final String uid;
@@ -253,6 +274,7 @@ class _LabourSession {
   final String userName;
   final String labourId;
   final String supervisorId;
+  final String contractorId;
 }
 
 class _LabourDashboardTab extends StatelessWidget {
