@@ -15,98 +15,53 @@ class AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _db;
 
-  Future<void> sendOTP({
-    required String phone,
-    required Function(String verificationId) onCodeSent,
-    required Function(String error) onError,
-    required Function(PhoneAuthCredential credential) onAutoVerify,
+  /// Email + password login. After successful sign-in, resolves the user's
+  /// role and contractorId via [_fetchUserRole], caches the [AppUser] in
+  /// [SessionService], and returns an [AuthResult].
+  Future<AuthResult> loginWithEmail({
+    required String email,
+    required String password,
   }) async {
-    final normalizedPhone = _normalizeIndianPhone(phone);
-    if (normalizedPhone == null) {
-      onError('Enter valid 10 digit mobile number');
-      return;
+    final cleanEmail = email.trim();
+    if (cleanEmail.isEmpty) {
+      return AuthResult.error('Please enter your email');
+    }
+    if (password.isEmpty) {
+      return AuthResult.error('Please enter your password');
     }
 
     try {
-      await _auth.verifyPhoneNumber(
-        phoneNumber: '+91$normalizedPhone',
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (credential) async {
-          onAutoVerify(credential);
-        },
-        verificationFailed: (e) {
-          debugPrint('OTP Error: ${e.code} - ${e.message}');
-          String message;
-          switch (e.code) {
-            case 'invalid-phone-number':
-              message = 'Invalid phone number format';
-              break;
-            case 'too-many-requests':
-              message = 'Too many attempts. Try after some time.';
-              break;
-            case 'quota-exceeded':
-              message = 'SMS quota exceeded. Try later.';
-              break;
-            default:
-              message = e.message ?? 'Failed to send OTP';
-          }
-          onError(message);
-        },
-        codeSent: (verificationId, resendToken) {
-          onCodeSent(verificationId);
-        },
-        codeAutoRetrievalTimeout: (verificationId) {
-          debugPrint('OTP timeout: $verificationId');
-        },
+      final cred = await _auth.signInWithEmailAndPassword(
+        email: cleanEmail,
+        password: password,
       );
-    } on FirebaseAuthException catch (e) {
-      onError(e.message ?? 'Failed to send OTP');
-    } catch (_) {
-      onError('Failed to send OTP');
-    }
-  }
-
-  Future<AuthResult> verifyOTP({
-    required String verificationId,
-    required String otp,
-  }) async {
-    try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: otp,
-      );
-      final userCredential = await _auth.signInWithCredential(credential);
-      final user = userCredential.user;
+      final user = cred.user;
       if (user == null) {
-        return AuthResult.error('Login failed. Try again.');
+        return AuthResult.error('Login failed. Please try again.');
       }
       return _fetchUserRole(user.uid, user.phoneNumber ?? '');
     } on FirebaseAuthException catch (e) {
+      debugPrint('email login error: ${e.code} - ${e.message}');
       switch (e.code) {
-        case 'invalid-verification-code':
-          return AuthResult.error('Wrong OTP. Please check and retry.');
-        case 'session-expired':
-          return AuthResult.error('OTP expired. Request a new one.');
+        case 'user-not-found':
+          return AuthResult.error('No account found for this email.');
+        case 'wrong-password':
+        case 'invalid-credential':
+          return AuthResult.error('Incorrect email or password.');
+        case 'invalid-email':
+          return AuthResult.error('Invalid email address.');
+        case 'user-disabled':
+          return AuthResult.error('This account has been disabled.');
+        case 'too-many-requests':
+          return AuthResult.error('Too many attempts. Try again later.');
+        case 'network-request-failed':
+          return AuthResult.error('Network error. Check your connection.');
         default:
-          return AuthResult.error(e.message ?? 'Verification failed');
+          return AuthResult.error(e.message ?? 'Login failed. Please try again.');
       }
-    } catch (_) {
-      return AuthResult.error('Verification failed');
-    }
-  }
-
-  Future<AuthResult> signInWithCredential(PhoneAuthCredential credential) async {
-    try {
-      final userCredential = await _auth.signInWithCredential(credential);
-      final user = userCredential.user;
-      if (user == null) {
-        return AuthResult.error('Login failed');
-      }
-      return _fetchUserRole(user.uid, user.phoneNumber ?? '');
-    } on FirebaseAuthException catch (e) {
-      return AuthResult.error(e.message ?? 'Auto verification failed');
-    } catch (_) {
-      return AuthResult.error('Auto verification failed');
+    } catch (e) {
+      debugPrint('email login unexpected error: $e');
+      return AuthResult.error('An error occurred. Please try again.');
     }
   }
 
@@ -363,14 +318,6 @@ class AuthService {
       return null;
     }
     return {'role': role, 'name': name ?? ''};
-  }
-
-  String? _normalizeIndianPhone(String phone) {
-    final digits = _phoneDigits(phone);
-    if (digits.length != 10) {
-      return null;
-    }
-    return digits;
   }
 
   String _phoneDigits(String phone) {
