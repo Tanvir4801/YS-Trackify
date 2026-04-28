@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 
 import '../core/localization/app_text.dart';
 import '../main.dart';
@@ -7,6 +8,7 @@ import 'attendance_screen.dart';
 import 'dashboard_screen.dart';
 import 'labour_screen.dart';
 import 'reports_screen.dart';
+import 'scanner/scanner_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -23,6 +25,7 @@ class _AppShellState extends State<AppShell> {
     LabourScreen(),
     AttendanceScreen(),
     ReportsScreen(),
+    ScannerScreen(),
   ];
 
   @override
@@ -32,6 +35,7 @@ class _AppShellState extends State<AppShell> {
       context.tr('labourManagement'),
       context.tr('attendance'),
       context.tr('reports'),
+      'Scan Attendance',
     ];
 
     return Scaffold(
@@ -40,7 +44,7 @@ class _AppShellState extends State<AppShell> {
         actions: [
           IconButton(
             tooltip: context.tr('logout'),
-            onPressed: () => _confirmLogout(context),
+            onPressed: _confirmLogout,
             icon: const Icon(Icons.logout),
           ),
         ],
@@ -65,6 +69,10 @@ class _AppShellState extends State<AppShell> {
             icon: const Icon(Icons.analytics_outlined),
             label: context.tr('reports'),
           ),
+          const NavigationDestination(
+            icon: Icon(Icons.qr_code_scanner_outlined),
+            label: 'Scanner',
+          ),
         ],
         onDestinationSelected: (index) {
           setState(() {
@@ -75,33 +83,44 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Future<void> _confirmLogout(BuildContext context) async {
+  Future<void> _confirmLogout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(context.tr('logout')),
-          content: Text(context.tr('logoutConfirm')),
+          title: Text(ctx.tr('logout')),
+          content: Text(ctx.tr('logoutConfirm')),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text(context.tr('cancel')),
+              child: Text(ctx.tr('cancel')),
             ),
-            FilledButton(
+            TextButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text(context.tr('logout')),
+              child: const Text(
+                'Logout',
+                style: TextStyle(color: Colors.red),
+              ),
             ),
           ],
         );
       },
     );
 
-    if (shouldLogout != true || !context.mounted) {
+    if (shouldLogout != true || !mounted) {
       return;
     }
 
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.modeSelection,
+    final navigator = Navigator.of(context);
+
+    await AuthService().logout();
+
+    if (!mounted) {
+      return;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      AppRoutes.login,
       (route) => false,
     );
   }

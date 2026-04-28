@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../main.dart';
+import '../services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -52,10 +52,33 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Future<void>.delayed(const Duration(milliseconds: 2600), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(AppRoutes.modeSelection);
-    });
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    final result = await AuthService().checkCurrentUser();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (result == null || !result.success) {
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      return;
+    }
+
+    if (result.role == 'supervisor' || result.role == 'admin') {
+      Navigator.of(context).pushNamedAndRemoveUntil('/supervisor-home', (route) => false);
+      return;
+    }
+
+    if (result.role == 'labour') {
+      Navigator.of(context).pushNamedAndRemoveUntil('/labour-home', (route) => false);
+      return;
+    }
+
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
   @override

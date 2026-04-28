@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../core/localization/app_text.dart';
 import '../core/theme/app_colors.dart';
 import '../models/labour_report_summary.dart';
-import '../providers/site_data_provider.dart';
-import '../services/export_service.dart';
+import '../providers/report_provider.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -15,10 +15,16 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  final ExportService _exportService = ExportService();
   final TextEditingController _searchController = TextEditingController();
-  bool _isExporting = false;
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ReportProvider>().loadReport();
+    });
+  }
 
   @override
   void dispose() {
@@ -26,58 +32,42 @@ class _ReportsScreenState extends State<ReportsScreen> {
     super.dispose();
   }
 
-  Future<void> _backupData(SiteDataProvider data) async {
-    if (_isExporting) {
+  Future<void> _backupData(ReportProvider data) async {
+    if (data.isBackingUp || data.isExporting) {
       return;
     }
 
-    setState(() => _isExporting = true);
-    final result = await _exportService.exportBackupJson(
-      labours: data.labours,
-      attendance: data.hiveService.getAllAttendanceRecords(),
-    );
+    await data.backupData();
     if (!mounted) {
       return;
     }
-    setState(() => _isExporting = false);
 
-    if (!result.isSuccess || result.file == null) {
-      _showMessage(result.error ?? 'Backup failed');
+    if (data.error != null) {
+      _showMessage(data.error!);
       return;
     }
 
-    _showMessage('Backup saved: ${result.file!.path}');
-    await _exportService.shareFile(result.file!);
+    _showMessage('Backup completed successfully');
   }
 
-  Future<void> _exportExcel(SiteDataProvider data) async {
-    if (_isExporting) {
+  Future<void> _exportExcel(ReportProvider data) async {
+    if (data.isExporting || data.isBackingUp) {
       return;
     }
 
-    setState(() => _isExporting = true);
-
-    final reports = data.buildLabourReport();
-
-    final result = await _exportService.exportLabourExcel(
-      labours: data.labours,
-      attendanceRecords: data.hiveService.getAllAttendanceRecords(),
-      reports: reports,
-    );
-
+    await data.exportExcel();
     if (!mounted) {
       return;
     }
-    setState(() => _isExporting = false);
 
-    if (!result.isSuccess || result.file == null) {
-      _showMessage(
-          result.error ?? 'Excel export failed. Please check permissions.');
+    if (data.error != null) {
+      _showMessage(data.error!);
       return;
     }
 
-    _showSavedWithShare(
-        result.file!.path, () => _exportService.shareFile(result.file!));
+    if (data.exportedFilePath != null) {
+      _showMessage('File saved: ${data.exportedFilePath}');
+    }
   }
 
   void _showMessage(String message) {
@@ -85,26 +75,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _showSavedWithShare(String path, Future<void> Function() onShare) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('File saved successfully\n$path'),
-        action: SnackBarAction(
-          label: 'Share',
-          onPressed: () {
-            onShare();
-          },
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Consumer<SiteDataProvider>(
+    return Consumer<ReportProvider>(
       builder: (context, data, _) {
-        final reports = data.buildLabourReport();
+        final reports = data.summaries;
         final filteredReports = reports.where((item) {
           final query = _searchQuery.trim().toLowerCase();
           if (query.isEmpty) {
@@ -122,25 +97,35 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed:
-                            _isExporting ? null : () => _backupData(data),
+                        onPressed: (data.isExporting || data.isBackingUp)
+                            ? null
+                            : () => _backupData(data),
                         icon: const Icon(Icons.backup_outlined),
-                        label: const Text('Backup Data'),
+                        label: data.isBackingUp
+                            ? const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Backup Data'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed:
-                            _isExporting ? null : () => _exportExcel(data),
+                        onPressed: (data.isExporting || data.isBackingUp)
+                            ? null
+                            : () => _exportExcel(data),
                         icon: const Icon(Icons.table_chart_outlined),
-                        label: const Text('Export Excel'),
+                        label: Text(
+                          data.isExporting ? 'Exporting...' : 'Export Excel',
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              if (_isExporting)
+              if (data.isExporting || data.isBackingUp)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8),
                   child: SizedBox(
@@ -199,6 +184,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ),
               ),
+              if (data.isLoading)
+                const Expanded(
+                  child: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else
               Expanded(
                 child: reports.isEmpty
                     ? Center(child: Text(context.tr('noReportData')))
@@ -206,14 +198,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ? const Center(
                             child: Text('No person found for this name'),
                           )
-                        : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            itemCount: filteredReports.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final item = filteredReports[index];
-                              return _ReportTile(item: item);
-                            },
+                        : RefreshIndicator(
+                            onRefresh: data.loadReport,
+                            child: ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              itemCount: filteredReports.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                              itemBuilder: (context, index) {
+                                final item = filteredReports[index];
+                                return _ReportTile(item: item);
+                              },
+                            ),
                           ),
               ),
             ],
@@ -228,6 +223,14 @@ class _ReportTile extends StatelessWidget {
   const _ReportTile({required this.item});
 
   final LabourReportSummary item;
+
+  String _formatCurrency(double value) {
+    return NumberFormat.currency(
+      locale: 'en_IN',
+      symbol: '₹ ',
+      decimalDigits: 0,
+    ).format(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +255,7 @@ class _ReportTile extends StatelessWidget {
                   ),
             ),
             const Divider(height: 20),
-            _SectionHeader(
+            const _SectionHeader(
               icon: Icons.fact_check_outlined,
               title: 'Attendance',
             ),
@@ -273,7 +276,7 @@ class _ReportTile extends StatelessWidget {
               value: item.effectiveWorkdays.toStringAsFixed(1),
             ),
             const Divider(height: 24),
-            _SectionHeader(
+            const _SectionHeader(
               icon: Icons.currency_rupee,
               title: 'Earnings',
             ),
@@ -281,7 +284,7 @@ class _ReportTile extends StatelessWidget {
             _summaryRow(
               context,
               label: context.tr('basePay'),
-              value: 'Rs ${item.totalEarned.toStringAsFixed(0)}',
+              value: _formatCurrency(item.totalEarned),
               valueStyle: const TextStyle(
                 fontWeight: FontWeight.w700,
               ),
@@ -290,14 +293,14 @@ class _ReportTile extends StatelessWidget {
             _summaryRow(
               context,
               label: context.tr('overtimePay'),
-              value: 'Rs ${item.overtimePay.toStringAsFixed(0)}',
+              value: _formatCurrency(item.overtimePay),
               valueStyle: const TextStyle(
                 fontWeight: FontWeight.w700,
                 color: AppColors.secondary,
               ),
             ),
             const Divider(height: 24),
-            _SectionHeader(
+            const _SectionHeader(
               icon: Icons.remove_circle_outline,
               title: 'Deductions',
             ),
@@ -305,7 +308,7 @@ class _ReportTile extends StatelessWidget {
             _summaryRow(
               context,
               label: context.tr('advance'),
-              value: 'Rs ${item.advanceAmount.toStringAsFixed(0)}',
+              value: _formatCurrency(item.advanceAmount),
               valueStyle: const TextStyle(
                 fontWeight: FontWeight.w700,
                 color: AppColors.absent,
@@ -336,7 +339,7 @@ class _ReportTile extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    'Rs ${item.finalPay.toStringAsFixed(0)}',
+                    _formatCurrency(item.finalPay),
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
 
 class Payment {
@@ -41,11 +42,35 @@ class PaymentAdapter extends TypeAdapter<Payment> {
     }
 
     return Payment(
-      id: fields[0] as String,
-      labourId: fields[1] as String,
+      id: _asString(fields[0]),
+      labourId: _asString(fields[1]),
       amount: _asDouble(fields[2]),
-      date: fields[3] as String,
+      date: _asDateKey(fields[3]),
     );
+  }
+
+  String _asString(dynamic value) {
+    if (value == null) {
+      return '';
+    }
+    return value.toString();
+  }
+
+  String _asDateKey(dynamic value) {
+    if (value == null) {
+      return '';
+    }
+    if (value is String) {
+      return value;
+    }
+    if (value is Timestamp) {
+      final date = value.toDate();
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    }
+    if (value is DateTime) {
+      return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+    }
+    return value.toString();
   }
 
   @override

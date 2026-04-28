@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum AttendanceStatus {
   present,
@@ -107,9 +108,26 @@ class AttendanceRecordAdapter extends TypeAdapter<AttendanceRecord> {
     return AttendanceRecord(
       id: fields[0] as String,
       labourId: fields[1] as String,
-      dateKey: fields[2] as String,
+      dateKey: _asDateKey(fields[2]),
       status: fields[3] as AttendanceStatus,
     );
+  }
+
+  String _asDateKey(dynamic value) {
+    if (value == null) {
+      return '';
+    }
+    if (value is String) {
+      return value;
+    }
+    if (value is Timestamp) {
+      final date = value.toDate();
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    }
+    if (value is DateTime) {
+      return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+    }
+    return value.toString();
   }
 
   @override

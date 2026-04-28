@@ -144,11 +144,11 @@ class _LabourAttendanceScreenState extends State<LabourAttendanceScreen> {
                         isToday: isToday,
                       ),
                     );
-                  }).toList(),
+                  }),
                   const SizedBox(height: 16),
                 ],
               );
-            }).toList(),
+            }),
           ],
         ),
       ),

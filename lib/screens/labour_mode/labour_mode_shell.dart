@@ -4,9 +4,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/localization/app_text.dart';
 import '../../main.dart';
 import '../../models/labour.dart';
-import '../../services/auth/labour_auth_service.dart';
+import '../../services/auth_service.dart';
 import '../../services/hive_service.dart';
 import '../../services/labour_mode/labour_service.dart';
+import '../qr/qr_screen.dart';
 import 'labour_attendance_screen.dart';
 import 'labour_dashboard_screen.dart';
 import 'payment_history_screen.dart';
@@ -42,6 +43,7 @@ class _LabourModeShellState extends State<LabourModeShell> {
       LabourDashboardScreen(labour: widget.labour, labourService: _labourService),
       LabourAttendanceScreen(labour: widget.labour, labourService: _labourService),
       PaymentHistoryScreen(labour: widget.labour, hiveService: widget.hiveService),
+      const QRScreen(),
     ];
 
     return Scaffold(
@@ -63,18 +65,22 @@ class _LabourModeShellState extends State<LabourModeShell> {
       body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        items: [
+        items: const [
           BottomNavigationBarItem(
-            icon: const Icon(Icons.dashboard_outlined),
-            label: context.tr('dashboard'),
+            icon: Icon(Icons.dashboard_outlined),
+            label: 'Dashboard',
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.fact_check_outlined),
-            label: context.tr('attendance'),
+            icon: Icon(Icons.fact_check_outlined),
+            label: 'Attendance',
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.receipt_long_outlined),
+            icon: Icon(Icons.receipt_long_outlined),
             label: 'Payments',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.qr_code_2_outlined),
+            label: 'My QR',
           ),
         ],
         onTap: (index) {
@@ -111,15 +117,14 @@ class _LabourModeShellState extends State<LabourModeShell> {
       return;
     }
 
-    final labourAuthService = LabourAuthService(hiveService: widget.hiveService);
-    await labourAuthService.clearSession();
+    await AuthService().logout();
 
     if (!context.mounted) {
       return;
     }
 
     Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.modeSelection,
+      AppRoutes.login,
       (route) => false,
     );
   }

@@ -1,185 +1,130 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:timezone/data/latest.dart' as tz;
-import 'dart:async';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart' as legacy_provider;
 
-import 'core/theme/app_theme.dart';
+import 'firebase_options.dart';
+import 'models/attendance_model.dart';
+import 'models/labour_model.dart';
+import 'models/payment_model.dart';
+import 'providers/attendance_provider.dart';
+import 'providers/dashboard_provider.dart';
+import 'providers/labour_provider.dart';
 import 'providers/language_provider.dart';
+import 'providers/report_provider.dart';
 import 'providers/site_data_provider.dart';
+import 'providers/sync_provider.dart';
 import 'screens/app_shell.dart';
-import 'screens/mode_selection_screen.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/labour_home_screen.dart';
 import 'screens/splash_screen.dart';
-import 'screens/labour_mode/labour_selection_screen.dart';
-import 'screens/supervisor_pin_screen.dart';
-import 'services/auth/supervisor_auth_service.dart';
-import 'services/attendance_reminder_service.dart';
 import 'services/hive_service.dart';
 
 class AppRoutes {
-  static const String splash = '/';
-  static const String modeSelection = '/mode-selection';
-  static const String supervisorPin = '/supervisor-pin';
-  static const String supervisorShell = '/supervisor-shell';
-  static const String labourSelection = '/labour-selection';
+  static const String splash = '/splash';
+  static const String login = '/login';
+  static const String supervisorHome = '/supervisor-home';
+  static const String labourHome = '/labour-home';
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  ErrorWidget.builder = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    return const Material(
-      color: Colors.white,
-      child: Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Something went wrong. Please try again.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-        ),
-      ),
-    );
-  };
-
-  final hiveService = HiveService();
-
-  try {
-    await hiveService.init().timeout(const Duration(seconds: 5));
-  } catch (e) {
-    debugPrint('Hive init failed: $e');
-  }
-
-  final languageProvider = LanguageProvider();
-  try {
-    await languageProvider.initialize().timeout(const Duration(seconds: 3));
-  } catch (e) {
-    debugPrint('Language init failed: $e');
-  }
-
-  final reminderService = AttendanceReminderService(hiveService: hiveService);
-
-  runApp(
-    YSTrackifyApp(
-      hiveService: hiveService,
-      languageProvider: languageProvider,
-      reminderService: reminderService,
-    ),
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  unawaited(_initializeBackgroundServices(
-    hiveService: hiveService,
-    reminderService: reminderService,
-  ));
-}
+  // For local emulator testing only — remove for production.
+  // FirebaseFunctions.instance.useFunctionsEmulator('localhost', 5001);
 
-Future<void> _initializeBackgroundServices({
-  required HiveService hiveService,
-  required AttendanceReminderService reminderService,
-}) async {
-  try {
-    tz.initializeTimeZones();
-  } catch (e) {
-    debugPrint('Timezone init failed: $e');
+  await Hive.initFlutter();
+  if (!Hive.isAdapterRegistered(20)) {
+    Hive.registerAdapter(LabourAdapter());
+  }
+  if (!Hive.isAdapterRegistered(21)) {
+    Hive.registerAdapter(AttendanceStatusAdapter());
+  }
+  if (!Hive.isAdapterRegistered(22)) {
+    Hive.registerAdapter(AttendanceAdapter());
+  }
+  if (!Hive.isAdapterRegistered(23)) {
+    Hive.registerAdapter(PaymentTypeAdapter());
+  }
+  if (!Hive.isAdapterRegistered(24)) {
+    Hive.registerAdapter(PaymentAdapter());
   }
 
-  try {
-    await reminderService.initialize().timeout(const Duration(seconds: 5));
-  } catch (e) {
-    debugPrint('Reminder init failed: $e');
-  }
+  await Hive.openBox<Labour>(Labour.boxName);
+  await Hive.openBox<Attendance>(Attendance.boxName);
+  await Hive.openBox<Payment>(Payment.boxName);
+  await Hive.openBox('pending_attendance');
 
-  try {
-    final authService = SupervisorAuthService();
-    await authService.ensureDefaultPin().timeout(const Duration(seconds: 3));
-  } catch (e) {
-    debugPrint('Auth init failed: $e');
-  }
-}
+  final hiveService = HiveService();
+  await hiveService.init();
 
-class YSTrackifyApp extends StatelessWidget {
-  const YSTrackifyApp({
-    super.key,
-    required this.hiveService,
-    required this.languageProvider,
-    required this.reminderService,
-  });
+  final languageProvider = LanguageProvider();
+  await languageProvider.initialize();
 
-  final HiveService hiveService;
-  final LanguageProvider languageProvider;
-  final AttendanceReminderService reminderService;
-
-  @override
-  Widget build(BuildContext context) {
-    return MultiProvider(
+  runApp(
+    legacy_provider.MultiProvider(
       providers: [
-        ChangeNotifierProvider<LanguageProvider>.value(value: languageProvider),
-        ChangeNotifierProvider(
+        legacy_provider.ChangeNotifierProvider<LanguageProvider>.value(
+          value: languageProvider,
+        ),
+        legacy_provider.ChangeNotifierProvider<SiteDataProvider>(
           create: (_) => SiteDataProvider(hiveService: hiveService),
         ),
-      ],
-      child: _StartupInitializer(
-        reminderService: reminderService,
-        child: Consumer<LanguageProvider>(
-          builder: (context, language, _) {
-            return MaterialApp(
-              debugShowCheckedModeBanner: false,
-              title: 'YS Trackify',
-              theme: AppTheme.light(),
-              darkTheme: AppTheme.dark(),
-              themeMode: ThemeMode.system,
-              locale: language.locale,
-              initialRoute: AppRoutes.splash,
-              routes: {
-                AppRoutes.splash: (_) => const SplashScreen(),
-                AppRoutes.modeSelection: (_) => const ModeSelectionScreen(),
-                AppRoutes.supervisorPin: (_) => const SupervisorPinScreen(),
-                AppRoutes.supervisorShell: (_) => const AppShell(),
-                AppRoutes.labourSelection: (_) => const LabourSelectionScreen(),
-              },
-            );
-          },
+        legacy_provider.ChangeNotifierProvider<AttendanceProvider>(
+          create: (_) => AttendanceProvider(),
         ),
-      ),
-    );
-  }
+        legacy_provider.ChangeNotifierProvider<DashboardProvider>(
+          create: (_) => DashboardProvider(),
+        ),
+        legacy_provider.ChangeNotifierProvider<LabourProvider>(
+          create: (_) => LabourProvider(),
+        ),
+        legacy_provider.ChangeNotifierProvider<ReportProvider>(
+          create: (_) => ReportProvider(),
+        ),
+      ],
+      child: const ProviderScope(child: TrackifyApp()),
+    ),
+  );
 }
 
-class _StartupInitializer extends StatefulWidget {
-  const _StartupInitializer({
-    required this.reminderService,
-    required this.child,
-  });
-
-  final AttendanceReminderService reminderService;
-  final Widget child;
+class TrackifyApp extends ConsumerStatefulWidget {
+  const TrackifyApp({super.key});
 
   @override
-  State<_StartupInitializer> createState() => _StartupInitializerState();
+  ConsumerState<TrackifyApp> createState() => _TrackifyAppState();
 }
 
-class _StartupInitializerState extends State<_StartupInitializer> {
-  bool _didInit = false;
-
+class _TrackifyAppState extends ConsumerState<TrackifyApp> {
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_didInit) {
-      return;
-    }
-    _didInit = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        return;
-      }
-      final provider = context.read<SiteDataProvider>();
-      await provider.initialize();
-      await widget.reminderService.runDailyAttendanceCheck();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(syncEngineProvider).startConnectivityListener();
     });
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Trackify V2',
+      initialRoute: AppRoutes.splash,
+      routes: {
+        AppRoutes.splash: (_) => const SplashScreen(),
+        AppRoutes.login: (_) => const LoginScreen(),
+        AppRoutes.supervisorHome: (_) => const AppShell(),
+        AppRoutes.labourHome: (_) => const LabourHomeScreen(),
+      },
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00695C)),
+        useMaterial3: true,
+      ),
+    );
+  }
 }

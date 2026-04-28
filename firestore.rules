@@ -1,0 +1,153 @@
+// ============================================================
+// FIRESTORE SECURITY RULES — Multi-Tenant Labour Management
+// ============================================================
+// Roles:
+//   super_admin  — full access across all tenants
+//   contractor   — full access within their contractorId
+//   supervisor   — read/write labours + attendance in their contractorId
+//
+// Pattern: always check contractorId match before allowing access.
+// ============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────
+
+    /** Is the user authenticated at all? */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** Get the caller's user document (cached within the request) */
+    function callerData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    /** Is the caller a super_admin? */
+    function isSuperAdmin() {
+      return isSignedIn() && callerData().role == 'super_admin';
+    }
+
+    /** Does the caller belong to the given contractor? */
+    function isInTenant(contractorId) {
+      return isSignedIn() && callerData().contractorId == contractorId;
+    }
+
+    /** Is the caller a contractor-level admin for this tenant? */
+    function isContractorAdmin(contractorId) {
+      return isInTenant(contractorId) && callerData().role == 'contractor';
+    }
+
+    /** Is the caller a supervisor for this tenant? */
+    function isSupervisor(contractorId) {
+      return isInTenant(contractorId) && callerData().role == 'supervisor';
+    }
+
+    /** Is the caller a contractor admin OR supervisor for this tenant? */
+    function canManageTenant(contractorId) {
+      return isContractorAdmin(contractorId) || isSupervisor(contractorId);
+    }
+
+    /** Does the incoming document's contractorId match the caller's? */
+    function isOwnTenantData(contractorId) {
+      return request.resource.data.contractorId == contractorId
+          && isInTenant(contractorId);
+    }
+
+    // ── contractors/ ─────────────────────────────────────────
+    // Only super_admin can manage contractor records
+
+    match /contractors/{contractorId} {
+      allow read:  if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin();
+    }
+
+    // ── users/ ───────────────────────────────────────────────
+    // A user can read their own record.
+    // Contractor admins can read/write all users in their tenant.
+    // Supervisors can read users in their tenant.
+    // super_admin has full access.
+
+    match /users/{userId} {
+      allow read: if isSuperAdmin()
+                  || request.auth.uid == userId
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || isOwnTenantData(request.resource.data.contractorId)
+                       && isContractorAdmin(request.resource.data.contractorId);
+
+      allow update: if isSuperAdmin()
+                    || (isContractorAdmin(resource.data.contractorId)
+                        && isInTenant(resource.data.contractorId))
+                    || (request.auth.uid == userId
+                        // Users can only update their own safe fields
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['name', 'phone', 'updatedAt']));
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── labours/ ─────────────────────────────────────────────
+    // Supervisors and contractor admins can manage labours in their tenant.
+
+    match /labours/{labourId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && canManageTenant(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && canManageTenant(resource.data.contractorId));
+
+      allow delete: if isSuperAdmin()
+                    || isContractorAdmin(resource.data.contractorId);
+    }
+
+    // ── attendance/ ──────────────────────────────────────────
+    // Date-based subcollection: attendance/{contractorId}/{date}/records/{labourId}
+    // Supervisors can mark attendance for their tenant.
+    // Contractor admin can read all; supervisors can read/write.
+
+    match /attendance/{contractorId}/{date}/records/{labourId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(contractorId);
+
+      allow write: if isSuperAdmin()
+                   || (isInTenant(contractorId)
+                       && canManageTenant(contractorId)
+                       // Enforce contractorId is not tampered with
+                       && request.resource.data.contractorId == contractorId);
+
+      allow delete: if isSuperAdmin()
+                    || isContractorAdmin(contractorId);
+    }
+
+    // ── payments/ ────────────────────────────────────────────
+    // Only contractor admin (not supervisors) can create payments.
+    // All tenant members can read payments.
+
+    match /payments/{paymentId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && isContractorAdmin(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && isContractorAdmin(resource.data.contractorId)
+                        // Only allow updating status and notes — not amount
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['status', 'notes', 'updatedAt']));
+
+      allow delete: if isSuperAdmin();
+    }
+  }
+}

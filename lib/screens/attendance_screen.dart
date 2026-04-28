@@ -3,25 +3,37 @@ import 'package:provider/provider.dart';
 
 import '../core/utils/date_utils.dart';
 import '../core/theme/app_colors.dart';
-import '../models/attendance_record.dart';
-import '../providers/site_data_provider.dart';
+import '../providers/attendance_provider.dart';
 
-class AttendanceScreen extends StatelessWidget {
+class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
 
   @override
+  State<AttendanceScreen> createState() => _AttendanceScreenState();
+}
+
+class _AttendanceScreenState extends State<AttendanceScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AttendanceProvider>().initialize();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Consumer<SiteDataProvider>(
+    return Consumer<AttendanceProvider>(
       builder: (context, data, _) {
-        final attendanceByLabour = data.selectedDateAttendanceMap;
+        final attendanceByLabour = data.attendanceMap;
         final presentCount = attendanceByLabour.values
-            .where((record) => record.status == AttendanceStatus.present)
+            .where((status) => status == 'present')
             .length;
         final absentCount = attendanceByLabour.values
-            .where((record) => record.status == AttendanceStatus.absent)
+            .where((status) => status == 'absent')
             .length;
         final halfDayCount = attendanceByLabour.values
-            .where((record) => record.status == AttendanceStatus.halfDay)
+            .where((status) => status == 'half')
             .length;
 
         return Scaffold(
@@ -56,7 +68,7 @@ class AttendanceScreen extends StatelessWidget {
                           lastDate: DateTime(2100),
                         );
                         if (picked != null) {
-                          data.setSelectedDate(picked);
+                          data.changeDate(picked);
                         }
                       },
                       child: const Text('Change'),
@@ -95,86 +107,100 @@ class AttendanceScreen extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: data.labours.isEmpty
-                    ? const Center(child: Text('Add labour first to mark attendance'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                        itemCount: data.labours.length,
-                        itemBuilder: (context, index) {
-                          final labour = data.labours[index];
-                          final status = attendanceByLabour[labour.id]?.status;
+                child: Stack(
+                  children: [
+                    data.labours.isEmpty
+                        ? const Center(child: Text('Add labour first to mark attendance'))
+                        : RefreshIndicator(
+                            onRefresh: data.initialize,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                              itemCount: data.labours.length,
+                              itemBuilder: (context, index) {
+                                final labour = data.labours[index];
+                                final status = attendanceByLabour[labour.id];
 
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    labour.name,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          labour.name,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${labour.phone} • Rs ${labour.dailyWage.toStringAsFixed(0)}',
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                color: Theme.of(context).textTheme.bodySmall?.color,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          spacing: 8,
+                                          children: [
+                                            Expanded(
+                                              child: _statusButton(
+                                                context: context,
+                                                label: 'P',
+                                                selected: status == 'present',
+                                                color: AppColors.present,
+                                                onTap: () => data.markAttendance(labour.id, 'present'),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _statusButton(
+                                                context: context,
+                                                label: 'A',
+                                                selected: status == 'absent',
+                                                color: AppColors.absent,
+                                                onTap: () => data.markAttendance(labour.id, 'absent'),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _statusButton(
+                                                context: context,
+                                                label: 'H',
+                                                selected: status == 'half',
+                                                color: AppColors.halfDay,
+                                                onTap: () => data.markAttendance(labour.id, 'half'),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${labour.role} • Rs ${labour.dailyWage.toStringAsFixed(0)}',
-                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                          color: Theme.of(context).textTheme.bodySmall?.color,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    spacing: 8,
-                                    children: [
-                                      Expanded(
-                                        child: _statusButton(
-                                          context: context,
-                                          label: 'P',
-                                          selected: status == AttendanceStatus.present,
-                                          color: AppColors.present,
-                                          onTap: () => data.markAttendance(
-                                            labourId: labour.id,
-                                            status: AttendanceStatus.present,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: _statusButton(
-                                          context: context,
-                                          label: 'A',
-                                          selected: status == AttendanceStatus.absent,
-                                          color: AppColors.absent,
-                                          onTap: () => data.markAttendance(
-                                            labourId: labour.id,
-                                            status: AttendanceStatus.absent,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: _statusButton(
-                                          context: context,
-                                          label: 'H',
-                                          selected: status == AttendanceStatus.halfDay,
-                                          color: AppColors.halfDay,
-                                          onTap: () => data.markAttendance(
-                                            labourId: labour.id,
-                                            status: AttendanceStatus.halfDay,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                );
+                              },
                             ),
-                          );
-                        },
+                          ),
+                    if (data.isLoading)
+                      Positioned.fill(
+                        child: ColoredBox(
+                          color: Colors.black12,
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const CircularProgressIndicator(),
+                            ),
+                          ),
+                        ),
                       ),
+                  ],
+                ),
               ),
             ],
           ),

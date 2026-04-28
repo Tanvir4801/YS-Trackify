@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
+import '../providers/dashboard_provider.dart';
 import '../providers/site_data_provider.dart';
 import '../widgets/summary_card.dart';
 
@@ -10,8 +11,9 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<SiteDataProvider>(
-      builder: (context, data, _) {
+    return Consumer2<SiteDataProvider, DashboardProvider>(
+      builder: (context, data, dashboard, _) {
+        dashboard.startListening();
         return SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -38,28 +40,28 @@ class DashboardScreen extends StatelessWidget {
                       children: [
                         SummaryCard(
                           title: 'Total Labour',
-                          value: '${data.totalLabourCount}',
+                          value: '${dashboard.totalLabour == 0 ? data.totalLabourCount : dashboard.totalLabour}',
                           backgroundColor: AppColors.blueCard,
                           valueColor: AppColors.primary,
                           icon: Icons.engineering,
                         ),
                         SummaryCard(
                           title: 'Today Present',
-                          value: '${data.todayPresentCount}',
+                          value: '${dashboard.presentToday}',
                           backgroundColor: AppColors.greenCard,
                           valueColor: AppColors.present,
                           icon: Icons.check_circle_outline,
                         ),
                         SummaryCard(
                           title: 'Today Absent',
-                          value: '${data.todayAbsentCount}',
+                          value: '${dashboard.absentToday}',
                           backgroundColor: AppColors.redCard,
                           valueColor: AppColors.absent,
                           icon: Icons.cancel_outlined,
                         ),
                         SummaryCard(
                           title: 'Half-Day',
-                          value: '${data.todayHalfDayCount}',
+                          value: '${dashboard.halfToday}',
                           backgroundColor: AppColors.yellowCard,
                           valueColor: AppColors.halfDay,
                           icon: Icons.timelapse_outlined,
