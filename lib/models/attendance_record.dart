@@ -37,24 +37,28 @@ class AttendanceRecord {
     required this.labourId,
     required this.dateKey,
     required this.status,
+    this.overtimeHours = 0,
   });
 
   final String id;
   final String labourId;
   final String dateKey;
   final AttendanceStatus status;
+  final double overtimeHours;
 
   AttendanceRecord copyWith({
     String? id,
     String? labourId,
     String? dateKey,
     AttendanceStatus? status,
+    double? overtimeHours,
   }) {
     return AttendanceRecord(
       id: id ?? this.id,
       labourId: labourId ?? this.labourId,
       dateKey: dateKey ?? this.dateKey,
       status: status ?? this.status,
+      overtimeHours: overtimeHours ?? this.overtimeHours,
     );
   }
 }
@@ -110,6 +114,7 @@ class AttendanceRecordAdapter extends TypeAdapter<AttendanceRecord> {
       labourId: fields[1] as String,
       dateKey: _asDateKey(fields[2]),
       status: fields[3] as AttendanceStatus,
+      overtimeHours: (fields[4] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -133,7 +138,7 @@ class AttendanceRecordAdapter extends TypeAdapter<AttendanceRecord> {
   @override
   void write(BinaryWriter writer, AttendanceRecord obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -141,6 +146,8 @@ class AttendanceRecordAdapter extends TypeAdapter<AttendanceRecord> {
       ..writeByte(2)
       ..write(obj.dateKey)
       ..writeByte(3)
-      ..write(obj.status);
+      ..write(obj.status)
+      ..writeByte(4)
+      ..write(obj.overtimeHours);
   }
 }

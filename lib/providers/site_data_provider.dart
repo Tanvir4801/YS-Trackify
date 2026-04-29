@@ -214,11 +214,16 @@ class SiteDataProvider extends ChangeNotifier {
 
     var total = 0.0;
     for (final labour in _labours) {
-      final status = attendanceByLabour[labour.id]?.status;
-      if (status == null) {
+      final record = attendanceByLabour[labour.id];
+      if (record == null) {
         continue;
       }
-      total += labour.dailyWage * status.factor;
+      // Base wage scaled by status (present=1, halfDay=0.5, absent=0).
+      total += labour.dailyWage * record.status.factor;
+      // Per-day overtime pay: hours marked for the day × labour's OT rate.
+      if (record.overtimeHours > 0 && labour.overtimeRate > 0) {
+        total += record.overtimeHours * labour.overtimeRate;
+      }
     }
 
     return total;
@@ -261,6 +266,8 @@ class SiteDataProvider extends ChangeNotifier {
       var absent = 0;
       var half = 0;
       var wage = 0.0;
+      var perDayOtHours = 0.0;
+      var perDayOtPay = 0.0;
 
       for (final record in records) {
         switch (record.status) {
@@ -276,7 +283,18 @@ class SiteDataProvider extends ChangeNotifier {
             wage += labour.dailyWage * 0.5;
             break;
         }
+        if (record.overtimeHours > 0) {
+          perDayOtHours += record.overtimeHours;
+          perDayOtPay += record.overtimeHours * labour.overtimeRate;
+        }
       }
+
+      // Prefer per-attendance OT when present; fall back to the labour's
+      // cumulative extraHours × overtimeRate so existing data still totals.
+      final overtimePay =
+          perDayOtPay > 0 ? perDayOtPay : labour.overtimePay;
+      final extraHours =
+          perDayOtHours > 0 ? perDayOtHours : labour.extraHours;
 
       result.add(
         LabourReportSummary(
@@ -286,9 +304,9 @@ class SiteDataProvider extends ChangeNotifier {
           halfDays: half,
           absentDays: absent,
           totalEarned: wage,
-          overtimePay: labour.overtimePay, // extraHours × overtimeRate
+          overtimePay: overtimePay,
           advanceAmount: labour.advanceAmount,
-          extraHours: labour.extraHours,
+          extraHours: extraHours,
         ),
       );
     }
