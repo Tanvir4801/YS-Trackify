@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/utils/date_utils.dart';
@@ -176,6 +179,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                             ),
                                           ],
                                         ),
+                                        // Per-day OT input. Only meaningful when
+                                        // labour is marked Present or Half-day.
+                                        if (status == 'present' || status == 'half') ...[
+                                          const SizedBox(height: 8),
+                                          _OvertimeField(
+                                            key: ValueKey(
+                                                'ot_${labour.id}_${data.selectedDateStr}'),
+                                            labourId: labour.id,
+                                            initial: data.overtimeMap[labour.id] ?? 0,
+                                            overtimeRate:
+                                                labour.overtimeWagePerHour,
+                                            onChanged: (h) =>
+                                                data.setOvertime(labour.id, h),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -270,6 +288,132 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Compact OT-hours input shown beneath the status pills.
+/// Debounces user input so we don't spam Firestore on every keystroke.
+class _OvertimeField extends StatefulWidget {
+  const _OvertimeField({
+    super.key,
+    required this.labourId,
+    required this.initial,
+    required this.overtimeRate,
+    required this.onChanged,
+  });
+
+  final String labourId;
+  final double initial;
+  final double overtimeRate;
+  final ValueChanged<double> onChanged;
+
+  @override
+  State<_OvertimeField> createState() => _OvertimeFieldState();
+}
+
+class _OvertimeFieldState extends State<_OvertimeField> {
+  late final TextEditingController _controller;
+  Timer? _debounce;
+  double _lastSent = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastSent = widget.initial;
+    _controller = TextEditingController(
+      text: widget.initial > 0 ? _format(widget.initial) : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _format(double v) {
+    if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+    return v.toStringAsFixed(1);
+  }
+
+  void _scheduleSend(String raw) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 600), () {
+      final parsed = double.tryParse(raw.trim()) ?? 0;
+      final clamped = parsed.isFinite && parsed >= 0 ? parsed : 0.0;
+      if ((clamped - _lastSent).abs() < 0.0001) return;
+      _lastSent = clamped;
+      widget.onChanged(clamped);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hours = double.tryParse(_controller.text.trim()) ?? 0;
+    final pay = hours * widget.overtimeRate;
+
+    return Row(
+      children: [
+        const Icon(Icons.bolt_outlined, size: 16, color: Colors.orange),
+        const SizedBox(width: 6),
+        const Text(
+          'OT hrs',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 70,
+          height: 36,
+          child: TextField(
+            controller: _controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d{0,2}(\.\d{0,1})?')),
+            ],
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: '0',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onChanged: _scheduleSend,
+            onSubmitted: (v) {
+              _debounce?.cancel();
+              final parsed = double.tryParse(v.trim()) ?? 0;
+              _lastSent = parsed;
+              widget.onChanged(parsed);
+            },
+          ),
+        ),
+        const SizedBox(width: 10),
+        if (widget.overtimeRate > 0 && hours > 0)
+          Expanded(
+            child: Text(
+              '+ Rs ${pay.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.orange,
+                fontWeight: FontWeight.w700,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          )
+        else if (widget.overtimeRate == 0)
+          const Expanded(
+            child: Text(
+              'Set OT rate in labour',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
     );
   }
 }

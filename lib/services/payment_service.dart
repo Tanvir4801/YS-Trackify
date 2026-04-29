@@ -7,6 +7,8 @@ import 'package:hive/hive.dart';
 
 import '../core/result.dart';
 import '../models/payment_model.dart';
+import 'firestore_paths.dart';
+import 'session_service.dart';
 
 class PaymentService {
   PaymentService({
@@ -47,6 +49,12 @@ class PaymentService {
       }
 
       final uid = _requireUid();
+      // Resolve contractor scope so payments stay isolated alongside
+      // labours and attendance (matches AttendanceService._contractorScope).
+      final cached = SessionService.instance.contractorId;
+      final contractorId =
+          (cached != null && cached.isNotEmpty) ? cached : uid;
+
       var dirty = payment.copyWith(
         supervisorId: uid,
         isSynced: false,
@@ -59,6 +67,8 @@ class PaymentService {
           'id': '',
           'labourId': dirty.labourId,
           'supervisorId': uid,
+          'supervisorRef': FirestorePaths.userRef(uid),
+          'contractorId': contractorId,
           'type': dirty.type.firestoreValue,
           'amount': dirty.amount,
           'date': Timestamp.fromDate(dirty.date),
