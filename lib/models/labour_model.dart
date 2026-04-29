@@ -15,6 +15,8 @@ class Labour extends HiveObject {
     this.firestoreId,
     this.isSynced = false,
     this.lastSyncedAt,
+    this.overtimeWagePerHour = 0,
+    this.defaultOvertimeHours = 0,
   });
 
   static const String boxName = 'v2_labours';
@@ -52,6 +54,12 @@ class Labour extends HiveObject {
   @HiveField(10)
   DateTime? lastSyncedAt;
 
+  @HiveField(11)
+  double overtimeWagePerHour;
+
+  @HiveField(12)
+  double defaultOvertimeHours;
+
   Map<String, dynamic> toFirestore() {
     return {
       'id': id,
@@ -59,6 +67,8 @@ class Labour extends HiveObject {
       'name': name,
       'phone': phone,
       'dailyWage': dailyWage,
+      'overtimeWagePerHour': overtimeWagePerHour,
+      'defaultOvertimeHours': defaultOvertimeHours,
       'joiningDate': Timestamp.fromDate(joiningDate),
       'isActive': isActive,
       'isSynced': true,
@@ -74,6 +84,10 @@ class Labour extends HiveObject {
       name: (data['name'] as String?) ?? '',
       phone: (data['phone'] as String?) ?? '',
       dailyWage: ((data['dailyWage'] as num?) ?? 0).toDouble(),
+      overtimeWagePerHour:
+          ((data['overtimeWagePerHour'] as num?) ?? 0).toDouble(),
+      defaultOvertimeHours:
+          ((data['defaultOvertimeHours'] as num?) ?? 0).toDouble(),
       joiningDate: (data['joiningDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isActive: (data['isActive'] as bool?) ?? true,
     )
@@ -95,6 +109,8 @@ class Labour extends HiveObject {
     bool? isSynced,
     String? firestoreId,
     DateTime? lastSyncedAt,
+    double? overtimeWagePerHour,
+    double? defaultOvertimeHours,
   }) {
     return Labour(
       id: id ?? this.id,
@@ -108,6 +124,8 @@ class Labour extends HiveObject {
       isSynced: isSynced ?? this.isSynced,
       firestoreId: firestoreId ?? this.firestoreId,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      overtimeWagePerHour: overtimeWagePerHour ?? this.overtimeWagePerHour,
+      defaultOvertimeHours: defaultOvertimeHours ?? this.defaultOvertimeHours,
     );
   }
 }
@@ -136,13 +154,15 @@ class LabourAdapter extends TypeAdapter<Labour> {
       isSynced: fields[8] as bool? ?? false,
       firestoreId: fields[9] as String?,
       lastSyncedAt: fields[10] as DateTime?,
+      overtimeWagePerHour: (fields[11] as num?)?.toDouble() ?? 0,
+      defaultOvertimeHours: (fields[12] as num?)?.toDouble() ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, Labour obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -164,6 +184,10 @@ class LabourAdapter extends TypeAdapter<Labour> {
       ..writeByte(9)
       ..write(obj.firestoreId)
       ..writeByte(10)
-      ..write(obj.lastSyncedAt);
+      ..write(obj.lastSyncedAt)
+      ..writeByte(11)
+      ..write(obj.overtimeWagePerHour)
+      ..writeByte(12)
+      ..write(obj.defaultOvertimeHours);
   }
 }
