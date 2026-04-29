@@ -277,12 +277,150 @@ class AuthService {
     );
   }
 
+  /// Labour login via mobile number only — no password, no OTP.
+  /// Looks up the [labours] collection for an active record matching the
+  /// 10-digit phone number. If found, caches the AppUser in
+  /// [SessionService] / SharedPreferences and returns success. No Firebase
+  /// Auth user is created for labours — their identity is the labourId.
+  Future<AuthResult> labourLoginByPhone(String phone) async {
+    final phoneClean = _phoneDigits(phone);
+    if (phoneClean.length != 10) {
+      return AuthResult.error('Enter a valid 10-digit mobile number.');
+    }
+
+    try {
+      final labourSnap = await _db
+          .collection('labours')
+          .where('phone', isEqualTo: phoneClean)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (labourSnap.docs.isEmpty) {
+        return AuthResult.error(
+          'Mobile number not registered.\nContact your supervisor.',
+        );
+      }
+
+      final labourDoc = labourSnap.docs.first;
+      final labourData = labourDoc.data();
+      final labourId = labourDoc.id;
+      final name = (labourData['name'] as String? ?? 'Labour').trim();
+      final supervisorId = (labourData['supervisorId'] as String? ?? '').trim();
+      final contractorIdFromLabour =
+          (labourData['contractorId'] as String? ?? '').trim();
+      final contractorId = contractorIdFromLabour.isNotEmpty
+          ? contractorIdFromLabour
+          : (supervisorId.isNotEmpty ? supervisorId : labourId);
+      final supervisorRefId =
+          supervisorId.isNotEmpty ? supervisorId : labourId;
+
+      final appUser = AppUser(
+        uid: labourId,
+        role: 'labour',
+        contractorId: contractorId,
+        supervisorId: supervisorId,
+        supervisorRef: FirestorePaths.userRef(supervisorRefId),
+        labourId: labourId,
+        name: name,
+        phone: phoneClean,
+        isActive: true,
+      );
+      SessionService.instance.set(appUser);
+
+      await _cacheUserData(
+        labourId,
+        'labour',
+        name,
+        phoneClean,
+        contractorId: contractorId,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('labourId', labourId);
+      await prefs.setString('supervisorId', supervisorId);
+      await prefs.setBool('isLoggedIn', true);
+
+      return AuthResult.success(
+        uid: labourId,
+        role: 'labour',
+        name: name,
+        appUser: appUser,
+      );
+    } catch (e) {
+      debugPrint('labour login error: $e');
+      return AuthResult.error('Login failed. Check your connection.');
+    }
+  }
+
   Future<AuthResult?> checkCurrentUser() async {
     final user = _auth.currentUser;
-    if (user == null) {
-      return null;
+    if (user != null) {
+      return _fetchUserRole(user.uid, user.phoneNumber ?? '');
     }
-    return _fetchUserRole(user.uid, user.phoneNumber ?? '');
+
+    // Labour sessions don't use Firebase Auth — restore from cache.
+    final prefs = await SharedPreferences.getInstance();
+    final cachedRole = prefs.getString('role');
+    final cachedLabourId = prefs.getString('labourId') ?? '';
+    if (cachedRole == 'labour' && cachedLabourId.isNotEmpty) {
+      try {
+        final labourDoc =
+            await _db.collection('labours').doc(cachedLabourId).get();
+        if (labourDoc.exists) {
+          final data = labourDoc.data()!;
+          final isActive = data['isActive'] as bool? ?? true;
+          if (!isActive) {
+            await prefs.clear();
+            return null;
+          }
+          final name = (data['name'] as String? ?? 'Labour').trim();
+          final phoneClean =
+              _phoneDigits((data['phone'] as String?) ?? '');
+          final supervisorId =
+              (data['supervisorId'] as String? ?? '').trim();
+          final contractorIdFromLabour =
+              (data['contractorId'] as String? ?? '').trim();
+          final contractorId = contractorIdFromLabour.isNotEmpty
+              ? contractorIdFromLabour
+              : (supervisorId.isNotEmpty ? supervisorId : cachedLabourId);
+          final supervisorRefId =
+              supervisorId.isNotEmpty ? supervisorId : cachedLabourId;
+          final appUser = AppUser(
+            uid: cachedLabourId,
+            role: 'labour',
+            contractorId: contractorId,
+            supervisorId: supervisorId,
+            supervisorRef: FirestorePaths.userRef(supervisorRefId),
+            labourId: cachedLabourId,
+            name: name,
+            phone: phoneClean,
+            isActive: true,
+          );
+          SessionService.instance.set(appUser);
+          return AuthResult.success(
+            uid: cachedLabourId,
+            role: 'labour',
+            name: name,
+            appUser: appUser,
+          );
+        }
+      } catch (e) {
+        debugPrint('labour session restore error: $e');
+        // Fall through to offline cache success below.
+      }
+
+      // Offline fallback — trust the cached session so labour can still see
+      // their offline data.
+      final name = prefs.getString('name') ?? 'Labour';
+      return AuthResult.success(
+        uid: cachedLabourId,
+        role: 'labour',
+        name: name,
+        fromCache: true,
+      );
+    }
+
+    return null;
   }
 
   Future<void> logout() async {
