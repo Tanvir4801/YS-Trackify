@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_text_styles.dart';
 import '../models/labour.dart';
 import '../providers/site_data_provider.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/labour_card.dart';
 
 class LabourScreen extends StatefulWidget {
   const LabourScreen({super.key});
@@ -13,20 +16,49 @@ class LabourScreen extends StatefulWidget {
 }
 
 class _LabourScreenState extends State<LabourScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.absent,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+      ));
+  }
+
+  List<Labour> _filterLabours(List<Labour> labours) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return labours;
+    return labours
+        .where((l) =>
+            l.name.toLowerCase().contains(q) ||
+            l.phoneNumber.toLowerCase().contains(q) ||
+            l.role.toLowerCase().contains(q))
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<SiteDataProvider>(
       builder: (context, data, _) {
+        final filtered = _filterLabours(data.labours);
+        final totalWage = data.labours
+            .fold<double>(0, (sum, l) => sum + l.dailyWage);
+
         return Scaffold(
-          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          backgroundColor: AppColors.background,
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () async {
               try {
@@ -35,413 +67,188 @@ class _LabourScreenState extends State<LabourScreen> {
                 _showErrorSnackBar('Something went wrong. Please try again.');
               }
             },
-            icon: const Icon(Icons.add),
-            label: const Text('Add Labour'),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            elevation: 4,
+            icon: const Icon(Icons.person_add_outlined),
+            label: const Text('Add Labour',
+                style: TextStyle(fontWeight: FontWeight.w600)),
           ),
           body: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                child: Card(
-                  color: AppColors.redCard,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color.fromARGB(255, 155, 71, 71)
-                                .withValues(alpha: 0.85),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.account_balance_wallet_outlined,
-                            color: Color.fromARGB(255, 230, 200, 195),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Rs ${data.totalAdvancePaid.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.absent,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              const Text(
-                                'Across all workers',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.absent,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              _buildSearchBar(),
+              _buildWageLiabilityCard(totalWage),
               Expanded(
                 child: data.labours.isEmpty
-                    ? const Center(child: Text('No labour added yet'))
-                    : RefreshIndicator(
-                        color: AppColors.primary,
-                        onRefresh: () async {
-                          context.read<SiteDataProvider>().startLabourStream();
-                          await Future.delayed(
-                              const Duration(milliseconds: 800));
+                    ? EmptyState(
+                        icon: Icons.badge_outlined,
+                        title: 'No Labour Added',
+                        subtitle: 'Add your first worker to get started.',
+                        actionLabel: 'Add Labour',
+                        onAction: () async {
+                          try {
+                            await _showLabourDialog(this.context);
+                          } catch (_) {}
                         },
-                        child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 110),
-                          itemCount: data.labours.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final labour = data.labours[index];
-                            return Dismissible(
-                              key: ValueKey(labour.id),
-                              direction: DismissDirection.horizontal,
-                              confirmDismiss: (direction) async {
-                                if (direction ==
-                                    DismissDirection.startToEnd) {
-                                  try {
-                                    await _showLabourDialog(
-                                      this.context,
-                                      labour: labour,
+                      )
+                    : filtered.isEmpty
+                        ? const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.search_off_outlined,
+                                    size: 48, color: AppColors.textTertiary),
+                                SizedBox(height: 12),
+                                Text('No results found',
+                                    style: AppTextStyles.headingMedium),
+                                SizedBox(height: 4),
+                                Text('Try a different search term',
+                                    style: AppTextStyles.bodyMedium),
+                              ],
+                            ),
+                          )
+                        : RefreshIndicator(
+                            color: AppColors.primary,
+                            onRefresh: () async {
+                              context
+                                  .read<SiteDataProvider>()
+                                  .startLabourStream();
+                              await Future.delayed(
+                                  const Duration(milliseconds: 800));
+                            },
+                            child: ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(
+                                  16, 8, 16, 110),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                final labour = filtered[index];
+                                return Dismissible(
+                                  key: ValueKey(labour.id),
+                                  direction: DismissDirection.horizontal,
+                                  confirmDismiss: (direction) async {
+                                    if (direction ==
+                                        DismissDirection.startToEnd) {
+                                      try {
+                                        await _showLabourDialog(
+                                          this.context,
+                                          labour: labour,
+                                        );
+                                      } catch (_) {
+                                        _showErrorSnackBar(
+                                            'Something went wrong. Please try again.');
+                                      }
+                                      return false;
+                                    }
+                                    final shouldDelete =
+                                        await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20)),
+                                        title:
+                                            const Text('Delete Labour'),
+                                        content:
+                                            Text('Delete ${labour.name}?'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(ctx).pop(false),
+                                            child: const Text('Cancel',
+                                                style: TextStyle(
+                                                    color: AppColors
+                                                        .textSecondary)),
+                                          ),
+                                          FilledButton(
+                                            style: FilledButton.styleFrom(
+                                                backgroundColor:
+                                                    AppColors.absent),
+                                            onPressed: () =>
+                                                Navigator.of(ctx).pop(true),
+                                            child: const Text('Delete'),
+                                          ),
+                                        ],
+                                      ),
                                     );
-                                  } catch (_) {
-                                    _showErrorSnackBar(
-                                        'Something went wrong. Please try again.');
-                                  }
-                                  return false;
-                                }
-
-                                final shouldDelete = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('Delete Labour'),
-                                    content:
-                                        Text('Delete ${labour.name}?'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.of(ctx).pop(false),
-                                        child: const Text('Cancel'),
-                                      ),
-                                      FilledButton(
-                                        onPressed: () =>
-                                            Navigator.of(ctx).pop(true),
-                                        child: const Text('Delete'),
-                                      ),
-                                    ],
+                                    return shouldDelete ?? false;
+                                  },
+                                  onDismissed: (direction) async {
+                                    if (direction ==
+                                            DismissDirection.endToStart &&
+                                        mounted) {
+                                      try {
+                                        await data.deleteLabour(labour.id);
+                                      } catch (_) {
+                                        _showErrorSnackBar(
+                                            'Something went wrong. Please try again.');
+                                      }
+                                    }
+                                  },
+                                  background: Container(
+                                    alignment: Alignment.centerLeft,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 20),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.1),
+                                      borderRadius:
+                                          BorderRadius.circular(20),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.edit_outlined,
+                                            color: AppColors.primary),
+                                        SizedBox(width: 8),
+                                        Text('Edit',
+                                            style: TextStyle(
+                                              color: AppColors.primary,
+                                              fontWeight: FontWeight.w700,
+                                            )),
+                                      ],
+                                    ),
+                                  ),
+                                  secondaryBackground: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 20),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.absent
+                                          .withValues(alpha: 0.12),
+                                      borderRadius:
+                                          BorderRadius.circular(20),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text('Delete',
+                                            style: TextStyle(
+                                              color: AppColors.absent,
+                                              fontWeight: FontWeight.w700,
+                                            )),
+                                        SizedBox(width: 8),
+                                        Icon(Icons.delete_outline,
+                                            color: AppColors.absent),
+                                      ],
+                                    ),
+                                  ),
+                                  child: LabourCard(
+                                    labour: labour,
+                                    advanceAmount: labour.advanceAmount,
+                                    onTap: () => _showLabourDialog(
+                                        this.context,
+                                        labour: labour),
+                                    onAdvanceTap: () => _showAdvanceDialog(
+                                        this.context, labour),
+                                    onMenuTap: () =>
+                                        _showLabourMenu(labour, data),
                                   ),
                                 );
-                                return shouldDelete ?? false;
                               },
-                              onDismissed: (direction) async {
-                                if (direction ==
-                                        DismissDirection.endToStart &&
-                                    mounted) {
-                                  try {
-                                    await data.deleteLabour(labour.id);
-                                  } catch (_) {
-                                    _showErrorSnackBar(
-                                        'Something went wrong. Please try again.');
-                                  }
-                                }
-                              },
-                              background: Container(
-                                alignment: Alignment.centerLeft,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 20),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary
-                                      .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.edit_outlined,
-                                        color: AppColors.primary),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Edit',
-                                      style: TextStyle(
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              secondaryBackground: Container(
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 20),
-                                decoration: BoxDecoration(
-                                  color: AppColors.absent
-                                      .withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Delete',
-                                      style: TextStyle(
-                                        color: AppColors.absent,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    SizedBox(width: 8),
-                                    Icon(Icons.delete_outline,
-                                        color: AppColors.absent),
-                                  ],
-                                ),
-                              ),
-                              child: Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(14),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  labour.name,
-                                                  style: const TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.w800,
-                                                    fontSize: 16,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  '${labour.role} • Rs ${labour.dailyWage.toStringAsFixed(0)} / day',
-                                                  style: TextStyle(
-                                                    color: Theme.of(context)
-                                                        .textTheme
-                                                        .bodySmall
-                                                        ?.color,
-                                                    fontWeight:
-                                                        FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          PopupMenuButton<String>(
-                                            icon: const Icon(Icons.more_vert),
-                                            onSelected: (value) async {
-                                              if (value == 'edit') {
-                                                try {
-                                                  await _showLabourDialog(
-                                                    this.context,
-                                                    labour: labour,
-                                                  );
-                                                } catch (_) {
-                                                  _showErrorSnackBar(
-                                                      'Something went wrong. Please try again.');
-                                                }
-                                              }
-                                              if (value == 'delete' &&
-                                                  mounted) {
-                                                try {
-                                                  await data.deleteLabour(
-                                                      labour.id);
-                                                } catch (_) {
-                                                  _showErrorSnackBar(
-                                                      'Something went wrong. Please try again.');
-                                                }
-                                              }
-                                            },
-                                            itemBuilder: (_) => const [
-                                              PopupMenuItem(
-                                                value: 'edit',
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                        Icons.edit_outlined,
-                                                        size: 18),
-                                                    SizedBox(width: 8),
-                                                    Text('Edit'),
-                                                  ],
-                                                ),
-                                              ),
-                                              PopupMenuItem(
-                                                value: 'delete',
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                        Icons.delete_outline,
-                                                        size: 18),
-                                                    SizedBox(width: 8),
-                                                    Text('Delete'),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.phone_outlined,
-                                              size: 18),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              labour.phoneNumber,
-                                              style: const TextStyle(
-                                                  fontWeight:
-                                                      FontWeight.w500),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-
-                                      // Overtime info row
-                                      if (labour.extraHours > 0 ||
-                                          labour.overtimeRate > 0)
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 6),
-                                          child: Row(
-                                            children: [
-                                              const Icon(Icons.more_time,
-                                                  size: 16,
-                                                  color: Colors.indigo),
-                                              const SizedBox(width: 6),
-                                              Expanded(
-                                                child: Text(
-                                                  'OT: ${labour.extraHours.toStringAsFixed(1)}h '
-                                                  '@ Rs${labour.overtimeRate.toStringAsFixed(0)}/hr '
-                                                  '= Rs${labour.overtimePay.toStringAsFixed(0)}',
-                                                  style: const TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.w600,
-                                                    color: Colors.indigo,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Row(
-                                              children: [
-                                                const Icon(
-                                                  Icons.currency_rupee,
-                                                  size: 18,
-                                                  color: AppColors.absent,
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  'Advance Rs ${labour.advanceAmount.toStringAsFixed(0)}',
-                                                  style: const TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.w700,
-                                                    color: AppColors.absent,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Align(
-                                            alignment:
-                                                Alignment.centerRight,
-                                            child:
-                                                FilledButton.tonalIcon(
-                                              style:
-                                                  FilledButton.styleFrom(
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                                padding:
-                                                    const EdgeInsets
-                                                        .symmetric(
-                                                  horizontal: 10,
-                                                  vertical: 8,
-                                                ),
-                                              ),
-                                              onPressed: () async {
-                                                try {
-                                                  await _showAdvanceDialog(
-                                                      this.context,
-                                                      labour);
-                                                } catch (_) {
-                                                  _showErrorSnackBar(
-                                                      'Something went wrong. Please try again.');
-                                                }
-                                              },
-                                              icon: const Icon(Icons.add,
-                                                  size: 16),
-                                              label:
-                                                  const Text('Advance'),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-
-                                      // Total earnings chip
-                                      Container(
-                                        margin:
-                                            const EdgeInsets.only(top: 8),
-                                        padding:
-                                            const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green
-                                              .withOpacity(0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
-                                              color: Colors.green
-                                                  .withOpacity(0.3)),
-                                        ),
-                                        child: Text(
-                                          'Daily Total: Rs ${(labour.dailyWage + labour.overtimePay).toStringAsFixed(0)}',
-                                          style: const TextStyle(
-                                            color: Colors.green,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                            ),
+                          ),
               ),
             ],
           ),
@@ -450,273 +257,350 @@ class _LabourScreenState extends State<LabourScreen> {
     );
   }
 
-  Future<void> _showAdvanceDialog(
-      BuildContext context, Labour labour) async {
-    final provider = context.read<SiteDataProvider>();
-    final amountController = TextEditingController();
-
-    await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Add Advance - ${labour.name}'),
-          content: TextField(
-            controller: amountController,
-            decoration:
-                const InputDecoration(labelText: 'Advance Amount'),
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final amount =
-                    double.tryParse(amountController.text.trim()) ?? 0;
-                if (amount <= 0) {
-                  if (ctx.mounted) Navigator.of(ctx).pop(false);
-                  return;
-                }
-
-                try {
-                  await provider.addAdvancePayment(
-                    labourId: labour.id,
-                    amount: amount,
-                  );
-                } catch (_) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx)
-                      ..hideCurrentSnackBar()
-                      ..showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Something went wrong. Please try again.'),
-                        ),
-                      );
-                  }
-                  return;
-                }
-
-                if (ctx.mounted) Navigator.of(ctx).pop(true);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (v) => setState(() => _searchQuery = v),
+        decoration: InputDecoration(
+          hintText: 'Search workers...',
+          prefixIcon: const Icon(Icons.search_rounded,
+              color: AppColors.textTertiary, size: 20),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear,
+                      size: 18, color: AppColors.textTertiary),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
+              : null,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
     );
   }
 
-  Future<bool> _showLabourDialog(BuildContext context,
-      {Labour? labour}) async {
-    final provider = context.read<SiteDataProvider>();
-    final nameController =
-        TextEditingController(text: labour?.name ?? '');
-    final roleController =
-        TextEditingController(text: labour?.role ?? '');
-    final wageController = TextEditingController(
-      text: labour?.dailyWage.toStringAsFixed(0) ?? '',
-    );
-    final phoneController =
-        TextEditingController(text: labour?.phoneNumber ?? '');
-    final advanceController = TextEditingController(
-      text: labour?.advanceAmount.toStringAsFixed(0) ?? '0',
-    );
-    final extraHoursController = TextEditingController(
-      text: labour?.extraHours.toStringAsFixed(1) ?? '0',
-    );
-    final overtimeRateController = TextEditingController(
-      text: labour?.overtimeRate.toStringAsFixed(0) ?? '0',
-    );
-
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
-          title: Text(
-            labour == null ? 'Add Labour' : 'Edit Labour',
-            style:
-                Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+  Widget _buildWageLiabilityCard(double totalWage) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.absent.withValues(alpha: 0.07),
+            AppColors.halfDay.withValues(alpha: 0.07),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: AppColors.halfDay.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.halfDay.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.account_balance_wallet_outlined,
+                color: AppColors.halfDay, size: 20),
           ),
-          contentPadding: const EdgeInsets.all(16),
-          content: SingleChildScrollView(
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _LabourDialogInputField(
-                  controller: nameController,
-                  label: 'Name',
-                  prefixIcon: Icons.person_outline,
-                  textCapitalization: TextCapitalization.words,
-                ),
-                const SizedBox(height: 14),
-                _LabourDialogInputField(
-                  controller: roleController,
-                  label: 'Role',
-                  prefixIcon: Icons.work_outline,
-                  textCapitalization: TextCapitalization.words,
-                ),
-                const SizedBox(height: 14),
-                _LabourDialogInputField(
-                  controller: wageController,
-                  label: 'Daily Wage',
-                  prefixIcon: Icons.currency_rupee,
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true),
-                ),
-                const SizedBox(height: 14),
-                _LabourDialogInputField(
-                  controller: phoneController,
-                  label: 'Phone Number',
-                  prefixIcon: Icons.phone_outlined,
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 14),
-                _LabourDialogInputField(
-                  controller: advanceController,
-                  label: 'Advance Amount',
-                  prefixIcon: Icons.currency_rupee,
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true),
-                ),
-                const SizedBox(height: 14),
-                _LabourDialogInputField(
-                  controller: extraHoursController,
-                  label: 'Extra Hours (OT)',
-                  prefixIcon: Icons.more_time,
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true),
-                ),
-                const SizedBox(height: 14),
-                _LabourDialogInputField(
-                  controller: overtimeRateController,
-                  label: 'OT Rate (Rs/hr)',
-                  prefixIcon: Icons.price_change_outlined,
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true),
+                const Text('Total Wage Liability',
+                    style: AppTextStyles.caption),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: totalWage),
+                  duration: const Duration(milliseconds: 700),
+                  curve: Curves.easeOut,
+                  builder: (ctx, val, _) => Text(
+                    '₹${val.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.halfDay,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final name = nameController.text.trim();
-                final role = roleController.text.trim();
-                final wage =
-                    double.tryParse(wageController.text.trim()) ?? 0;
-
-                if (name.isEmpty || role.isEmpty || wage <= 0) {
-                  ScaffoldMessenger.of(ctx)
-                    ..hideCurrentSnackBar()
-                    ..showSnackBar(const SnackBar(
-                        content:
-                            Text('Please fill all required fields')));
-                  return;
-                }
-
-                try {
-                  if (labour == null) {
-                    await provider.addLabour(
-                      name: name,
-                      role: role,
-                      dailyWage: wage,
-                      phoneNumber:
-                          phoneController.text.trim(),
-                      advanceAmount: double.tryParse(
-                              advanceController.text.trim()) ??
-                          0,
-                      extraHours: double.tryParse(
-                              extraHoursController.text.trim()) ??
-                          0,
-                      overtimeRate: double.tryParse(
-                              overtimeRateController.text.trim()) ??
-                          0,
-                    );
-                  } else {
-                    await provider.updateLabour(
-                      labour.copyWith(
-                        name: name,
-                        role: role,
-                        dailyWage: wage,
-                        phoneNumber:
-                            phoneController.text.trim(),
-                        advanceAmount: double.tryParse(
-                                advanceController.text.trim()) ??
-                            labour.advanceAmount,
-                        extraHours: double.tryParse(
-                                extraHoursController.text.trim()) ??
-                            labour.extraHours,
-                        overtimeRate: double.tryParse(
-                                overtimeRateController.text.trim()) ??
-                            labour.overtimeRate,
-                      ),
-                    );
-                  }
-                  if (ctx.mounted) Navigator.of(ctx).pop(true);
-                } catch (_) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx)
-                      ..hideCurrentSnackBar()
-                      ..showSnackBar(const SnackBar(
-                          content: Text(
-                              'Something went wrong. Please try again.')));
-                  }
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
-
-    return saved ?? false;
-  }
-}
-
-class _LabourDialogInputField extends StatelessWidget {
-  const _LabourDialogInputField({
-    required this.controller,
-    required this.label,
-    required this.prefixIcon,
-    this.keyboardType,
-    this.textCapitalization = TextCapitalization.none,
-  });
-
-  final TextEditingController controller;
-  final String label;
-  final IconData prefixIcon;
-  final TextInputType? keyboardType;
-  final TextCapitalization textCapitalization;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      textCapitalization: textCapitalization,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(prefixIcon, size: 20),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          const Text('Daily rate total',
+              style: AppTextStyles.caption),
+        ],
       ),
     );
+  }
+
+  void _showLabourMenu(Labour labour, SiteDataProvider data) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                )),
+            Text(labour.name, style: AppTextStyles.headingMedium),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined, color: AppColors.primary),
+              title: const Text('Edit Labour'),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                try {
+                  await _showLabourDialog(this.context, labour: labour);
+                } catch (_) {}
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_circle_outline,
+                  color: AppColors.halfDay),
+              title: const Text('Add Advance'),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                try {
+                  await _showAdvanceDialog(this.context, labour);
+                } catch (_) {}
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppColors.absent),
+              title: const Text('Delete Labour',
+                  style: TextStyle(color: AppColors.absent)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                try {
+                  await data.deleteLabour(labour.id);
+                } catch (_) {
+                  _showErrorSnackBar('Something went wrong.');
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAdvanceDialog(
+      BuildContext context, Labour labour) async {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Add Advance — ${labour.name}'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Amount (₹)',
+              prefixIcon: Icon(Icons.currency_rupee),
+            ),
+            validator: (val) {
+              if (val == null || val.isEmpty) return 'Enter an amount';
+              if (double.tryParse(val) == null) return 'Enter a valid number';
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+              final amount = double.parse(controller.text);
+              Navigator.of(ctx).pop();
+              try {
+                await context.read<SiteDataProvider>().addAdvancePayment(
+                      labourId: labour.id,
+                      amount: amount,
+                    );
+              } catch (_) {
+                _showErrorSnackBar('Something went wrong. Please try again.');
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _showLabourDialog(
+    BuildContext context, {
+    Labour? labour,
+  }) async {
+    final nameCtrl =
+        TextEditingController(text: labour?.name ?? '');
+    final phoneCtrl =
+        TextEditingController(text: labour?.phoneNumber ?? '');
+    final roleCtrl =
+        TextEditingController(text: labour?.role ?? '');
+    final skillCtrl =
+        TextEditingController(text: labour?.role ?? '');
+    final wageCtrl = TextEditingController(
+        text: labour != null
+            ? labour.dailyWage.toStringAsFixed(0)
+            : '');
+    final otRateCtrl = TextEditingController(
+        text: labour != null
+            ? labour.overtimeRate.toStringAsFixed(0)
+            : '');
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title:
+            Text(labour == null ? 'Add Labour' : 'Edit Labour'),
+        scrollable: true,
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration:
+                    const InputDecoration(labelText: 'Full Name *'),
+                validator: (v) =>
+                    (v?.trim().isEmpty ?? true) ? 'Name is required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration:
+                    const InputDecoration(labelText: 'Phone Number'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: roleCtrl,
+                decoration:
+                    const InputDecoration(labelText: 'Role'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: wageCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Daily Wage (₹) *'),
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return 'Required';
+                  if (double.tryParse(v) == null) return 'Invalid amount';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: otRateCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'OT Rate (₹/hr)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+              final dataProvider = context.read<SiteDataProvider>();
+              final name = nameCtrl.text.trim();
+              final phone = phoneCtrl.text.trim();
+              final role = roleCtrl.text.trim();
+              final wage = double.tryParse(wageCtrl.text) ?? 0;
+              final otRate =
+                  double.tryParse(otRateCtrl.text) ?? 0;
+
+              Navigator.of(ctx).pop();
+
+              try {
+                if (labour == null) {
+                  await dataProvider.addLabour(
+                    name: name,
+                    phoneNumber: phone,
+                    role: role,
+                    dailyWage: wage,
+                    overtimeRate: otRate,
+                  );
+                } else {
+                  await dataProvider.updateLabour(
+                    labour.copyWith(
+                      name: name,
+                      phoneNumber: phone,
+                      role: role,
+                      dailyWage: wage,
+                      overtimeRate: otRate,
+                    ),
+                  );
+                }
+              } catch (_) {
+                _showErrorSnackBar(
+                    'Something went wrong. Please try again.');
+              }
+            },
+            child: Text(labour == null ? 'Add' : 'Save'),
+          ),
+        ],
+      ),
+    );
+
+    nameCtrl.dispose();
+    phoneCtrl.dispose();
+    roleCtrl.dispose();
+    skillCtrl.dispose();
+    wageCtrl.dispose();
+    otRateCtrl.dispose();
   }
 }
