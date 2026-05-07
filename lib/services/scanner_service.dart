@@ -5,10 +5,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:vibration/vibration.dart';
 
+import '../models/labour_model.dart';
 import 'firestore_paths.dart';
 import 'session_service.dart';
 
@@ -28,15 +30,11 @@ class ScannerService {
   String get _contractorId {
     final cached = SessionService.instance.contractorId;
     if (cached != null && cached.isNotEmpty) return cached;
-    return supervisorId; // fallback (legacy supervisor with no contractorId)
+    return supervisorId;
   }
 
   // ---- Decoders --------------------------------------------------------------
 
-  /// Tries to parse the new v2 JSON QR payload.
-  ///
-  /// Returns null when the input is not JSON. Returns a map with `error: ...`
-  /// when JSON parses but is invalid/expired/cross-contractor.
   Map<String, dynamic>? decodeJsonQr(String raw) {
     try {
       final dynamic parsed = jsonDecode(raw);
@@ -104,13 +102,12 @@ class ScannerService {
       return true;
     }
 
-    // New nested path is the source of truth when present.
     try {
       final nested = await FirestorePaths
           .attendanceRecordRef(_contractorId, today, labourId)
           .get();
       if (nested.exists) return true;
-    } catch (_) {/* fall through */}
+    } catch (_) {}
 
     try {
       final snap = await _db
@@ -129,7 +126,6 @@ class ScannerService {
   // ---- Main entry point ------------------------------------------------------
 
   Future<ScanResult> processScan(String rawToken) async {
-    // 1) Try new JSON format first.
     final json = decodeJsonQr(rawToken);
     if (json != null) {
       final err = json['error'] as String?;
@@ -176,7 +172,7 @@ class ScannerService {
       return _markOffline(labourId, labourName: labourName);
     }
 
-    // 2) Fall back to legacy HMAC token decoding.
+    // Fall back to legacy HMAC token decoding.
     final decoded = decodeQRToken(rawToken);
     if (decoded == null || decoded['error'] == 'invalid') {
       return ScanResult(
@@ -218,11 +214,6 @@ class ScannerService {
 
   // ---- Write paths -----------------------------------------------------------
 
-  /// Direct Firestore write for the new JSON QR flow.
-  ///
-  /// Writes to the new nested path AND mirrors a legacy flat doc so existing
-  /// supervisor screens (which still query `attendance` flat) keep showing
-  /// today's attendance until everything is migrated.
   Future<ScanResult> _markViaNewPath(String labourId, String labourName) async {
     final today = _todayString();
     try {
@@ -251,7 +242,7 @@ class ScannerService {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Mirror to legacy flat collection for compatibility.
+      // Mirror to flat collection for dashboard/attendance screens.
       try {
         final existing = await _db
             .collection('attendance')
@@ -275,10 +266,10 @@ class ScannerService {
           });
         }
       } catch (e) {
-        // Legacy mirror is best-effort; new path already succeeded.
+        // Mirror is best-effort; nested path already succeeded.
       }
 
-      _saveToHive(labourId, 'present', isSynced: true);
+      _saveToHive(labourId, 'present', labourName: labourName, isSynced: true);
       return ScanResult(
         success: true,
         message: '$labourName marked Present ✓',
@@ -304,7 +295,7 @@ class ScannerService {
       final data = Map<String, dynamic>.from(result.data as Map);
       if (data['success'] == true) {
         final name = (data['labourName'] as String?) ?? 'Labour';
-        _saveToHive(labourId, 'present', isSynced: true);
+        _saveToHive(labourId, 'present', labourName: name, isSynced: true);
         return ScanResult(
           success: true,
           message: '$name marked Present ✓',
@@ -334,7 +325,7 @@ class ScannerService {
 
   Future<ScanResult> _markOffline(String labourId, {String? labourName}) async {
     final name = labourName ?? await _getLabourName(labourId);
-    _saveToHive(labourId, 'present', isSynced: false);
+    _saveToHive(labourId, 'present', labourName: name, isSynced: false);
 
     return ScanResult(
       success: true,
@@ -344,11 +335,13 @@ class ScannerService {
     );
   }
 
-  void _saveToHive(String labourId, String status, {required bool isSynced}) {
+  void _saveToHive(String labourId, String status,
+      {String? labourName, required bool isSynced}) {
     final box = Hive.box('pending_attendance');
     final today = _todayString();
     box.put('${labourId}_$today', {
       'labourId': labourId,
+      'labourName': labourName ?? '',
       'supervisorId': supervisorId,
       'contractorId': _contractorId,
       'date': today,
@@ -360,80 +353,156 @@ class ScannerService {
 
   Future<int> syncPendingScans() async {
     final box = Hive.box('pending_attendance');
+    final uid = _auth.currentUser?.uid ?? '';
+    final contractorId = _contractorId;
+
+    if (uid.isEmpty) {
+      debugPrint('syncPendingScans: not logged in');
+      return 0;
+    }
+
     var synced = 0;
 
-    for (final key in box.keys) {
-      final record = Map<String, dynamic>.from(box.get(key) as Map);
-      if (record['isSynced'] == true) {
+    for (final key in box.keys.toList()) {
+      final rawRecord = box.get(key);
+      if (rawRecord == null) continue;
+
+      final record = Map<String, dynamic>.from(rawRecord as Map);
+      if (record['isSynced'] == true) continue;
+
+      final labourId = (record['labourId'] as String?) ?? '';
+      final date = (record['date'] as String?) ?? _todayString();
+      final status = (record['status'] as String?) ?? 'present';
+      final recContractorId =
+          ((record['contractorId'] as String?)?.isNotEmpty == true)
+              ? record['contractorId'] as String
+              : contractorId;
+      final recSupervisorId =
+          ((record['supervisorId'] as String?)?.isNotEmpty == true)
+              ? record['supervisorId'] as String
+              : uid;
+
+      if (labourId.isEmpty) {
+        // Invalid record — remove from queue
+        record['isSynced'] = true;
+        await box.put(key, record);
         continue;
       }
 
       try {
-        final labourId = (record['labourId'] as String?) ?? '';
-        final date = (record['date'] as String?) ?? _todayString();
-        final contractorId =
-            (record['contractorId'] as String?)?.trim().isNotEmpty == true
-                ? record['contractorId'] as String
-                : _contractorId;
+        // Check if already exists in flat collection
+        final existing = await _db
+            .collection('attendance')
+            .where('labourId', isEqualTo: labourId)
+            .where('date', isEqualTo: date)
+            .where('supervisorId', isEqualTo: recSupervisorId)
+            .limit(1)
+            .get();
 
-        // Prefer direct nested write for offline-queued scans.
+        if (existing.docs.isNotEmpty) {
+          record['isSynced'] = true;
+          await box.put(key, record);
+          synced++;
+          continue;
+        }
+
+        // Write to nested path
         try {
           await FirestorePaths
-              .attendanceRecordRef(contractorId, date, labourId)
+              .attendanceRecordRef(recContractorId, date, labourId)
               .set({
             'labourId': labourId,
-            'contractorId': contractorId,
-            'supervisorId': record['supervisorId'] ?? supervisorId,
-            'supervisorRef':
-                FirestorePaths.userRef(record['supervisorId'] as String? ?? supervisorId),
+            'contractorId': recContractorId,
+            'supervisorId': recSupervisorId,
+            'supervisorRef': FirestorePaths.userRef(recSupervisorId),
             'date': date,
-            'status': record['status'] ?? 'present',
-            'overtimeHours': 0,
-            'markedVia': 'qr',
+            'status': status,
+            'overtimeHours': record['overtimeHours'] ?? 0,
+            'markedVia': 'offline_qr',
             'markedAt': FieldValue.serverTimestamp(),
             'offlineSync': true,
           }, SetOptions(merge: true));
-        } catch (_) {
-          // Fall back to the legacy callable.
-          final callable = _functions.httpsCallable('validateAndMarkAttendance');
-          await callable.call(<String, dynamic>{
-            ...record,
-            'offlineSync': true,
-          });
+        } catch (e) {
+          debugPrint('Nested path sync failed: $e — trying flat collection');
         }
 
+        // Write to flat collection
+        final docRef = await _db.collection('attendance').add({
+          'labourId': labourId,
+          'supervisorId': recSupervisorId,
+          'contractorId': recContractorId,
+          'date': date,
+          'status': status,
+          'overtimeHours': record['overtimeHours'] ?? 0,
+          'markedVia': 'offline_qr',
+          'isSynced': true,
+          'syncedAt': FieldValue.serverTimestamp(),
+        });
+        await docRef.update({'id': docRef.id});
+
         record['isSynced'] = true;
+        record['firestoreId'] = docRef.id;
         await box.put(key, record);
-        synced += 1;
-      } catch (_) {
-        continue;
+        synced++;
+
+        debugPrint('Synced scan: $labourId → $status on $date');
+      } catch (e) {
+        debugPrint('Sync failed for $labourId: $e');
+        // Don't mark synced — will retry next time
       }
     }
 
+    debugPrint('syncPendingScans complete: $synced synced');
     return synced;
   }
 
   int getPendingCount() {
-    final box = Hive.box('pending_attendance');
-    return box.values
-        .where((value) => Map<String, dynamic>.from(value as Map)['isSynced'] == false)
-        .length;
+    try {
+      final box = Hive.box('pending_attendance');
+      return box.values
+          .where((v) {
+            final m = Map<String, dynamic>.from(v as Map);
+            return m['isSynced'] != true;
+          })
+          .length;
+    } catch (_) {
+      return 0;
+    }
   }
 
+  /// Look up labour name — checks Hive box first (fast), then Firestore.
   Future<String> _getLabourName(String labourId) async {
+    if (labourId.isEmpty) return 'Labour';
+
+    // Check Hive Labour box first
+    try {
+      final labourBox = Hive.box<Labour>(Labour.boxName);
+      final labour = labourBox.get(labourId) ??
+          labourBox.values
+              .cast<Labour?>()
+              .firstWhere((l) => l?.firestoreId == labourId, orElse: () => null);
+      if (labour != null && labour.name.isNotEmpty) return labour.name;
+    } catch (_) {}
+
+    // Firestore: try doc by ID directly
+    try {
+      final doc = await _db.collection('labours').doc(labourId).get();
+      if (doc.exists) {
+        return (doc.data()?['name'] as String?) ?? 'Labour';
+      }
+    } catch (_) {}
+
+    // Firestore: try querying by id field (legacy)
     try {
       final snap = await _db
           .collection('labours')
           .where('id', isEqualTo: labourId)
           .limit(1)
           .get();
-
       if (snap.docs.isNotEmpty) {
         return (snap.docs.first.data()['name'] as String?) ?? 'Labour';
       }
-    } catch (_) {
-      return 'Labour';
-    }
+    } catch (_) {}
 
     return 'Labour';
   }
@@ -444,18 +513,22 @@ class ScannerService {
   }
 
   Future<void> playSuccessFeedback() async {
-    final hasVibrator = await Vibration.hasVibrator();
-    if (hasVibrator) {
-      Vibration.vibrate(duration: 200, amplitude: 128);
-    }
+    try {
+      final hasVibrator = await Vibration.hasVibrator();
+      if (hasVibrator) {
+        Vibration.vibrate(duration: 200, amplitude: 128);
+      }
+    } catch (_) {}
     await SystemSound.play(SystemSoundType.click);
   }
 
   Future<void> playErrorFeedback() async {
-    final hasVibrator = await Vibration.hasVibrator();
-    if (hasVibrator) {
-      Vibration.vibrate(pattern: [0, 100, 100, 100]);
-    }
+    try {
+      final hasVibrator = await Vibration.hasVibrator();
+      if (hasVibrator) {
+        Vibration.vibrate(pattern: [0, 100, 100, 100]);
+      }
+    } catch (_) {}
   }
 }
 

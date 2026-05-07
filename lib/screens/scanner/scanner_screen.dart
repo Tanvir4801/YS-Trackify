@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../models/labour_model.dart';
 import '../../services/attendance_service.dart';
 import '../../services/scanner_service.dart';
 
@@ -251,8 +252,6 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                       .toList();
                   final offlineQueued = _offlinePendingForToday();
 
-                  // Merge: nested-path live docs are the source of truth; any
-                  // offline-only Hive scans (not yet synced) are appended.
                   final liveLabourIds = liveRecords
                       .map((r) => (r['labourId'] as String?) ?? '')
                       .toSet();
@@ -260,7 +259,6 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                       .where((q) => !liveLabourIds.contains(q['labourId']))
                       .toList();
 
-                  // Sort live records by markedAt timestamp desc.
                   liveRecords.sort((a, b) {
                     final ta = _toMillis(a['markedAt']);
                     final tb = _toMillis(b['markedAt']);
@@ -394,10 +392,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   int _toMillis(dynamic raw) {
     if (raw == null) return 0;
     try {
-      // Firestore Timestamp on web exposes toDate().
       final dt = (raw as dynamic).toDate() as DateTime?;
       if (dt != null) return dt.millisecondsSinceEpoch;
-    } catch (_) {/* not a Timestamp */}
+    } catch (_) {}
     if (raw is DateTime) return raw.millisecondsSinceEpoch;
     if (raw is int) return raw;
     if (raw is String) {
@@ -412,6 +409,26 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     if (ms == 0) return '';
     final dt = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
     return DateFormat('HH:mm:ss').format(dt);
+  }
+
+  /// Resolve labour name from the scan record, checking Hive as fallback.
+  String _resolveOfflineName(Map<String, dynamic> scan) {
+    final stored = (scan['labourName'] as String?)?.trim() ?? '';
+    if (stored.isNotEmpty) return stored;
+
+    final labourId = (scan['labourId'] as String?) ?? '';
+    if (labourId.isEmpty) return 'Unknown';
+
+    try {
+      final labourBox = Hive.box<Labour>(Labour.boxName);
+      final labour = labourBox.get(labourId) ??
+          labourBox.values
+              .cast<Labour?>()
+              .firstWhere((l) => l?.firestoreId == labourId, orElse: () => null);
+      if (labour != null && labour.name.isNotEmpty) return labour.name;
+    } catch (_) {}
+
+    return labourId;
   }
 
   Widget _buildLiveTile(Map<String, dynamic> record) {
@@ -459,6 +476,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   }
 
   Widget _buildOfflineTile(Map<String, dynamic> scan) {
+    final displayName = _resolveOfflineName(scan);
+
     return ListTile(
       tileColor: Colors.white,
       dense: true,
@@ -472,7 +491,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         ),
       ),
       title: Text(
-        (scan['labourId'] as String?) ?? 'Unknown',
+        displayName,
         style: const TextStyle(fontSize: 13),
       ),
       subtitle: Text(
