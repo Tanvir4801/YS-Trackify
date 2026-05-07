@@ -1,5 +1,6 @@
-import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 
 @HiveType(typeId: 21)
 enum AttendanceStatus {
@@ -53,6 +54,7 @@ class Attendance extends HiveObject {
     required this.id,
     required this.labourId,
     required this.supervisorId,
+    this.contractorId = '',
     required this.date,
     required this.status,
     this.overtimeHours = 0,
@@ -75,27 +77,30 @@ class Attendance extends HiveObject {
   String supervisorId;
 
   @HiveField(3)
-  String date;
+  String contractorId;
 
   @HiveField(4)
-  AttendanceStatus status;
+  String date;
 
   @HiveField(5)
-  double overtimeHours;
+  AttendanceStatus status;
 
   @HiveField(6)
-  String notes;
+  double overtimeHours;
 
   @HiveField(7)
-  DateTime? syncedAt;
+  String notes;
 
   @HiveField(8)
-  bool isSynced;
+  DateTime? syncedAt;
 
   @HiveField(9)
-  String? firestoreId;
+  bool isSynced;
 
   @HiveField(10)
+  String? firestoreId;
+
+  @HiveField(11)
   DateTime? lastSyncedAt;
 
   static String formatDate(DateTime date) =>
@@ -105,6 +110,7 @@ class Attendance extends HiveObject {
         'id': id,
         'labourId': labourId,
         'supervisorId': supervisorId,
+        'contractorId': contractorId,
         'date': date,
         'status': status.firestoreValue,
         'overtimeHours': overtimeHours,
@@ -113,26 +119,30 @@ class Attendance extends HiveObject {
       };
 
   factory Attendance.fromFirestore(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
+    final d = (doc.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
     return Attendance(
       id: (d['id'] as String?) ?? doc.id,
       labourId: (d['labourId'] as String?) ?? '',
       supervisorId: (d['supervisorId'] as String?) ?? '',
-      date: (d['date'] as String?) ?? '',
+      contractorId:
+          (d['contractorId'] as String?) ?? (d['supervisorId'] as String?) ?? '',
+      date: _readDateValue(d['date']),
       status: AttendanceStatusX.fromFirestoreValue(d['status'] as String?),
       overtimeHours: (d['overtimeHours'] as num?)?.toDouble() ?? 0,
-      syncedAt: (d['syncedAt'] as Timestamp?)?.toDate(),
+      notes: (d['notes'] as String?) ?? '',
+      syncedAt: _readTimestamp(d['syncedAt']),
       isSynced: (d['isSynced'] as bool?) ?? true,
     )
       ..firestoreId = doc.id
       ..isSynced = true
-      ..lastSyncedAt = (d['syncedAt'] as Timestamp?)?.toDate();
+      ..lastSyncedAt = _readTimestamp(d['syncedAt']);
   }
 
   Attendance copyWith({
     String? id,
     String? labourId,
     String? supervisorId,
+    String? contractorId,
     String? date,
     AttendanceStatus? status,
     double? overtimeHours,
@@ -146,6 +156,7 @@ class Attendance extends HiveObject {
       id: id ?? this.id,
       labourId: labourId ?? this.labourId,
       supervisorId: supervisorId ?? this.supervisorId,
+      contractorId: contractorId ?? this.contractorId,
       date: date ?? this.date,
       status: status ?? this.status,
       overtimeHours: overtimeHours ?? this.overtimeHours,
@@ -155,6 +166,47 @@ class Attendance extends HiveObject {
       firestoreId: firestoreId ?? this.firestoreId,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
     );
+  }
+
+  static String _readDateValue(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return value;
+    }
+    if (value is Timestamp) {
+      return formatDate(value.toDate());
+    }
+    if (value is DateTime) {
+      return formatDate(value);
+    }
+    return '';
+  }
+
+  static DateTime? _readTimestamp(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+    if (value is DateTime) {
+      return value;
+    }
+    return null;
+  }
+
+  static Future<Box<Attendance>> openBoxSafely() async {
+    try {
+      if (Hive.isBoxOpen(boxName)) {
+        return Hive.box<Attendance>(boxName);
+      }
+      return await Hive.openBox<Attendance>(boxName);
+    } on HiveError catch (error) {
+      debugPrint('Attendance box migration reset: $error');
+      if (Hive.isBoxOpen(boxName)) {
+        await Hive.box<Attendance>(boxName).close();
+      }
+      if (await Hive.boxExists(boxName)) {
+        await Hive.deleteBoxFromDisk(boxName);
+      }
+      return Hive.openBox<Attendance>(boxName);
+    }
   }
 }
 
@@ -204,25 +256,45 @@ class AttendanceAdapter extends TypeAdapter<Attendance> {
       fields[reader.readByte()] = reader.read();
     }
 
+    final hasContractorIdField = fields.containsKey(11);
+
+    if (!hasContractorIdField) {
+      return Attendance(
+        id: fields[0] as String,
+        labourId: fields[1] as String,
+        supervisorId: fields[2] as String,
+        contractorId: '',
+        date: fields[3] as String? ?? '',
+        status: fields[4] as AttendanceStatus? ?? AttendanceStatus.absent,
+        overtimeHours: (fields[5] as num?)?.toDouble() ?? 0,
+        notes: fields[6] as String? ?? '',
+        syncedAt: fields[7] as DateTime?,
+        isSynced: fields[8] as bool? ?? false,
+        firestoreId: fields[9] as String?,
+        lastSyncedAt: fields[10] as DateTime?,
+      );
+    }
+
     return Attendance(
       id: fields[0] as String,
       labourId: fields[1] as String,
       supervisorId: fields[2] as String,
-      date: fields[3] as String,
-      status: fields[4] as AttendanceStatus,
-      overtimeHours: (fields[5] as num?)?.toDouble() ?? 0,
-      notes: fields[6] as String? ?? '',
-      syncedAt: fields[7] as DateTime?,
-      isSynced: fields[8] as bool? ?? false,
-      firestoreId: fields[9] as String?,
-      lastSyncedAt: fields[10] as DateTime?,
+      contractorId: fields[3] as String? ?? '',
+      date: fields[4] as String? ?? '',
+      status: fields[5] as AttendanceStatus? ?? AttendanceStatus.absent,
+      overtimeHours: (fields[6] as num?)?.toDouble() ?? 0,
+      notes: fields[7] as String? ?? '',
+      syncedAt: fields[8] as DateTime?,
+      isSynced: fields[9] as bool? ?? false,
+      firestoreId: fields[10] as String?,
+      lastSyncedAt: fields[11] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Attendance obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -230,20 +302,22 @@ class AttendanceAdapter extends TypeAdapter<Attendance> {
       ..writeByte(2)
       ..write(obj.supervisorId)
       ..writeByte(3)
-      ..write(obj.date)
+      ..write(obj.contractorId)
       ..writeByte(4)
-      ..write(obj.status)
+      ..write(obj.date)
       ..writeByte(5)
-      ..write(obj.overtimeHours)
+      ..write(obj.status)
       ..writeByte(6)
-      ..write(obj.notes)
+      ..write(obj.overtimeHours)
       ..writeByte(7)
-      ..write(obj.syncedAt)
+      ..write(obj.notes)
       ..writeByte(8)
-      ..write(obj.isSynced)
+      ..write(obj.syncedAt)
       ..writeByte(9)
-      ..write(obj.firestoreId)
+      ..write(obj.isSynced)
       ..writeByte(10)
+      ..write(obj.firestoreId)
+      ..writeByte(11)
       ..write(obj.lastSyncedAt);
   }
 }

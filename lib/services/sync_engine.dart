@@ -11,6 +11,7 @@ import '../models/attendance_model.dart';
 import '../models/labour_model.dart';
 import '../models/payment_model.dart';
 import 'connectivity_service.dart';
+import 'session_service.dart';
 
 class SyncEngine {
   SyncEngine({
@@ -55,7 +56,10 @@ class SyncEngine {
         return;
       }
 
+      debugPrint('🔄 syncPendingRecords started for uid=$uid');
+
       final pendingLabours = _labourBox.values.where((x) => !x.isSynced).toList();
+      debugPrint('📦 pending labours: ${pendingLabours.length}');
       for (final labour in pendingLabours) {
         if (labour.supervisorId.isEmpty) {
           labour.supervisorId = uid;
@@ -86,34 +90,43 @@ class SyncEngine {
       }
 
       final pendingAttendance = _attendanceBox.values.where((x) => !x.isSynced).toList();
+      debugPrint('📦 pending attendance: ${pendingAttendance.length}');
       for (final attendance in pendingAttendance) {
         if (attendance.supervisorId.isEmpty) {
           attendance.supervisorId = uid;
         }
+        if (attendance.contractorId.isEmpty) {
+          attendance.contractorId = SessionService.instance.contractorId ?? uid;
+        }
+        if (attendance.id.isEmpty) {
+          attendance.id = '${attendance.labourId}_${attendance.date}';
+        }
+
+        debugPrint(
+          '🔄 attendance sync candidate docId=${attendance.id} '
+          'labourId=${attendance.labourId} contractorId=${attendance.contractorId} '
+          'supervisorId=${attendance.supervisorId}',
+        );
 
         await retryWithBackoff(() async {
           final now = DateTime.now();
 
-          if (attendance.firestoreId != null && attendance.firestoreId!.isNotEmpty) {
-            final docRef = _firestore.collection('attendance').doc(attendance.firestoreId);
-            await docRef.set(attendance.toFirestore(), SetOptions(merge: true));
-            _logWrite('attendance', 'SET_MERGE', docRef.id);
-          } else {
-            final ref = await _firestore.collection('attendance').add(attendance.toFirestore());
-            await ref.update({'id': ref.id});
-            _logWrite('attendance', 'ADD', ref.id);
-            attendance.firestoreId = ref.id;
-          }
+          final docRef = _firestore.collection('attendance').doc(attendance.id);
+          await docRef.set(attendance.toFirestore(), SetOptions(merge: true));
+          _logWrite('attendance', 'SET_MERGE', docRef.id);
+          attendance.firestoreId = docRef.id;
 
           attendance
             ..syncedAt = now
             ..lastSyncedAt = now
             ..isSynced = true;
           await attendance.save();
+          debugPrint('✅ attendance sync success docId=${docRef.id}');
         });
       }
 
       final pendingPayments = _paymentBox.values.where((x) => !x.isSynced).toList();
+      debugPrint('📦 pending payments: ${pendingPayments.length}');
       for (final payment in pendingPayments) {
         if (payment.supervisorId.isEmpty) {
           payment.supervisorId = uid;
@@ -140,6 +153,8 @@ class SyncEngine {
           await payment.save();
         });
       }
+
+      debugPrint('✅ syncPendingRecords finished for uid=$uid');
     } catch (e, st) {
       debugPrint('syncPendingRecords failed: $e');
       debugPrint(st.toString());
@@ -197,6 +212,7 @@ class SyncEngine {
               id: id,
               labourId: data['labourId'] as String? ?? '',
               supervisorId: data['supervisorId'] as String? ?? supervisorId,
+              contractorId: data['contractorId'] as String? ?? supervisorId,
               date: data['date'] as String? ?? '',
               status: AttendanceStatusX.fromFirestoreValue(data['status'] as String?),
               overtimeHours: (data['overtimeHours'] as num?)?.toDouble() ?? 0,
@@ -276,6 +292,7 @@ class SyncEngine {
         ..status = AttendanceStatusX.fromFirestoreValue(firestoreData['status'] as String?)
         ..overtimeHours = (firestoreData['overtimeHours'] as num?)?.toDouble() ?? localRecord.overtimeHours
         ..notes = firestoreData['notes'] as String? ?? localRecord.notes
+        ..contractorId = firestoreData['contractorId'] as String? ?? localRecord.contractorId
         ..syncedAt = remoteSyncedAt
         ..lastSyncedAt = remoteSyncedAt
         ..isSynced = true;
@@ -350,6 +367,7 @@ class SyncEngine {
               id: id,
               labourId: data['labourId'] as String? ?? '',
               supervisorId: data['supervisorId'] as String? ?? '',
+              contractorId: data['contractorId'] as String? ?? supervisorId,
               date: data['date'] as String? ?? todayDate,
               status: AttendanceStatusX.fromFirestoreValue(data['status'] as String?),
               overtimeHours: (data['overtimeHours'] as num?)?.toDouble() ?? 0,

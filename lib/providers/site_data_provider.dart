@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/utils/date_utils.dart';
@@ -8,17 +11,20 @@ import '../models/labour.dart';
 import '../models/labour_report_summary.dart';
 import '../services/hive_service.dart';
 import '../services/labour_mode/payment_service.dart';
+import '../services/session_service.dart';
 
 class SiteDataProvider extends ChangeNotifier {
   SiteDataProvider({required HiveService hiveService})
       : _hiveService = hiveService;
+  StreamSubscription<List<Labour>>? _labourSubscription;
+  List<Labour> _labours = [];
+
+  List<Labour> get labours => _labours;
 
   final HiveService _hiveService;
   PaymentService get _paymentService => PaymentService(hiveService: _hiveService);
   HiveService get hiveService => _hiveService;
   final Random _random = Random();
-
-  List<Labour> _labours = [];
   List<AttendanceRecord> _attendanceRecords = [];
   DateTime _selectedDate = DateTime.now();
 
@@ -26,7 +32,6 @@ class SiteDataProvider extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   DateTime get selectedDate => _selectedDate;
-  List<Labour> get labours => List.unmodifiable(_labours);
 
   String get selectedDateKey => AppDateUtils.toDateKey(_selectedDate);
 
@@ -46,8 +51,14 @@ class SiteDataProvider extends ChangeNotifier {
 
   Future<void> initialize() async {
     _setLoading(true);
-    _labours = _hiveService.getAllLabours();
     _attendanceRecords = _hiveService.getAllAttendanceRecords();
+    _labours = _hiveService.getAllLabours();
+    final contractorId = SessionService.instance.contractorId ??
+        FirebaseAuth.instance.currentUser?.uid ??
+        '';
+    if (contractorId.isNotEmpty) {
+      startLabourStream(contractorId);
+    }
     await _backfillAdvancePayments();
     _setLoading(false);
   }
@@ -55,6 +66,58 @@ class SiteDataProvider extends ChangeNotifier {
   void setSelectedDate(DateTime value) {
     _selectedDate = DateTime(value.year, value.month, value.day);
     notifyListeners();
+  }
+  
+
+  void startLabourStream(String contractorId) {
+    _labourSubscription?.cancel();
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final db = FirebaseFirestore.instance;
+
+    final stream = db
+        .collection('labours')
+        .where('contractorId', isEqualTo: contractorId)
+        .where('isActive', isEqualTo: true)
+        .snapshots();
+
+    _labourSubscription = stream.map((snap) {
+      return snap.docs.map((doc) {
+        final data = doc.data();
+        return Labour(
+          id: doc.id,
+          name: (data['name'] as String?) ?? '',
+          role: (data['skill'] as String?) ?? (data['role'] as String?) ?? '',
+          dailyWage: ((data['dailyWage'] ?? data['dailyRate']) as num?)?.toDouble() ?? 0,
+          phoneNumber: (data['phone'] as String?) ?? (data['phoneNumber'] as String?) ?? '',
+          advanceAmount: ((data['advanceAmount'] as num?) ?? 0).toDouble(),
+          extraHours: ((data['defaultOvertimeHours'] as num?) ?? 0).toDouble(),
+          overtimeRate: ((data['overtimeWagePerHour'] as num?) ?? 0).toDouble(),
+        );
+      }).toList();
+    }).listen(
+      (labourList) {
+        _labours = labourList;
+        debugPrint('🔴 SiteDataProvider stream: ${labourList.length} labours');
+        notifyListeners();
+      },
+      onError: (e) {
+        debugPrint('❌ Labour stream error: $e');
+      },
+    );
+  }
+
+  void stopLabourStream() {
+    _labourSubscription?.cancel();
+    _labourSubscription = null;
+  }
+
+  @override
+  void dispose() {
+    stopLabourStream();
+    super.dispose();
   }
 
   Future<void> addLabour({
@@ -66,26 +129,69 @@ class SiteDataProvider extends ChangeNotifier {
     double extraHours = 0,
     double overtimeRate = 0,
   }) async {
-    final labour = Labour(
-      id: _id(),
-      name: name,
-      role: role,
-      dailyWage: dailyWage,
-      phoneNumber: phoneNumber,
-      advanceAmount: advanceAmount,
-      extraHours: extraHours,
-      overtimeRate: overtimeRate,
-    );
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw Exception('Not logged in');
 
-    await _hiveService.addLabour(labour);
-    _labours = _hiveService.getAllLabours();
-    notifyListeners();
+    final db = FirebaseFirestore.instance;
+    final contractorId = SessionService.instance.contractorId ?? uid;
+
+    try {
+      final docRef = await db.collection('labours').add({
+        'name': name,
+        'skill': role,
+        'role': role,
+        'dailyWage': dailyWage,
+        'dailyRate': dailyWage,
+        'phone': phoneNumber,
+        'phoneNumber': phoneNumber,
+        'advanceAmount': advanceAmount,
+        'defaultOvertimeHours': extraHours,
+        'overtimeWagePerHour': overtimeRate,
+        'supervisorId': uid,
+        'supervisorRef': db.doc('users/$uid'),
+        'contractorId': contractorId,
+        'isActive': true,
+        'isSynced': true,
+        'syncedAt': FieldValue.serverTimestamp(),
+      });
+
+      await docRef.update({'id': docRef.id});
+      debugPrint('✅ Labour added to Firestore: $name (${docRef.id})');
+    } catch (e) {
+      debugPrint('❌ addLabour failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> updateLabour(Labour labour) async {
-    await _hiveService.updateLabour(labour);
-    _labours = _hiveService.getAllLabours();
-    notifyListeners();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final contractorId = SessionService.instance.contractorId ?? uid;
+
+    try {
+      await FirebaseFirestore.instance.collection('labours').doc(labour.id).set({
+        'name': labour.name,
+        'skill': labour.role,
+        'role': labour.role,
+        'dailyWage': labour.dailyWage,
+        'dailyRate': labour.dailyWage,
+        'phone': labour.phoneNumber,
+        'phoneNumber': labour.phoneNumber,
+        'advanceAmount': labour.advanceAmount,
+        'defaultOvertimeHours': labour.extraHours,
+        'overtimeWagePerHour': labour.overtimeRate,
+        'supervisorId': uid,
+        'supervisorRef': FirebaseFirestore.instance.doc('users/$uid'),
+        'contractorId': contractorId,
+        'isActive': true,
+        'isSynced': true,
+        'syncedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('✅ Labour updated: ${labour.name}');
+    } catch (e) {
+      debugPrint('❌ updateLabour failed: $e');
+      rethrow;
+    }
   }
 
   /// Add advance payment (accumulates to existing advance)
@@ -95,6 +201,11 @@ class SiteDataProvider extends ChangeNotifier {
     required double amount,
   }) async {
     if (amount <= 0) {
+      return;
+    }
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
       return;
     }
 
@@ -109,6 +220,25 @@ class SiteDataProvider extends ChangeNotifier {
     await updateLabour(
       labour.copyWith(advanceAmount: newAdvanceAmount),
     );
+
+    await FirebaseFirestore.instance.collection('labours').doc(labourId).update({
+      'advanceAmount': FieldValue.increment(amount),
+      'syncedAt': FieldValue.serverTimestamp(),
+    });
+
+    final contractorId = SessionService.instance.contractorId ?? uid;
+    await FirebaseFirestore.instance.collection('payments').add({
+      'contractorId': contractorId,
+      'labourId': labourId,
+      'labourRef': FirebaseFirestore.instance.doc('labours/$labourId'),
+      'amount': amount,
+      'date': DateTime.now().toIso8601String().substring(0, 10),
+      'status': 'paid',
+      'notes': 'Advance payment',
+      'createdBy': FirebaseFirestore.instance.doc('users/$uid'),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
 
     await _paymentService.recordPayment(
       labourId: labourId,
@@ -165,10 +295,19 @@ class SiteDataProvider extends ChangeNotifier {
   }
 
   Future<void> deleteLabour(String labourId) async {
-    await _hiveService.deleteLabour(labourId);
-    _labours = _hiveService.getAllLabours();
-    _attendanceRecords = _hiveService.getAllAttendanceRecords();
-    notifyListeners();
+    try {
+      await FirebaseFirestore.instance
+          .collection('labours')
+          .doc(labourId)
+          .update({
+        'isActive': false,
+        'syncedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint('✅ Labour deleted: $labourId');
+    } catch (e) {
+      debugPrint('❌ deleteLabour failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> markAttendance({

@@ -1,6 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+String contractorId = '';
 @HiveType(typeId: 20)
 class Labour extends HiveObject {
   Labour({
@@ -51,6 +51,9 @@ class Labour extends HiveObject {
   @HiveField(9)
   String? firestoreId;
 
+  @HiveField(20)
+  String contractorId = '';
+
   @HiveField(10)
   DateTime? lastSyncedAt;
 
@@ -64,6 +67,7 @@ class Labour extends HiveObject {
     return {
       'id': id,
       'supervisorId': supervisorId,
+      'contractorId': contractorId,
       'name': name,
       'phone': phone,
       'dailyWage': dailyWage,
@@ -81,6 +85,10 @@ class Labour extends HiveObject {
     return Labour(
       id: (data['id'] as String?) ?? doc.id,
       supervisorId: (data['supervisorId'] as String?) ?? '',
+      // contractorId is intentionally optional on older docs
+      // and will default to an empty string when missing.
+      // It is stored separately as a Hive field (20).
+      // The constructor doesn't yet require contractorId.
       name: (data['name'] as String?) ?? '',
       phone: (data['phone'] as String?) ?? '',
       dailyWage: ((data['dailyWage'] as num?) ?? 0).toDouble(),
@@ -92,6 +100,7 @@ class Labour extends HiveObject {
       isActive: (data['isActive'] as bool?) ?? true,
     )
       ..firestoreId = doc.id
+      ..contractorId = (data['contractorId'] as String?) ?? ''
       ..isSynced = true
       ..lastSyncedAt = (data['syncedAt'] as Timestamp?)?.toDate()
       ..syncedAt = (data['syncedAt'] as Timestamp?)?.toDate();
@@ -156,13 +165,14 @@ class LabourAdapter extends TypeAdapter<Labour> {
       lastSyncedAt: fields[10] as DateTime?,
       overtimeWagePerHour: (fields[11] as num?)?.toDouble() ?? 0,
       defaultOvertimeHours: (fields[12] as num?)?.toDouble() ?? 0,
-    );
+    )
+      ..contractorId = fields[20] as String? ?? '';
   }
 
   @override
   void write(BinaryWriter writer, Labour obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -188,6 +198,8 @@ class LabourAdapter extends TypeAdapter<Labour> {
       ..writeByte(11)
       ..write(obj.overtimeWagePerHour)
       ..writeByte(12)
-      ..write(obj.defaultOvertimeHours);
+      ..write(obj.defaultOvertimeHours)
+      ..writeByte(20)
+      ..write(obj.contractorId);
   }
 }

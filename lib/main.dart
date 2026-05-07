@@ -58,7 +58,7 @@ Future<void> main() async {
   }
 
   await Hive.openBox<Labour>(Labour.boxName);
-  await Hive.openBox<Attendance>(Attendance.boxName);
+  await Attendance.openBoxSafely();
   await Hive.openBox<Payment>(Payment.boxName);
   await Hive.openBox('pending_attendance');
 
