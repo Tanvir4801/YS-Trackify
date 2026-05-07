@@ -7,8 +7,11 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/theme/app_colors.dart';
+import '../core/theme/app_text_styles.dart';
 import '../providers/site_data_provider.dart';
 import '../services/session_service.dart';
+import '../widgets/stat_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -38,14 +41,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadContractorName() async {
-    // Show cached name instantly
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString('contractorName');
     if (cached != null && cached.isNotEmpty && mounted) {
       setState(() => _contractorName = cached);
     }
 
-    // Fetch fresh from Firestore
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
@@ -72,7 +73,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (doc.exists) {
         return (doc.data()?['name'] as String?) ?? 'My Company';
       }
-      // Try querying by id field
       final snap = await _db
           .collection('contractors')
           .where('id', isEqualTo: contractorId)
@@ -93,8 +93,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final contractorId = SessionService.instance.contractorId ?? uid;
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-    // Labour count stream — use supervisorId as primary (always set), with
-    // contractorId as secondary to catch multi-supervisor contractor setups.
     _labourSub?.cancel();
     _labourSub = _db
         .collection('labours')
@@ -105,7 +103,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => _totalLabours = snap.docs.length);
     });
 
-    // Attendance stream — flat collection filtered by supervisorId (most reliable).
     _attendanceSub?.cancel();
     _attendanceSub = _db
         .collection('attendance')
@@ -123,7 +120,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final labourId = data['labourId'] as String? ?? '';
         final status = (data['status'] as String?) ?? '';
         if (labourId.isNotEmpty) attMap[labourId] = status;
-        // Normalise both 'half' and 'half_day' variants
         switch (status) {
           case 'present':
             present++;
@@ -146,7 +142,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
       }
 
-      // Wage calculation: per-labour based on their own daily rate + status
       _db
           .collection('labours')
           .where('supervisorId', isEqualTo: uid)
@@ -170,7 +165,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
     });
 
-    // Also listen to nested path for attendance marked via QR
     _db
         .collection('attendance')
         .doc(contractorId)
@@ -179,9 +173,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .collection('records')
         .snapshots()
         .listen((snap) {
-      // This path is updated in real-time for QR scans; we trigger a
-      // re-check of the flat collection stats above to stay consistent.
-      // Only update if nested has more data than we currently show.
       int nestedPresent = 0;
       int nestedAbsent = 0;
       int nestedHalf = 0;
@@ -200,7 +191,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             break;
         }
       }
-      // Use nested counts only if higher (flat collection is primary)
       if (mounted &&
           (nestedPresent > _presentToday ||
               nestedAbsent > _absentToday ||
@@ -227,7 +217,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context, data, _) {
         return SafeArea(
           child: RefreshIndicator(
-            color: Theme.of(context).colorScheme.primary,
+            color: AppColors.primary,
             onRefresh: () async {
               _loadContractorName();
               _startStreams();
@@ -236,92 +226,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _contractorName,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                  Text(
-                    'From Site to System',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Stat cards grid
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.1,
-                    children: [
-                      _buildStatCard(
-                        title: 'Total Labour',
-                        value: '$_totalLabours',
-                        icon: Icons.people_alt_rounded,
-                        color: const Color(0xFF1E40AF),
-                      ),
-                      _buildStatCard(
-                        title: 'Present Today',
-                        value: '$_presentToday',
-                        icon: Icons.check_circle_rounded,
-                        color: const Color(0xFF16A34A),
-                      ),
-                      _buildStatCard(
-                        title: 'Absent Today',
-                        value: '$_absentToday',
-                        icon: Icons.cancel_rounded,
-                        color: const Color(0xFFDC2626),
-                      ),
-                      _buildStatCard(
-                        title: 'Half Day',
-                        value: '$_halfDayToday',
-                        icon: Icons.timelapse_rounded,
-                        color: const Color(0xFFD97706),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Wage Snapshot',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  _buildWageCard(
-                    label: 'Today',
-                    amount: _todayWages,
-                    icon: Icons.today_rounded,
-                    color: const Color(0xFF0891B2),
-                    subtitle: 'Based on attendance',
-                  ),
-                  const SizedBox(height: 10),
-                  _buildWageCard(
-                    label: 'This Week',
-                    amount: data.weekWageTotal,
-                    icon: Icons.date_range_rounded,
-                    color: const Color(0xFF7C3AED),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildWageCard(
-                    label: 'This Month',
-                    amount: data.monthWageTotal,
-                    icon: Icons.calendar_month_rounded,
-                    color: const Color(0xFF059669),
-                  ),
-                  const SizedBox(height: 20),
+                  _buildHeader(),
+                  _buildStatGrid(),
+                  _buildWageSection(data),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -331,62 +242,149 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    String? subtitle,
-  }) {
+  Widget _buildHeader() {
+    final now = DateTime.now();
+    final greeting = now.hour < 12
+        ? 'Good Morning'
+        : now.hour < 17
+            ? 'Good Afternoon'
+            : 'Good Evening';
+
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.2)),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(greeting,
+                    style: AppTextStyles.caption.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5)),
+                const SizedBox(height: 4),
+                Text(
+                  _contractorName,
+                  style: AppTextStyles.displayMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()),
+                  style: AppTextStyles.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.primary, AppColors.primaryLight],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.track_changes_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatGrid() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          const Text("Today's Overview", style: AppTextStyles.headingMedium),
+          const SizedBox(height: 12),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.2,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 20),
+              StatCard(
+                title: 'Total Labour',
+                value: '$_totalLabours',
+                icon: Icons.people_alt_rounded,
+                color: AppColors.accent,
               ),
-              if (subtitle != null)
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+              StatCard(
+                title: 'Present Today',
+                value: '$_presentToday',
+                icon: Icons.check_circle_rounded,
+                color: AppColors.present,
+              ),
+              StatCard(
+                title: 'Absent Today',
+                value: '$_absentToday',
+                icon: Icons.cancel_rounded,
+                color: AppColors.absent,
+              ),
+              StatCard(
+                title: 'Half Day',
+                value: '$_halfDayToday',
+                icon: Icons.timelapse_rounded,
+                color: AppColors.halfDay,
+              ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWageSection(SiteDataProvider data) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Wage Snapshot', style: AppTextStyles.headingMedium),
           const SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
+          _buildWageCard(
+            label: 'Today',
+            amount: _todayWages,
+            icon: Icons.today_rounded,
+            color: const Color(0xFF0891B2),
+            subtitle: 'Based on attendance',
           ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 12,
-              color: color.withOpacity(0.8),
-              fontWeight: FontWeight.w500,
-            ),
+          const SizedBox(height: 10),
+          _buildWageCard(
+            label: 'This Week',
+            amount: data.weekWageTotal,
+            icon: Icons.date_range_rounded,
+            color: const Color(0xFF7C3AED),
+          ),
+          const SizedBox(height: 10),
+          _buildWageCard(
+            label: 'This Month',
+            amount: data.monthWageTotal,
+            icon: Icons.calendar_month_rounded,
+            color: AppColors.present,
           ),
         ],
       ),
@@ -401,19 +399,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String? subtitle,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color, size: 20),
           ),
@@ -422,32 +427,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: color.withOpacity(0.8),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                if (subtitle != null)
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: color.withOpacity(0.6),
-                      fontSize: 10,
-                    ),
-                  ),
-                const SizedBox(height: 2),
-                Text(
-                  'Rs ${amount.toStringAsFixed(0)}',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+                Text(label, style: AppTextStyles.caption),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: AppTextStyles.caption),
+                ],
               ],
+            ),
+          ),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: amount),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOut,
+            builder: (ctx, val, _) => Text(
+              '₹${val.toStringAsFixed(0)}',
+              style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
             ),
           ),
         ],
