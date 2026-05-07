@@ -51,6 +51,7 @@ class LabourService {
       final oldLocalId = labour.id;
 
       labour.supervisorId = uid;
+      labour.contractorId = contractorId;
       labour.isSynced = false;
 
       await _labourBox.put(labour.id, labour);
@@ -86,7 +87,7 @@ class LabourService {
       labour.syncedAt = labour.lastSyncedAt;
       await _labourBox.put(labour.id, labour);
 
-      debugPrint('Labour added: ${labour.name}');
+      debugPrint('Labour added: ${labour.name} | supervisor=$uid contractorId=$contractorId');
     } catch (e) {
       debugPrint('Labour sync failed: $e');
       rethrow;
@@ -97,6 +98,7 @@ class LabourService {
     final uid = _requireUid();
     final contractorId = _contractorScope(uid);
     labour.supervisorId = uid;
+    labour.contractorId = contractorId;
     labour.isSynced = false;
     await _labourBox.put(labour.id, labour);
 
@@ -160,8 +162,14 @@ class LabourService {
     if (uid == null || uid.isEmpty) {
       return <Labour>[];
     }
+    final contractorId = _contractorScope(uid);
     final items = _labourBox.values
-        .where((l) => l.supervisorId == uid && l.isActive)
+        .where((l) {
+          if (!l.isActive) return false;
+          return l.supervisorId == uid ||
+              l.contractorId == uid ||
+              (contractorId.isNotEmpty && l.contractorId == contractorId);
+        })
         .toList();
     items.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return items;
@@ -172,35 +180,61 @@ class LabourService {
       final uid = _requireUid();
       final contractorId = _contractorScope(uid);
 
-      // Prefer contractorId scope; fall back to legacy supervisorId filter for
-      // labours that haven't been re-saved with the new field yet.
-      final docs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+      final Map<String, Labour> merged = {};
 
+      debugPrint('Fetching labours for uid=$uid contractorId=$contractorId');
+
+      // Query 1: by supervisorId (always present on all docs)
       try {
-        final byContractor = await _db
+        final bySupervisor = await _db
             .collection('labours')
-            .where('contractorId', isEqualTo: contractorId)
+            .where('supervisorId', isEqualTo: uid)
             .where('isActive', isEqualTo: true)
             .get();
-        docs.addAll(byContractor.docs);
+        for (final d in bySupervisor.docs) {
+          merged[d.id] = Labour.fromFirestore(d);
+        }
+        debugPrint('By supervisorId: ${bySupervisor.docs.length}');
       } catch (e) {
-        debugPrint('contractorId labour query failed: $e');
+        debugPrint('supervisorId labour query failed: $e');
       }
 
-      final bySupervisor = await _db
-          .collection('labours')
-          .where('supervisorId', isEqualTo: uid)
-          .where('isActive', isEqualTo: true)
-          .get();
+      // Query 2: by contractorId = uid (legacy supervisor-as-contractor)
+      try {
+        final byContractorUid = await _db
+            .collection('labours')
+            .where('contractorId', isEqualTo: uid)
+            .where('isActive', isEqualTo: true)
+            .get();
+        for (final d in byContractorUid.docs) {
+          merged[d.id] = Labour.fromFirestore(d);
+        }
+        debugPrint('By contractorId (uid): ${byContractorUid.docs.length}');
+      } catch (e) {
+        debugPrint('contractorId(uid) labour query failed: $e');
+      }
 
-      final seen = <String>{};
-      for (final d in [...docs, ...bySupervisor.docs]) {
-        if (seen.add(d.id)) {
-          final labour = Labour.fromFirestore(d);
-          await _labourBox.put(labour.id, labour);
+      // Query 3: by contractorId from session (if different from uid)
+      if (contractorId != uid && contractorId.isNotEmpty) {
+        try {
+          final byContractor = await _db
+              .collection('labours')
+              .where('contractorId', isEqualTo: contractorId)
+              .where('isActive', isEqualTo: true)
+              .get();
+          for (final d in byContractor.docs) {
+            merged[d.id] = Labour.fromFirestore(d);
+          }
+          debugPrint('By contractorId (session): ${byContractor.docs.length}');
+        } catch (e) {
+          debugPrint('contractorId(session) labour query failed: $e');
         }
       }
-      debugPrint('Synced ${seen.length} labours from Firebase');
+
+      for (final labour in merged.values) {
+        await _labourBox.put(labour.id, labour);
+      }
+      debugPrint('Total unique labours fetched: ${merged.length}');
     } catch (e) {
       debugPrint('Fetch labours failed: $e - using local data');
       rethrow;
@@ -209,10 +243,6 @@ class LabourService {
 
   Stream<List<Labour>> labourStream() {
     final uid = _requireUid();
-    // Legacy supervisorId is universally present; contractorId isn't yet on
-    // older docs. Use supervisorId for the live stream so existing UI keeps
-    // working; writes are dual-tagged (supervisorId + contractorId) so the
-    // new admin queries also see fresh data.
     return _db
         .collection('labours')
         .where('supervisorId', isEqualTo: uid)

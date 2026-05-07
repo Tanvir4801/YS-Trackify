@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/site_data_provider.dart';
 import '../services/session_service.dart';
@@ -26,13 +27,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _absentToday = 0;
   int _halfDayToday = 0;
   double _todayWages = 0;
-  double _weekWages = 0;
-  double _monthWages = 0;
+
+  String _contractorName = 'My Company';
 
   @override
   void initState() {
     super.initState();
+    _loadContractorName();
     _startStreams();
+  }
+
+  Future<void> _loadContractorName() async {
+    // Show cached name instantly
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('contractorName');
+    if (cached != null && cached.isNotEmpty && mounted) {
+      setState(() => _contractorName = cached);
+    }
+
+    // Fetch fresh from Firestore
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      final userDoc = await _db.collection('users').doc(uid).get();
+      var contractorId = (userDoc.data()?['contractorId'] as String?) ?? '';
+
+      if (contractorId.isEmpty) {
+        contractorId = SessionService.instance.contractorId ?? uid;
+      }
+
+      final freshName = await _getNameByContractorId(contractorId);
+      await prefs.setString('contractorName', freshName);
+      if (mounted) setState(() => _contractorName = freshName);
+    } catch (e) {
+      debugPrint('_loadContractorName error: $e');
+    }
+  }
+
+  Future<String> _getNameByContractorId(String contractorId) async {
+    if (contractorId.isEmpty) return 'My Company';
+    try {
+      final doc = await _db.collection('contractors').doc(contractorId).get();
+      if (doc.exists) {
+        return (doc.data()?['name'] as String?) ?? 'My Company';
+      }
+      // Try querying by id field
+      final snap = await _db
+          .collection('contractors')
+          .where('id', isEqualTo: contractorId)
+          .limit(1)
+          .get();
+      if (snap.docs.isNotEmpty) {
+        return (snap.docs.first.data()['name'] as String?) ?? 'My Company';
+      }
+    } catch (e) {
+      debugPrint('_getNameByContractorId error: $e');
+    }
+    return 'My Company';
   }
 
   void _startStreams() {
@@ -41,32 +93,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final contractorId = SessionService.instance.contractorId ?? uid;
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
+    // Labour count stream — use supervisorId as primary (always set), with
+    // contractorId as secondary to catch multi-supervisor contractor setups.
     _labourSub?.cancel();
     _labourSub = _db
         .collection('labours')
-        .where('contractorId', isEqualTo: contractorId)
+        .where('supervisorId', isEqualTo: uid)
         .where('isActive', isEqualTo: true)
         .snapshots()
         .listen((snap) {
       if (mounted) setState(() => _totalLabours = snap.docs.length);
     });
 
+    // Attendance stream — flat collection filtered by supervisorId (most reliable).
     _attendanceSub?.cancel();
     _attendanceSub = _db
         .collection('attendance')
-        .doc(contractorId)
-        .collection('dates')
-        .doc(today)
-        .collection('records')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isEqualTo: today)
         .snapshots()
         .listen((snap) {
       int present = 0;
       int absent = 0;
       int halfDay = 0;
+      final Map<String, String> attMap = {};
 
       for (final doc in snap.docs) {
         final data = doc.data();
-        final status = data['status'] ?? '';
+        final labourId = data['labourId'] as String? ?? '';
+        final status = (data['status'] as String?) ?? '';
+        if (labourId.isNotEmpty) attMap[labourId] = status;
+        // Normalise both 'half' and 'half_day' variants
         switch (status) {
           case 'present':
             present++;
@@ -74,6 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           case 'absent':
             absent++;
             break;
+          case 'half':
           case 'half_day':
             halfDay++;
             break;
@@ -88,20 +146,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
       }
 
+      // Wage calculation: per-labour based on their own daily rate + status
       _db
           .collection('labours')
-          .where('contractorId', isEqualTo: contractorId)
+          .where('supervisorId', isEqualTo: uid)
           .where('isActive', isEqualTo: true)
           .get()
           .then((labourSnap) {
         double total = 0;
         for (final doc in labourSnap.docs) {
           final d = doc.data();
-          final rate = (d['dailyWage'] ?? d['dailyRate'] ?? 0).toDouble();
-          total += rate * present;
+          final labourId = doc.id;
+          final status = attMap[labourId] ?? '';
+          final rate =
+              ((d['dailyWage'] ?? d['dailyRate'] ?? 0) as num).toDouble();
+          if (status == 'present') {
+            total += rate;
+          } else if (status == 'half' || status == 'half_day') {
+            total += rate / 2;
+          }
         }
         if (mounted) setState(() => _todayWages = total);
       });
+    });
+
+    // Also listen to nested path for attendance marked via QR
+    _db
+        .collection('attendance')
+        .doc(contractorId)
+        .collection('dates')
+        .doc(today)
+        .collection('records')
+        .snapshots()
+        .listen((snap) {
+      // This path is updated in real-time for QR scans; we trigger a
+      // re-check of the flat collection stats above to stay consistent.
+      // Only update if nested has more data than we currently show.
+      int nestedPresent = 0;
+      int nestedAbsent = 0;
+      int nestedHalf = 0;
+      for (final doc in snap.docs) {
+        final status = (doc.data()['status'] as String?) ?? '';
+        switch (status) {
+          case 'present':
+            nestedPresent++;
+            break;
+          case 'absent':
+            nestedAbsent++;
+            break;
+          case 'half':
+          case 'half_day':
+            nestedHalf++;
+            break;
+        }
+      }
+      // Use nested counts only if higher (flat collection is primary)
+      if (mounted &&
+          (nestedPresent > _presentToday ||
+              nestedAbsent > _absentToday ||
+              nestedHalf > _halfDayToday)) {
+        setState(() {
+          _presentToday = nestedPresent;
+          _absentToday = nestedAbsent;
+          _halfDayToday = nestedHalf;
+        });
+      }
     });
   }
 
@@ -120,6 +229,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: RefreshIndicator(
             color: Theme.of(context).colorScheme.primary,
             onRefresh: () async {
+              _loadContractorName();
               _startStreams();
               context.read<SiteDataProvider>().startLabourStream();
               await Future.delayed(const Duration(milliseconds: 800));
@@ -131,7 +241,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'YS Construction',
+                    _contractorName,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
