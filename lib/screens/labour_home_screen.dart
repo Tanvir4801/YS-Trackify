@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../core/theme/app_colors.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
+import 'labour/labour_report_tab.dart';
 import 'labour/my_attendance_screen.dart';
 import 'qr/qr_screen.dart';
 
@@ -261,13 +262,16 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
     }
 
     final tabs = <Widget>[
+      const QRScreen(showAppBar: false),
       _LabourDashboardTab(session: session),
       LabourMyAttendanceScreen(
         labourId: session.labourId,
         contractorId: session.contractorId,
       ),
-      _LabourPaymentsTab(session: session),
-      const QRScreen(showAppBar: false),
+      LabourReportTab(
+        labourId: session.labourId,
+        contractorId: session.contractorId,
+      ),
     ];
 
     return Scaffold(
@@ -290,24 +294,24 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
             setState(() => _tabIndex = index),
         destinations: const [
           NavigationDestination(
+            icon: Icon(Icons.qr_code_2_outlined),
+            selectedIcon: Icon(Icons.qr_code_2_rounded),
+            label: 'My QR',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
+            selectedIcon: Icon(Icons.dashboard_rounded),
             label: 'Dashboard',
           ),
           NavigationDestination(
             icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
+            selectedIcon: Icon(Icons.fact_check_rounded),
             label: 'Attendance',
           ),
           NavigationDestination(
-            icon: Icon(Icons.payments_outlined),
-            selectedIcon: Icon(Icons.payments),
-            label: 'Payments',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.qr_code_2_outlined),
-            selectedIcon: Icon(Icons.qr_code_2),
-            label: 'My QR',
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart_rounded),
+            label: 'Report',
           ),
         ],
       ),

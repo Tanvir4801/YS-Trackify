@@ -8,6 +8,7 @@ import '../../core/theme/app_text_styles.dart';
 import '../../models/labour_model.dart';
 import '../../services/attendance_service.dart';
 import '../../services/scanner_service.dart';
+import '../../widgets/attendance_type_sheet.dart';
 import '../../widgets/status_badge.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -93,16 +94,63 @@ class _ScannerScreenState extends State<ScannerScreen>
     setState(() => _isProcessing = true);
     await _cameraController.stop();
 
-    final result = await _scannerService.processScan(rawValue);
+    // Step 1: Validate QR without marking
+    final precheck = await _scannerService.precheckQR(rawValue);
 
-    if (result.success) {
-      await _scannerService.playSuccessFeedback();
-    } else {
-      await _scannerService.playErrorFeedback();
+    if (!precheck.isValid) {
+      // Invalid / expired / duplicate — show immediate result, no sheet
+      if (precheck.isDuplicate) {
+        await _scannerService.playSuccessFeedback();
+      } else {
+        await _scannerService.playErrorFeedback();
+      }
+      if (!mounted) return;
+      setState(() {
+        _lastResult = ScanResult(
+          success: precheck.isDuplicate,
+          message: precheck.errorMessage,
+          type: precheck.errorType,
+          labourName: precheck.labourName.isNotEmpty
+              ? precheck.labourName
+              : null,
+        );
+        _isProcessing = false;
+      });
+      _loadPendingCount();
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      setState(() => _lastResult = null);
+      await _cameraController.start();
+      return;
     }
+
+    // Step 2: Valid QR — play success sound then show type sheet
+    await _scannerService.playSuccessFeedback();
+    if (!mounted) return;
+    setState(() => _isProcessing = false);
+
+    final selectedType = await AttendanceTypeSheet.show(
+      context,
+      labourName: precheck.labourName,
+    );
 
     if (!mounted) return;
 
+    if (selectedType == null || selectedType == 'cancel') {
+      // User cancelled — just resume camera
+      await _cameraController.start();
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+
+    // Step 3: Mark with the selected attendance type
+    final result = await _scannerService.processScanWithType(
+      rawToken: rawValue,
+      status: selectedType,
+    );
+
+    if (!mounted) return;
     setState(() {
       _lastResult = result;
       _isProcessing = false;
@@ -111,7 +159,6 @@ class _ScannerScreenState extends State<ScannerScreen>
     _loadPendingCount();
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
-
     setState(() => _lastResult = null);
     await _cameraController.start();
   }
