@@ -1,0 +1,894 @@
+I have a Flutter app called Trackify V2.
+Fix two specific features: Overtime handling and QR scan 
+attendance type selection.
+
+DO NOT change any existing working logic.
+DO NOT change Firebase structure.
+DO NOT change UI styling outside what is specified.
+
+=============================================================
+FEATURE 1 — QR SCAN: ATTENDANCE TYPE SELECTION
+=============================================================
+
+PROBLEM:
+When supervisor scans labour QR, it marks "present" only.
+There is no way to mark "half day" via QR scan.
+
+SOLUTION:
+After a successful QR scan, show a bottom sheet popup with 
+3 attendance options. Auto-confirms "Full Day" after 3 seconds
+if supervisor does not tap anything.
+
+## Step 1 — Create AttendanceTypeSheet widget
+
+Create lib/widgets/attendance_type_sheet.dart:
+
+```dart
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+class AttendanceTypeSheet extends StatefulWidget {
+  const AttendanceTypeSheet({
+    super.key,
+    required this.labourName,
+    required this.onSelected,
+    this.autoConfirmSeconds = 3,
+  });
+
+  final String labourName;
+  final ValueChanged<String> onSelected; // 'present' | 'half' | 'cancel'
+  final int autoConfirmSeconds;
+
+  // Show as modal bottom sheet and return selected type
+  static Future<String?> show(
+    BuildContext context, {
+    required String labourName,
+  }) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AttendanceTypeSheet(
+        labourName: labourName,
+        onSelected: (type) => Navigator.of(context).pop(type),
+      ),
+    );
+  }
+
+  @override
+  State<AttendanceTypeSheet> createState() => _AttendanceTypeSheetState();
+}
+
+class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
+    with SingleTickerProviderStateMixin {
+  late int _secondsLeft;
+  Timer? _timer;
+  late AnimationController _progressController;
+
+  @override
+  void initState() {
+    super.initState();
+    _secondsLeft = widget.autoConfirmSeconds;
+
+    // Progress animation
+    _progressController = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: widget.autoConfirmSeconds),
+    )..forward();
+
+    // Countdown timer
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) {
+        t.cancel();
+        // Auto-confirm full day
+        HapticFeedback.lightImpact();
+        widget.onSelected('present');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _progressController.dispose();
+    super.dispose();
+  }
+
+  void _select(String type) {
+    _timer?.cancel();
+    HapticFeedback.mediumImpact();
+    widget.onSelected(type);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+
+          // Handle bar
+          Container(
+            width: 40, height: 4,
+            margin: const EdgeInsets.only(top: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Success icon
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_circle_rounded,
+              color: Colors.green, size: 32),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Labour name
+          Text(
+            widget.labourName,
+            style: const TextStyle(
+              fontSize: 20, fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'QR verified successfully',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Question
+          const Text(
+            'Select attendance type',
+            style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Attendance type buttons
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(children: [
+
+              // Full Day
+              Expanded(
+                flex: 2,
+                child: GestureDetector(
+                  onTap: () => _select('present'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green.withValues(alpha: 0.3),
+                          blurRadius: 12, offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(children: [
+                      const Icon(Icons.wb_sunny_rounded,
+                        color: Colors.white, size: 24),
+                      const SizedBox(height: 6),
+                      const Text('Full Day',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // Countdown timer only on Full Day button
+                      AnimatedBuilder(
+                        animation: _progressController,
+                        builder: (_, __) => Column(children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: 1 - _progressController.value,
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.3),
+                              valueColor:
+                                  const AlwaysStoppedAnimation(Colors.white),
+                              minHeight: 3,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Auto in ${_secondsLeft}s',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontSize: 10,
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // Half Day
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _select('half'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.orange.shade300, width: 1.5),
+                    ),
+                    child: const Column(children: [
+                      Icon(Icons.timelapse_rounded,
+                        color: Colors.orange, size: 24),
+                      SizedBox(height: 6),
+                      Text('Half\nDay',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // Cancel / Undo
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _select('cancel'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: const Column(children: [
+                      Icon(Icons.close_rounded,
+                        color: Colors.grey, size: 24),
+                      SizedBox(height: 6),
+                      Text('Cancel',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+
+            ]),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Info text
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'Full Day auto-selected in ${_secondsLeft}s. '
+              'You can change it later in Attendance.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey, fontSize: 11),
+            ),
+          ),
+
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
+    );
+  }
+}
+```
+
+## Step 2 — Update ScannerScreen to use AttendanceTypeSheet
+
+Find the part in scanner_screen.dart where a scan is processed
+and the result is shown. Replace it:
+
+```dart
+// In _onDetect or processScan callback:
+
+Future<void> _onScanSuccess(ScanResult result) async {
+  if (!mounted) return;
+
+  // Play success sound/vibration first
+  await _scannerService.playSuccessFeedback();
+
+  // Pause camera
+  await _cameraController.stop();
+
+  // Show attendance type selection sheet
+  final selectedType = await AttendanceTypeSheet.show(
+    context,
+    labourName: result.labourName ?? 'Labour',
+  );
+
+  if (!mounted) return;
+
+  if (selectedType == null || selectedType == 'cancel') {
+    // User cancelled — resume camera
+    await _cameraController.start();
+    setState(() => _isProcessing = false);
+    return;
+  }
+
+  // Now process with selected type
+  final finalResult = await _scannerService.processScanWithType(
+    rawToken:  result.rawToken ?? '',
+    status:    selectedType,  // 'present' or 'half'
+  );
+
+  setState(() {
+    _lastResult = finalResult;
+    _isProcessing = false;
+  });
+
+  _loadTodayScans();
+  _loadPendingCount();
+
+  // Show result for 2 seconds then resume
+  await Future.delayed(const Duration(seconds: 2));
+  if (mounted) {
+    setState(() => _lastResult = null);
+    await _cameraController.start();
+  }
+}
+```
+
+## Step 3 — Update ScannerService.processScan
+
+Add processScanWithType method that accepts status parameter:
+
+```dart
+// Add this method to ScannerService:
+Future<ScanResult> processScanWithType({
+  required String rawToken,
+  required String status, // 'present' | 'half'
+}) async {
+  // Decode token (same validation as before)
+  final decoded = decodeQRToken(rawToken);
+  if (decoded == null) {
+    return ScanResult(
+      success: false,
+      message: 'Invalid QR Code',
+      type: ScanResultType.invalid,
+    );
+  }
+  if (decoded['error'] == 'expired') {
+    return ScanResult(
+      success: false,
+      message: 'QR Code expired. Ask labour to refresh.',
+      type: ScanResultType.expired,
+    );
+  }
+
+  final labourId = decoded['labourId']!;
+
+  // Check duplicate
+  final alreadyMarked = await isAlreadyMarkedToday(labourId);
+  if (alreadyMarked) {
+    final name = await _getLabourName(labourId);
+    return ScanResult(
+      success: false,
+      message: '$name already marked today',
+      type: ScanResultType.duplicate,
+      labourName: name,
+    );
+  }
+
+  // Check connectivity and process
+  final connectivity = await Connectivity().checkConnectivity();
+  final isOnline = !connectivity.contains(ConnectivityResult.none);
+
+  if (isOnline) {
+    return await _markViaCloudFunction(labourId, rawToken, status);
+  } else {
+    return await _markOffline(labourId, status);
+  }
+}
+
+// Update _markOffline to accept status:
+Future<ScanResult> _markOffline(String labourId, String status) async {
+  final today = _todayString();
+  final name  = await _getLabourName(labourId);
+
+  _saveToHive(labourId, status, isSynced: false);
+
+  final statusLabel = status == 'half' ? 'Half Day' : 'Present';
+  return ScanResult(
+    success: true,
+    message: '$name marked $statusLabel (offline). Will sync later.',
+    type: ScanResultType.offline,
+    labourName: name,
+  );
+}
+
+// Update _markViaCloudFunction to accept status:
+Future<ScanResult> _markViaCloudFunction(
+    String labourId, String rawToken, String status) async {
+  try {
+    final callable =
+        FirebaseFunctions.instance.httpsCallable('validateAndMarkAttendance');
+    final result = await callable.call({
+      'token':        rawToken,
+      'supervisorId': supervisorId,
+      'date':         _todayString(),
+      'status':       status, // pass selected status
+    });
+
+    final data = result.data as Map<String, dynamic>;
+    if (data['success'] == true) {
+      final name        = data['labourName'] ?? 'Labour';
+      final statusLabel = status == 'half' ? 'Half Day' : 'Present';
+      _saveToHive(labourId, status, isSynced: true);
+      return ScanResult(
+        success: true,
+        message: '$name marked $statusLabel ✓',
+        type: ScanResultType.success,
+        labourName: name,
+      );
+    } else {
+      return ScanResult(
+        success: false,
+        message: data['message'] ?? 'Validation failed',
+        type: ScanResultType.invalid,
+      );
+    }
+  } on FirebaseFunctionsException catch (e) {
+    if (e.code == 'already-exists') {
+      return ScanResult(
+        success: false,
+        message: 'Already marked today',
+        type: ScanResultType.duplicate,
+      );
+    }
+    return await _markOffline(labourId, status);
+  }
+}
+```
+
+## Step 4 — Update Cloud Function to accept status
+
+In functions/index.js update validateAndMarkAttendance:
+
+```javascript
+// Find this line in the function:
+status: status || 'present',
+
+// It already handles status parameter.
+// Make sure it is passed correctly:
+const { token, supervisorId, date, status, offlineSync } = data;
+
+// And used here:
+const attendanceRecord = {
+  // ...
+  status: status || 'present',  // uses whatever status was sent
+  // ...
+};
+```
+
+=============================================================
+FEATURE 2 — OVERTIME HANDLING COMPLETE SOLUTION
+=============================================================
+
+## Overview
+Overtime is entered manually by supervisor in Attendance screen.
+QR scan marks present/half - overtime added separately at end of day.
+Overtime pay = overtimeHours × overtimeWagePerHour (per labour).
+
+## Step 5 — Overtime in Attendance Screen (already exists, improve it)
+
+The OT field already exists in attendance_screen.dart.
+Make these improvements:
+
+```dart
+// Improve the _OvertimeField widget:
+// Add a quick-select row above the text input for common OT hours
+
+class _OvertimeField extends StatefulWidget {
+  // ... existing code ...
+}
+
+class _OvertimeFieldState extends State<_OvertimeField> {
+  // ... existing fields ...
+
+  // Quick select common overtime hours
+  static const _quickOptions = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
+
+  @override
+  Widget build(BuildContext context) {
+    final hours = double.tryParse(_controller.text.trim()) ?? 0;
+    final pay   = hours * widget.overtimeRate;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row
+        Row(children: [
+          const Icon(Icons.bolt_outlined,
+            size: 16, color: Colors.orange),
+          const SizedBox(width: 6),
+          const Text('Overtime Hours',
+            style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          // Pay preview
+          if (widget.overtimeRate > 0 && hours > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '+ ₹${pay.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700,
+                  color: Colors.orange),
+              ),
+            )
+          else if (widget.overtimeRate == 0)
+            const Text('Set OT rate in admin panel',
+              style: TextStyle(fontSize: 10, color: Colors.grey)),
+        ]),
+
+        const SizedBox(height: 6),
+
+        // Quick select chips
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              // Zero chip
+              GestureDetector(
+                onTap: () {
+                  _controller.text = '';
+                  _lastSent = 0;
+                  widget.onChanged(0);
+                  setState(() {});
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: hours == 0
+                        ? Colors.grey.shade700
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('0',
+                    style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600,
+                      color: hours == 0
+                          ? Colors.white : Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              ),
+              // Quick option chips
+              ..._quickOptions.map((h) {
+                final selected = (hours - h).abs() < 0.01;
+                return GestureDetector(
+                  onTap: () {
+                    final label = h == h.roundToDouble()
+                        ? h.toStringAsFixed(0)
+                        : h.toStringAsFixed(1);
+                    _controller.text = label;
+                    _lastSent = h;
+                    widget.onChanged(h);
+                    setState(() {});
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.orange : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      '${h == h.roundToDouble() ? h.toStringAsFixed(0) : h.toStringAsFixed(1)}h',
+                      style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600,
+                        color: selected
+                            ? Colors.white : Colors.orange,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 6),
+
+        // Manual input row (existing)
+        Row(children: [
+          SizedBox(
+            width: 70, height: 36,
+            child: TextField(
+              controller:      _controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(
+                  RegExp(r'^\d{0,2}(\.\d{0,1})?')),
+              ],
+              textAlign:  TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: '0',
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8, vertical: 6),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              ),
+              onChanged:   _scheduleSend,
+              onSubmitted: (v) {
+                _debounce?.cancel();
+                final parsed = double.tryParse(v.trim()) ?? 0;
+                _lastSent = parsed;
+                widget.onChanged(parsed);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text('hours',
+            style: TextStyle(fontSize: 12, color: Colors.grey)),
+        ]),
+      ],
+    );
+  }
+}
+```
+
+## Step 6 — Overtime Summary in Attendance Screen Header
+
+Add daily OT summary below the present/absent/half summary chips:
+
+```dart
+// After the 3 summary chips row, add:
+
+// Only show if any overtime exists
+if (data.totalOvertimeToday > 0)
+  Container(
+    margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    padding: const EdgeInsets.symmetric(
+      horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(
+      color: Colors.orange.shade50,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: Colors.orange.withValues(alpha: 0.2)),
+    ),
+    child: Row(children: [
+      const Icon(Icons.bolt, size: 16, color: Colors.orange),
+      const SizedBox(width: 8),
+      Text(
+        'Today OT: ${data.totalOvertimeToday.toStringAsFixed(1)} hrs',
+        style: const TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w600,
+          color: Colors.orange),
+      ),
+      const Spacer(),
+      Text(
+        '₹${data.totalOvertimePayToday.toStringAsFixed(0)} extra',
+        style: const TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w700,
+          color: Colors.orange),
+      ),
+    ]),
+  ),
+```
+
+Add these computed getters to AttendanceProvider:
+```dart
+double get totalOvertimeToday {
+  return overtimeMap.values.fold(0.0, (s, h) => s + h);
+}
+
+double get totalOvertimePayToday {
+  double total = 0;
+  for (var entry in overtimeMap.entries) {
+    final labour = labours.firstWhere(
+      (l) => l.id == entry.key,
+      orElse: () => Labour.empty(),
+    );
+    total += entry.value * labour.overtimeWagePerHour;
+  }
+  return total;
+}
+```
+
+## Step 7 — Overtime in Reports (salary calculation fix)
+
+In ReportsScreen and LabourReportTab, fix salary to include OT:
+
+```dart
+// Salary calculation must be:
+double calculateMonthlySalary({
+  required int daysPresent,
+  required int daysHalf,
+  required double totalOTHours,
+  required double dailyWage,
+  required double otRate,
+}) {
+  // Regular pay
+  final workedDays = daysPresent + (daysHalf * 0.5);
+  final regularPay = workedDays * dailyWage;
+
+  // Overtime pay
+  final overtimePay = totalOTHours * otRate;
+
+  return regularPay + overtimePay;
+}
+
+// In monthly report query, sum overtimeHours:
+double totalOTHours = 0;
+for (var doc in attSnap.docs) {
+  final ot = (doc.data()['overtimeHours'] as num?)
+      ?.toDouble() ?? 0;
+  totalOTHours += ot;
+}
+
+final grossSalary = calculateMonthlySalary(
+  daysPresent: daysPresent,
+  daysHalf:    daysHalf,
+  totalOTHours: totalOTHours,
+  dailyWage:   labour.dailyWage,
+  otRate:      labour.overtimeWagePerHour,
+);
+```
+
+## Step 8 — Overtime in Dashboard Wage Snapshot
+
+Fix wage snapshot to include OT pay:
+
+```dart
+// In DashboardProvider.loadDashboard() 
+// when calculating todayWages:
+
+for (var entry in attMap.entries) {
+  final lab  = labourMap[entry.key];
+  if (lab == null) continue;
+
+  final wage = (lab['dailyWage'] as num?)?.toDouble() ?? 0;
+  final otRate = (lab['overtimeWagePerHour'] as num?)
+      ?.toDouble() ?? 0;
+
+  // Get OT hours from attendance doc
+  final attDoc = a1.docs.firstWhere(
+    (d) => d.data()['labourId'] == entry.key,
+    orElse: () => throw Exception(),
+  );
+  final otHours = (attDoc.data()['overtimeHours'] as num?)
+      ?.toDouble() ?? 0;
+
+  if (entry.value == 'present') {
+    todayW += wage + (otHours * otRate);
+  } else if (entry.value == 'half') {
+    todayW += (wage / 2) + (otHours * otRate);
+  }
+}
+```
+
+## Step 9 — Labour's own overtime visibility
+
+In LabourDashboardTab and LabourReportTab, show OT clearly:
+
+```dart
+// In labour dashboard, add OT row if overtimeRate > 0:
+if (_totalOTHours > 0 || labourData['overtimeWagePerHour'] > 0) ...[
+  const SizedBox(height: 10),
+  Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.orange.shade50,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.orange.shade200),
+    ),
+    child: Column(children: [
+      Row(children: [
+        const Icon(Icons.bolt, color: Colors.orange, size: 18),
+        const SizedBox(width: 8),
+        const Text('Overtime This Month',
+          style: TextStyle(fontWeight: FontWeight.w600)),
+        const Spacer(),
+        Text('${_totalOTHours.toStringAsFixed(1)} hrs',
+          style: const TextStyle(
+            fontWeight: FontWeight.w700, color: Colors.orange)),
+      ]),
+      const SizedBox(height: 6),
+      Row(children: [
+        const SizedBox(width: 26),
+        Text('₹${otRate}/hr rate',
+          style: const TextStyle(
+            fontSize: 12, color: Colors.grey)),
+        const Spacer(),
+        Text('+ ₹${(_totalOTHours * otRate).toStringAsFixed(0)}',
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            color: Colors.orange, fontSize: 15)),
+      ]),
+    ]),
+  ),
+],
+```
+
+=============================================================
+IMPLEMENTATION ORDER
+=============================================================
+
+1. Create AttendanceTypeSheet widget (new file)
+2. Update ScannerService — add processScanWithType()
+3. Update ScannerScreen — show sheet after successful scan
+4. Update Cloud Function — verify status parameter is passed
+5. Improve _OvertimeField — add quick-select chips
+6. Add OT summary row in AttendanceScreen header
+7. Add totalOvertimeToday getter to AttendanceProvider
+8. Fix salary calculation in Reports to include OT
+9. Fix Dashboard wage snapshot to include OT
+10. Add OT section in Labour dashboard and report tabs
+
+=============================================================
+KEY RULES
+=============================================================
+
+- QR scan shows AttendanceTypeSheet ONLY on SUCCESS
+- QR scan auto-confirms Full Day after 3 seconds
+- Half Day via QR is same as manual half day
+- Overtime is ALWAYS entered manually by supervisor
+- Overtime pay formula: hours × overtimeWagePerHour
+- Half day counts as 0.5 for salary calculation
+- All calculations must match between:
+  Dashboard wages, Attendance OT summary,
+  Supervisor Reports, Labour own Report tab
+- Show OT in reports only if overtimeWagePerHour > 0
+- If overtimeWagePerHour is 0 show "Set OT rate in admin"
+
+Show complete fixed file for every changed file.
+Test QR scan flow completely before moving to overtime.

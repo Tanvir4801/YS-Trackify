@@ -13,7 +13,6 @@ import '../main.dart';
 
 import 'attendance_screen.dart';
 import 'dashboard_screen.dart';
-import 'labour_screen.dart';
 import 'reports_screen.dart';
 import 'scanner/scanner_screen.dart';
 
@@ -31,7 +30,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   final List<Widget> _screens = const [
     DashboardScreen(),
-    LabourScreen(),
     AttendanceScreen(),
     ReportsScreen(),
     ScannerScreen(),
@@ -77,7 +75,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final titles = [
       context.tr('supervisorDashboard'),
-      context.tr('labourManagement'),
       context.tr('attendance'),
       context.tr('reports'),
       'Scan Attendance',
@@ -138,7 +135,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onTap: (i) => setState(() => _currentIndex = i),
         labels: [
           context.tr('dashboard'),
-          context.tr('labour'),
           context.tr('attendance'),
           context.tr('reports'),
           'Scanner',
@@ -195,7 +191,6 @@ class _PremiumNavBar extends StatelessWidget {
 
   static const _icons = [
     Icons.dashboard_outlined,
-    Icons.badge_outlined,
     Icons.fact_check_outlined,
     Icons.bar_chart_outlined,
     Icons.qr_code_scanner_outlined,
@@ -203,7 +198,6 @@ class _PremiumNavBar extends StatelessWidget {
 
   static const _activeIcons = [
     Icons.dashboard_rounded,
-    Icons.badge_rounded,
     Icons.fact_check_rounded,
     Icons.bar_chart_rounded,
     Icons.qr_code_scanner_rounded,
@@ -228,7 +222,7 @@ class _PremiumNavBar extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Row(
-            children: List.generate(5, (i) => _NavItem(
+            children: List.generate(4, (i) => _NavItem(
               index: i,
               currentIndex: currentIndex,
               icon: _icons[i],

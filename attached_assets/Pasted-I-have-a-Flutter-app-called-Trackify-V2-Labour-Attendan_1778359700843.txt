@@ -1,0 +1,1209 @@
+I have a Flutter app called Trackify V2 — Labour Attendance 
+Management System for construction contractors (SaaS).
+
+This is a PRODUCTION LEVEL upgrade. Restructure the entire 
+app flow, fix all bugs, and polish the UI.
+
+DO NOT change Firebase logic that is already working.
+DO NOT change authentication flow.
+
+=============================================================
+PART 1 — APP FLOW RESTRUCTURE
+=============================================================
+
+## SUPERVISOR ROLE — 4 tabs only
+
+Remove the Labour Management tab completely from supervisor 
+bottom navigation. Supervisors do NOT add/edit labours.
+That is done by admin panel (website).
+
+Supervisor bottom nav should be EXACTLY:
+1. Dashboard  (icon: dashboard_rounded)
+2. Attendance (icon: fact_check_rounded)  
+3. Reports    (icon: bar_chart_rounded)
+4. Scanner    (icon: qr_code_scanner_rounded)
+
+Find the supervisor home screen file and update:
+```dart
+// Remove Labour tab entirely
+// Old: Dashboard, Labour, Attendance, Reports, Scanner (5 tabs)
+// New: Dashboard, Attendance, Reports, Scanner (4 tabs)
+
+final _tabs = [
+  const SupervisorDashboardTab(),
+  const AttendanceScreen(),
+  const ReportsScreen(),
+  const ScannerScreen(),
+];
+
+// Bottom nav destinations:
+const destinations = [
+  NavigationDestination(
+    icon: Icon(Icons.dashboard_outlined),
+    selectedIcon: Icon(Icons.dashboard_rounded),
+    label: 'Dashboard',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.fact_check_outlined),
+    selectedIcon: Icon(Icons.fact_check_rounded),
+    label: 'Attendance',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.bar_chart_outlined),
+    selectedIcon: Icon(Icons.bar_chart_rounded),
+    label: 'Reports',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.qr_code_scanner_outlined),
+    selectedIcon: Icon(Icons.qr_code_scanner_rounded),
+    label: 'Scanner',
+  ),
+];
+```
+
+## LABOUR ROLE — 4 tabs, QR first
+
+Labour bottom nav should be EXACTLY:
+1. QR Code   (icon: qr_code_2_rounded) ← FIRST TAB
+2. Dashboard (icon: dashboard_rounded)
+3. Attendance(icon: fact_check_rounded)
+4. Report    (icon: bar_chart_rounded)
+
+Find labour home screen and update:
+```dart
+// QR is first tab — most important for labour
+final _tabs = [
+  const QRScreen(showAppBar: false),
+  const LabourDashboardTab(session: session),
+  const LabourMyAttendanceScreen(
+    labourId: session.labourId,
+    contractorId: session.contractorId,
+  ),
+  const LabourReportTab(session: session),
+];
+
+const destinations = [
+  NavigationDestination(
+    icon: Icon(Icons.qr_code_2_outlined),
+    selectedIcon: Icon(Icons.qr_code_2_rounded),
+    label: 'My QR',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.dashboard_outlined),
+    selectedIcon: Icon(Icons.dashboard_rounded),
+    label: 'Dashboard',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.fact_check_outlined),
+    selectedIcon: Icon(Icons.fact_check_rounded),
+    label: 'Attendance',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.bar_chart_outlined),
+    selectedIcon: Icon(Icons.bar_chart_rounded),
+    label: 'Report',
+  ),
+];
+```
+
+=============================================================
+PART 2 — SUPERVISOR DASHBOARD FIXES
+=============================================================
+
+## Fix 1 — Dynamic contractor name
+
+PROBLEM: Always shows "YS Construction" hardcoded.
+FIX: Load from Firestore after login.
+
+In DashboardProvider add:
+```dart
+String contractorName    = '';
+String contractorTagline = 'From Site to System';
+
+Future<void> _loadContractorName() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+
+  try {
+    // Get user doc to find contractorId
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users').doc(uid).get();
+    
+    final contractorId = 
+        userDoc.data()?['contractorId'] as String? ?? uid;
+
+    // Try contractors collection
+    if (contractorId.isNotEmpty) {
+      final cDoc = await FirebaseFirestore.instance
+          .collection('contractors').doc(contractorId).get();
+      if (cDoc.exists) {
+        contractorName = 
+            cDoc.data()?['name'] as String? ?? 'My Company';
+        notifyListeners();
+        return;
+      }
+    }
+
+    // Fallback: use name from user doc
+    contractorName = 
+        userDoc.data()?['name'] as String? ?? 'My Company';
+    notifyListeners();
+  } catch (e) {
+    contractorName = 'My Company';
+    notifyListeners();
+  }
+}
+```
+
+Call _loadContractorName() inside loadDashboard() at the top.
+
+In dashboard screen widget replace:
+```dart
+// Remove hardcoded:
+Text('YS Construction')
+Text('From Site to System')
+
+// Replace with:
+Text(provider.contractorName.isEmpty
+    ? 'Loading...' : provider.contractorName)
+Text(provider.contractorTagline)
+```
+
+## Fix 2 — Dashboard stats from Firebase
+
+PROBLEM: Total Labour shows 2 but present/absent/half show 0.
+Wage snapshot always shows Rs 0.
+
+FIX: In DashboardProvider.loadDashboard():
+```dart
+Future<void> loadDashboard() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  if (uid.isEmpty) return;
+
+  isLoading = true;
+  notifyListeners();
+
+  // Load contractor name first
+  await _loadContractorName();
+
+  try {
+    final db = FirebaseFirestore.instance;
+    final today = _todayString();
+
+    // ── 1. Total active labours (query both fields) ──
+    final Map<String, Map<String, dynamic>> labourMap = {};
+
+    final l1 = await db.collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true).get();
+    for (var d in l1.docs) labourMap[d.id] = d.data();
+
+    final l2 = await db.collection('labours')
+        .where('contractorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true).get();
+    for (var d in l2.docs) labourMap[d.id] = d.data();
+
+    totalLabours = labourMap.length;
+
+    // ── 2. Today attendance ──
+    final Map<String, String> attMap = {};
+
+    final a1 = await db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isEqualTo: today).get();
+    for (var d in a1.docs) {
+      final lid = d.data()['labourId'] as String? ?? '';
+      final st  = d.data()['status']   as String? ?? '';
+      if (lid.isNotEmpty) attMap[lid] = st;
+    }
+
+    final a2 = await db.collection('attendance')
+        .where('contractorId', isEqualTo: uid)
+        .where('date', isEqualTo: today).get();
+    for (var d in a2.docs) {
+      final lid = d.data()['labourId'] as String? ?? '';
+      final st  = d.data()['status']   as String? ?? '';
+      if (lid.isNotEmpty) attMap[lid] = st;
+    }
+
+    presentToday = attMap.values.where((s) => s=='present').length;
+    absentToday  = attMap.values.where((s) => s=='absent').length;
+    halfToday    = attMap.values.where((s) => s=='half').length;
+
+    // ── 3. Wage calculations ──
+    double todayW = 0, weekW = 0, monthW = 0;
+    final now = DateTime.now();
+
+    // Today wage
+    for (var entry in attMap.entries) {
+      final lab = labourMap[entry.key];
+      if (lab == null) continue;
+      final wage = (lab['dailyWage'] as num?)?.toDouble() ?? 0;
+      final ot   = (lab['overtimeWagePerHour'] as num?)?.toDouble() ?? 0;
+      if (entry.value == 'present') todayW += wage;
+      else if (entry.value == 'half') todayW += wage / 2;
+    }
+    todayWages = todayW;
+
+    // Week wage — last 7 days
+    final weekStart = now.subtract(const Duration(days: 6));
+    final weekSnap = await db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo:
+            '${weekStart.year}-'
+            '${weekStart.month.toString().padLeft(2,'0')}-'
+            '${weekStart.day.toString().padLeft(2,'0')}')
+        .get();
+    for (var d in weekSnap.docs) {
+      final lid  = d.data()['labourId'] as String? ?? '';
+      final st   = d.data()['status']   as String? ?? '';
+      final lab  = labourMap[lid];
+      if (lab == null) continue;
+      final wage = (lab['dailyWage'] as num?)?.toDouble() ?? 0;
+      if (st == 'present') weekW += wage;
+      else if (st == 'half') weekW += wage / 2;
+    }
+    weekWages = weekW;
+
+    // Month wage
+    final monthStart = DateTime(now.year, now.month, 1);
+    final monthSnap = await db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo:
+            '${monthStart.year}-'
+            '${monthStart.month.toString().padLeft(2,'0')}-01')
+        .get();
+    for (var d in monthSnap.docs) {
+      final lid  = d.data()['labourId'] as String? ?? '';
+      final st   = d.data()['status']   as String? ?? '';
+      final lab  = labourMap[lid];
+      if (lab == null) continue;
+      final wage = (lab['dailyWage'] as num?)?.toDouble() ?? 0;
+      if (st == 'present') monthW += wage;
+      else if (st == 'half') monthW += wage / 2;
+    }
+    monthWages = monthW;
+
+    // ── 4. Real-time listener for today ──
+    _startTodayListener(uid);
+
+  } catch (e) {
+    debugPrint('loadDashboard error: $e');
+    error = e.toString();
+  } finally {
+    isLoading = false;
+    notifyListeners();
+  }
+}
+
+StreamSubscription? _todaySub;
+void _startTodayListener(String uid) {
+  _todaySub?.cancel();
+  _todaySub = FirebaseFirestore.instance
+      .collection('attendance')
+      .where('supervisorId', isEqualTo: uid)
+      .where('date', isEqualTo: _todayString())
+      .snapshots()
+      .listen((_) {
+        // Reload stats when attendance changes
+        loadDashboard();
+      });
+}
+
+String _todayString() {
+  final n = DateTime.now();
+  return '${n.year}-'
+      '${n.month.toString().padLeft(2,'0')}-'
+      '${n.day.toString().padLeft(2,'0')}';
+}
+
+@override
+void dispose() {
+  _todaySub?.cancel();
+  super.dispose();
+}
+```
+
+=============================================================
+PART 3 — ATTENDANCE SCREEN FIXES
+=============================================================
+
+## Fix 3 — Attendance labours list empty
+
+PROBLEM: Shows "Add labour first to mark attendance"
+even though labours exist in Firebase.
+
+FIX: In AttendanceProvider.initialize():
+```dart
+Future<void> initialize() async {
+  isLoading = true;
+  error = null;
+  notifyListeners();
+
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  if (uid.isEmpty) {
+    error = 'Not logged in';
+    isLoading = false;
+    notifyListeners();
+    return;
+  }
+
+  // STEP 1: Load labours from BOTH fields
+  await _loadLabours(uid);
+  
+  // STEP 2: Fetch attendance for selected date
+  await _service.fetchAttendanceForDate(selectedDateStr);
+  
+  // STEP 3: Build attendance map from Hive
+  final records = _service.getAttendanceForDate(selectedDateStr);
+  attendanceMap = {
+    for (var r in records)
+      r.labourId: r.status.firestoreValue
+  };
+  overtimeMap = {
+    for (var r in records)
+      r.labourId: r.overtimeHours
+  };
+
+  isLoading = false;
+  notifyListeners();
+}
+
+Future<void> _loadLabours(String uid) async {
+  final db = FirebaseFirestore.instance;
+  final Map<String, Labour> merged = {};
+
+  // Query by supervisorId
+  try {
+    final s = await db.collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true).get();
+    for (var d in s.docs) merged[d.id] = Labour.fromFirestore(d);
+    debugPrint('Attendance labours by supervisorId: ${s.docs.length}');
+  } catch (e) { debugPrint('att/supervisorId error: $e'); }
+
+  // Query by contractorId
+  try {
+    final s = await db.collection('labours')
+        .where('contractorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true).get();
+    for (var d in s.docs) merged[d.id] = Labour.fromFirestore(d);
+    debugPrint('Attendance labours by contractorId: ${s.docs.length}');
+  } catch (e) { debugPrint('att/contractorId error: $e'); }
+
+  labours = merged.values.toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+
+  debugPrint('Total attendance labours: ${labours.length}');
+}
+```
+
+=============================================================
+PART 4 — SCANNER FIXES
+=============================================================
+
+## Fix 4 — Show labour name not ID in scan list
+
+PROBLEM: Scan list shows "HdEwrD7p8VKUOB7S9dUv" (labourId).
+FIX: Look up name from Hive or Firestore.
+
+In ScannerScreen add this method:
+```dart
+Future<String> _getLabourName(String labourId) async {
+  if (labourId.isEmpty) return 'Unknown';
+
+  // Check Hive first (fast, offline)
+  try {
+    final box = Hive.box<Labour>(Labour.boxName);
+    final labour = box.get(labourId);
+    if (labour != null && labour.name.isNotEmpty) {
+      return labour.name;
+    }
+  } catch (_) {}
+
+  // Fallback: Firestore
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('labours').doc(labourId).get();
+    if (doc.exists) {
+      return doc.data()?['name'] as String? ?? labourId;
+    }
+  } catch (_) {}
+
+  return labourId;
+}
+```
+
+In scan list item replace title widget:
+```dart
+// OLD:
+title: Text(scan['labourId'] ?? 'Unknown')
+
+// NEW:
+title: FutureBuilder<String>(
+  future: _getLabourName(scan['labourId'] ?? ''),
+  builder: (ctx, snap) {
+    return Text(
+      snap.data ?? '...',
+      style: const TextStyle(
+        fontSize: 13, fontWeight: FontWeight.w600),
+    );
+  },
+),
+```
+
+## Fix 5 — Sync pending scans
+
+PROBLEM: Shows "5 pending sync" but does not sync.
+
+FIX: Replace syncPendingScans() in ScannerService:
+```dart
+Future<int> syncPendingScans() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  if (uid.isEmpty) return 0;
+
+  final contractorId = 
+      SessionService.instance.contractorId ?? uid;
+
+  Box? box;
+  try {
+    box = Hive.box('pending_attendance');
+  } catch (_) {
+    box = await Hive.openBox('pending_attendance');
+  }
+
+  int synced = 0;
+  final db = FirebaseFirestore.instance;
+
+  for (final key in box.keys.toList()) {
+    try {
+      final raw = box.get(key);
+      if (raw == null) continue;
+      final record = Map<String, dynamic>.from(raw as Map);
+
+      if (record['isSynced'] == true) continue;
+
+      final labourId = record['labourId'] as String? ?? '';
+      final date     = record['date']     as String? ?? '';
+      final status   = record['status']   as String? ?? 'present';
+
+      if (labourId.isEmpty || date.isEmpty) {
+        await box.put(key, {...record, 'isSynced': true});
+        continue;
+      }
+
+      // Check duplicate
+      final existing = await db
+          .collection('attendance')
+          .where('labourId',     isEqualTo: labourId)
+          .where('supervisorId', isEqualTo: uid)
+          .where('date',         isEqualTo: date)
+          .limit(1).get();
+
+      if (existing.docs.isNotEmpty) {
+        // Already exists — mark synced
+        await box.put(key, {...record, 'isSynced': true});
+        synced++;
+        continue;
+      }
+
+      // Write to Firestore
+      final docRef = await db.collection('attendance').add({
+        'labourId':      labourId,
+        'supervisorId':  uid,
+        'contractorId':  contractorId,
+        'date':          date,
+        'status':        status,
+        'overtimeHours': record['overtimeHours'] ?? 0,
+        'markedVia':     'offline_qr',
+        'isSynced':      true,
+        'syncedAt':      FieldValue.serverTimestamp(),
+      });
+      await docRef.update({'id': docRef.id});
+
+      await box.put(key, {
+        ...record,
+        'isSynced':    true,
+        'firestoreId': docRef.id,
+      });
+      synced++;
+      debugPrint('Synced: $labourId → $status on $date');
+
+    } catch (e) {
+      debugPrint('Sync error for key $key: $e');
+    }
+  }
+
+  debugPrint('syncPendingScans: $synced synced');
+  return synced;
+}
+
+int getPendingCount() {
+  try {
+    final box = Hive.box('pending_attendance');
+    return box.values.where((v) {
+      try {
+        return (v as Map)['isSynced'] != true;
+      } catch (_) { return false; }
+    }).length;
+  } catch (_) { return 0; }
+}
+```
+
+=============================================================
+PART 5 — LABOUR REPORT TAB (NEW SCREEN)
+=============================================================
+
+Create lib/screens/labour/labour_report_tab.dart:
+
+```dart
+class LabourReportTab extends StatefulWidget {
+  const LabourReportTab({super.key, required this.session});
+  final dynamic session; // your _LabourSession type
+
+  @override
+  State<LabourReportTab> createState() => _LabourReportTabState();
+}
+
+class _LabourReportTabState extends State<LabourReportTab> {
+  final _db = FirebaseFirestore.instance;
+  bool _loading = true;
+  
+  // Selected month/year
+  int _month = DateTime.now().month;
+  int _year  = DateTime.now().year;
+  
+  // Report data
+  int    _daysPresent = 0;
+  int    _daysHalf    = 0;
+  int    _daysAbsent  = 0;
+  double _totalOTHours = 0;
+  double _dailyWage    = 0;
+  double _otRate       = 0;
+  double _grossSalary  = 0;
+  double _totalAdvances = 0;
+  double _netPayable   = 0;
+  List<Map<String, dynamic>> _paymentHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReport();
+  }
+
+  Future<void> _loadReport() async {
+    setState(() => _loading = true);
+    
+    try {
+      final monthStr = '$_year-${_month.toString().padLeft(2,'0')}';
+      
+      // Get labour profile for wage info
+      final labourDoc = await _db
+          .collection('labours')
+          .doc(widget.session.labourId)
+          .get();
+      
+      if (labourDoc.exists) {
+        _dailyWage = (labourDoc.data()?['dailyWage'] as num?)
+            ?.toDouble() ?? 0;
+        _otRate = (labourDoc.data()?['overtimeWagePerHour'] as num?)
+            ?.toDouble() ?? 0;
+      }
+
+      // Get attendance for this month
+      final attSnap = await _db
+          .collection('attendance')
+          .where('labourId', isEqualTo: widget.session.labourId)
+          .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+          .where('date', isLessThanOrEqualTo:    '$monthStr-31')
+          .get();
+
+      _daysPresent = 0; _daysHalf = 0; 
+      _daysAbsent  = 0; _totalOTHours = 0;
+
+      for (var doc in attSnap.docs) {
+        final status = doc.data()['status'] as String? ?? '';
+        final ot = (doc.data()['overtimeHours'] as num?)
+            ?.toDouble() ?? 0;
+        if (status == 'present') _daysPresent++;
+        else if (status == 'half') _daysHalf++;
+        else if (status == 'absent') _daysAbsent++;
+        _totalOTHours += ot;
+      }
+
+      final workedDays = _daysPresent + (_daysHalf * 0.5);
+      _grossSalary = (workedDays * _dailyWage) 
+                   + (_totalOTHours * _otRate);
+
+      // Get advances this month
+      final startDate = DateTime(_year, _month, 1);
+      final endDate   = DateTime(_year, _month + 1, 0, 23, 59, 59);
+      
+      final paySnap = await _db
+          .collection('payments')
+          .where('labourId', isEqualTo: widget.session.labourId)
+          .where('date', isGreaterThanOrEqualTo: 
+              Timestamp.fromDate(startDate))
+          .where('date', isLessThanOrEqualTo: 
+              Timestamp.fromDate(endDate))
+          .orderBy('date', descending: true)
+          .get();
+
+      _totalAdvances = 0;
+      _paymentHistory = [];
+      
+      for (var doc in paySnap.docs) {
+        final data   = doc.data();
+        final type   = data['type'] as String? ?? '';
+        final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+        if (type == 'advance') _totalAdvances += amount;
+        _paymentHistory.add({...data, 'id': doc.id});
+      }
+
+      _netPayable = _grossSalary - _totalAdvances;
+
+    } catch (e) {
+      debugPrint('LabourReportTab error: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Month selector
+    final monthNames = ['', 'Jan','Feb','Mar','Apr','May','Jun',
+        'Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    return _loading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _loadReport,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+
+                // Month selector
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: () {
+                        setState(() {
+                          if (_month == 1) { _month = 12; _year--; }
+                          else _month--;
+                        });
+                        _loadReport();
+                      },
+                    ),
+                    Text(
+                      '${monthNames[_month]} $_year',
+                      style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () {
+                        final now = DateTime.now();
+                        if (_year < now.year || 
+                            (_year == now.year && _month < now.month)) {
+                          setState(() {
+                            if (_month == 12) { _month = 1; _year++; }
+                            else _month++;
+                          });
+                          _loadReport();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Attendance summary
+                _sectionCard('Attendance Summary', [
+                  _reportRow('Days Present', '$_daysPresent days',
+                      Icons.check_circle_outline, Colors.green),
+                  _reportRow('Half Days', '$_daysHalf days',
+                      Icons.timelapse_outlined, Colors.orange),
+                  _reportRow('Days Absent', '$_daysAbsent days',
+                      Icons.cancel_outlined, Colors.red),
+                  if (_totalOTHours > 0)
+                    _reportRow('Overtime Hours',
+                        '${_totalOTHours.toStringAsFixed(1)} hrs',
+                        Icons.bolt_outlined, Colors.amber),
+                ]),
+
+                const SizedBox(height: 12),
+
+                // Salary summary
+                _sectionCard('Salary Summary', [
+                  _reportRow('Daily Wage',
+                      '₹${_dailyWage.toStringAsFixed(0)}',
+                      Icons.currency_rupee, Colors.blue),
+                  _reportRow('Gross Salary',
+                      '₹${_grossSalary.toStringAsFixed(0)}',
+                      Icons.account_balance_wallet_outlined,
+                      Colors.teal),
+                  _reportRow('Advances Taken',
+                      '₹${_totalAdvances.toStringAsFixed(0)}',
+                      Icons.arrow_upward_outlined, Colors.orange),
+                  _netRow(),
+                ]),
+
+                const SizedBox(height: 12),
+
+                // Payment history
+                if (_paymentHistory.isNotEmpty) ...[
+                  const Text('Payment History',
+                    style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  ..._paymentHistory.map((p) => _paymentItem(p)),
+                ],
+              ],
+            ),
+          );
+  }
+
+  Widget _sectionCard(String title, List<Widget> rows) =>
+    Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16,14,16,8),
+            child: Text(title, style: const TextStyle(
+              fontSize: 13, fontWeight: FontWeight.w700,
+              color: Colors.grey)),
+          ),
+          ...rows,
+        ],
+      ),
+    );
+
+  Widget _reportRow(String label, String value,
+      IconData icon, Color color) =>
+    Padding(
+      padding: const EdgeInsets.fromLTRB(16,10,16,10),
+      child: Row(children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Text(label, style: const TextStyle(fontSize: 13)),
+        const Spacer(),
+        Text(value, style: const TextStyle(
+          fontSize: 13, fontWeight: FontWeight.w700)),
+      ]),
+    );
+
+  Widget _netRow() => Container(
+    margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: _netPayable >= 0
+          ? Colors.green.shade50 : Colors.red.shade50,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(children: [
+      Icon(Icons.account_balance_outlined,
+        color: _netPayable >= 0 ? Colors.green : Colors.red),
+      const SizedBox(width: 10),
+      const Text('Net Payable',
+        style: TextStyle(fontWeight: FontWeight.w600)),
+      const Spacer(),
+      Text('₹${_netPayable.toStringAsFixed(0)}',
+        style: TextStyle(
+          fontSize: 16, fontWeight: FontWeight.w800,
+          color: _netPayable >= 0 ? Colors.green : Colors.red,
+        ),
+      ),
+    ]),
+  );
+
+  Widget _paymentItem(Map<String, dynamic> p) {
+    final type   = p['type'] as String? ?? '';
+    final amount = (p['amount'] as num?)?.toDouble() ?? 0;
+    final date   = (p['date'] as Timestamp?)?.toDate();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(Icons.currency_rupee,
+            size: 16, color: Colors.orange),
+        ),
+        const SizedBox(width: 10),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(type.replaceAll('_', ' ').toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w600,
+              color: Colors.grey)),
+          if (date != null)
+            Text(
+              '${date.day}/${date.month}/${date.year}',
+              style: const TextStyle(fontSize: 12)),
+        ]),
+        const Spacer(),
+        Text('₹${amount.toStringAsFixed(0)}',
+          style: const TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
+}
+```
+
+=============================================================
+PART 6 — QR SCREEN IMPROVEMENTS
+=============================================================
+
+Find lib/screens/qr/qr_screen.dart and improve:
+
+```dart
+// Make QR screen more prominent when it is first tab
+// Add greeting at top
+
+// At top of QR screen add:
+Column(
+  children: [
+    // Greeting card
+    Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1B8B6E), Color(0xFF26C49A)]),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(children: [
+        CircleAvatar(
+          backgroundColor: Colors.white.withValues(alpha: 0.2),
+          child: Text(
+            labourName.isNotEmpty
+                ? labourName[0].toUpperCase() : 'L',
+            style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Hello, $labourName',
+            style: const TextStyle(
+              color: Colors.white, fontSize: 16,
+              fontWeight: FontWeight.w700)),
+          const Text('Show QR to supervisor',
+            style: TextStyle(
+              color: Colors.white70, fontSize: 12)),
+        ]),
+      ]),
+    ),
+
+    // QR code below
+    // ... existing QR code widget ...
+  ],
+),
+```
+
+=============================================================
+PART 7 — REPORTS SCREEN FOR SUPERVISOR
+=============================================================
+
+Improve existing supervisor ReportsScreen:
+
+Add month navigator at top:
+```dart
+// Month/Year navigation bar
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    IconButton(
+      icon: const Icon(Icons.chevron_left),
+      onPressed: () => provider.previousMonth(),
+    ),
+    Text(
+      provider.selectedMonthLabel, // "May 2026"
+      style: const TextStyle(
+        fontSize: 16, fontWeight: FontWeight.w700),
+    ),
+    IconButton(
+      icon: const Icon(Icons.chevron_right),
+      onPressed: () => provider.nextMonth(),
+    ),
+  ],
+),
+```
+
+Summary cards row:
+```dart
+Row(children: [
+  _summaryCard('Total Days', 
+    '${provider.totalWorkingDays}', Colors.blue),
+  const SizedBox(width: 8),
+  _summaryCard('Total Wage', 
+    '₹${provider.totalMonthWage.toStringAsFixed(0)}',
+    Colors.green),
+  const SizedBox(width: 8),
+  _summaryCard('Advances', 
+    '₹${provider.totalAdvances.toStringAsFixed(0)}',
+    Colors.orange),
+]),
+```
+
+Per-labour report table:
+```dart
+// Each labour row showing month summary
+ListView.builder(
+  itemBuilder: (ctx, i) {
+    final report = provider.labourReports[i];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(children: [
+        Row(children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: const Color(0xFF1B8B6E),
+            child: Text(
+              report.labourName[0].toUpperCase(),
+              style: const TextStyle(color: Colors.white)),
+          ),
+          const SizedBox(width: 10),
+          Text(report.labourName,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Text('₹${report.netPayable.toStringAsFixed(0)}',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1B8B6E),
+              fontSize: 15)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          _miniStat('P', report.daysPresent, Colors.green),
+          const SizedBox(width: 6),
+          _miniStat('H', report.daysHalf, Colors.orange),
+          const SizedBox(width: 6),
+          _miniStat('A', report.daysAbsent, Colors.red),
+          const Spacer(),
+          Text('Adv: ₹${report.advances.toStringAsFixed(0)}',
+            style: const TextStyle(
+              fontSize: 11, color: Colors.grey)),
+        ]),
+      ]),
+    );
+  },
+),
+
+Widget _miniStat(String label, int count, Color color) =>
+  Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text('$label: $count',
+      style: TextStyle(
+        fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+  );
+```
+
+=============================================================
+PART 8 — GENERAL POLISH
+=============================================================
+
+## AppBar improvements everywhere
+
+```dart
+// Standard AppBar for supervisor screens
+AppBar(
+  title: Text(title,
+    style: const TextStyle(
+      fontSize: 17, fontWeight: FontWeight.w700)),
+  backgroundColor: Colors.white,
+  foregroundColor: const Color(0xFF0F172A),
+  elevation: 0,
+  surfaceTintColor: Colors.transparent,
+  actions: [
+    // Sync status indicator
+    StreamBuilder<ConnectivityResult>(
+      stream: Connectivity().onConnectivityChanged
+          .map((r) => r.first),
+      builder: (ctx, snap) {
+        final online = snap.data != ConnectivityResult.none;
+        return Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: Icon(
+            online ? Icons.cloud_done_outlined
+                   : Icons.cloud_off_outlined,
+            size: 20,
+            color: online ? Colors.green : Colors.orange,
+          ),
+        );
+      },
+    ),
+    // Logout
+    IconButton(
+      icon: const Icon(Icons.logout_outlined, size: 20),
+      onPressed: onLogout,
+    ),
+  ],
+),
+```
+
+## Pull to refresh on all screens
+```dart
+// Wrap all ListView with RefreshIndicator
+RefreshIndicator(
+  color: const Color(0xFF1B8B6E),
+  onRefresh: () async {
+    await provider.initialize();
+  },
+  child: ListView.builder(...),
+),
+```
+
+## Loading states
+```dart
+// When loading replace list with shimmer skeleton
+if (provider.isLoading)
+  Column(
+    children: List.generate(4, (_) => Container(
+      height: 80,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+      ),
+    )),
+  )
+else
+  // actual list
+```
+
+## Empty states
+```dart
+// When no data instead of plain text
+Center(
+  child: Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 72, height: 72,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8F5F1),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.people_outline,
+          size: 32, color: Color(0xFF1B8B6E)),
+      ),
+      const SizedBox(height: 16),
+      const Text('No labours found',
+        style: TextStyle(
+          fontSize: 15, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 6),
+      const Text('Labours are managed by admin',
+        style: TextStyle(color: Colors.grey, fontSize: 13)),
+    ],
+  ),
+),
+```
+
+## Snackbar style
+```dart
+// Replace all ScaffoldMessenger.showSnackBar with:
+void showSuccess(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Row(children: [
+        const Icon(Icons.check_circle, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
+        Text(message),
+      ]),
+      backgroundColor: const Color(0xFF1B8B6E),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(16),
+      duration: const Duration(seconds: 2),
+    ),
+  );
+}
+
+void showError(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Row(children: [
+        const Icon(Icons.error_outline, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
+        Expanded(child: Text(message)),
+      ]),
+      backgroundColor: Colors.red.shade600,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(16),
+    ),
+  );
+}
+```
+
+=============================================================
+IMPLEMENTATION ORDER — follow exactly
+=============================================================
+
+1. Supervisor home — remove Labour tab, keep 4 tabs
+2. Labour home — reorder tabs, QR first
+3. DashboardProvider — fix contractor name + real stats
+4. AttendanceProvider — fix labours loading
+5. ScannerService — fix sync + show names
+6. Create LabourReportTab new screen
+7. Improve QR screen greeting
+8. Improve Reports screen for supervisor
+9. Apply AppBar improvements everywhere
+10. Add loading states and empty states
+11. Standardize snackbar style
+
+=============================================================
+VERIFICATION AFTER EACH CHANGE
+=============================================================
+
+After Step 1-2: Run app → check both supervisor and 
+labour see correct 4 tabs in correct order
+
+After Step 3: Dashboard shows correct contractor name,
+today's present/absent counts update when attendance marked
+
+After Step 4: Attendance screen shows all labours list,
+not "Add labour first" message
+
+After Step 5: Scanner sync button works, 
+scan list shows "Ram" not "HdEwrD7p8VK..."
+
+After Step 6: Labour Report tab shows monthly summary
+with correct salary calculation
+
+Show complete file for each changed screen.
+Test after every change before moving to next.

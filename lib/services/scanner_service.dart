@@ -123,6 +123,122 @@ class ScannerService {
     }
   }
 
+  // ---- QR Pre-validation (decode only, no write) ----------------------------
+
+  Future<QRPrecheck> precheckQR(String rawToken) async {
+    final json = decodeJsonQr(rawToken);
+    if (json != null) {
+      final err = json['error'] as String?;
+      if (err == 'expired') {
+        return QRPrecheck.invalid(
+            'QR Code Expired. Ask labour to refresh.',
+            ScanResultType.expired);
+      }
+      if (err == 'invalid') {
+        return QRPrecheck.invalid('Invalid QR Code', ScanResultType.invalid);
+      }
+      if (err == 'wrong_contractor') {
+        return QRPrecheck.invalid(
+            'This labour belongs to a different contractor',
+            ScanResultType.invalid);
+      }
+      final labourId = json['labourId'] as String;
+      final labourName = json['labourName'] as String? ?? 'Labour';
+      final alreadyMarked = await isAlreadyMarkedToday(labourId);
+      if (alreadyMarked) {
+        return QRPrecheck.duplicate(labourId: labourId, labourName: labourName);
+      }
+      return QRPrecheck.valid(labourId: labourId, labourName: labourName);
+    }
+
+    final decoded = decodeQRToken(rawToken);
+    if (decoded == null || decoded['error'] == 'invalid') {
+      return QRPrecheck.invalid('Invalid QR Code', ScanResultType.invalid);
+    }
+    if (decoded['error'] == 'expired') {
+      return QRPrecheck.invalid(
+          'QR Code Expired. Ask labour to refresh.', ScanResultType.expired);
+    }
+    final labourId = decoded['labourId']!;
+    final alreadyMarked = await isAlreadyMarkedToday(labourId);
+    if (alreadyMarked) {
+      final name = await _getLabourName(labourId);
+      return QRPrecheck.duplicate(labourId: labourId, labourName: name);
+    }
+    final name = await _getLabourName(labourId);
+    return QRPrecheck.valid(labourId: labourId, labourName: name);
+  }
+
+  // ---- Process with selected attendance type --------------------------------
+
+  Future<ScanResult> processScanWithType({
+    required String rawToken,
+    required String status,
+  }) async {
+    final json = decodeJsonQr(rawToken);
+    if (json != null) {
+      final err = json['error'] as String?;
+      if (err == 'expired') {
+        return ScanResult(
+            success: false,
+            message: 'QR Code Expired.',
+            type: ScanResultType.expired);
+      }
+      if (err != null) {
+        return ScanResult(
+            success: false,
+            message: 'Invalid QR Code',
+            type: ScanResultType.invalid);
+      }
+      final labourId = json['labourId'] as String;
+      final labourName = json['labourName'] as String? ?? 'Labour';
+      final alreadyMarked = await isAlreadyMarkedToday(labourId);
+      if (alreadyMarked) {
+        return ScanResult(
+            success: false,
+            message: '$labourName already marked today',
+            type: ScanResultType.duplicate,
+            labourName: labourName);
+      }
+      final connectivityResults = await Connectivity().checkConnectivity();
+      final isOnline = !connectivityResults.contains(ConnectivityResult.none);
+      if (isOnline) {
+        return _markViaNewPathWithStatus(labourId, labourName, status);
+      }
+      return _markOffline(labourId, status: status, labourName: labourName);
+    }
+
+    final decoded = decodeQRToken(rawToken);
+    if (decoded == null || decoded['error'] == 'invalid') {
+      return ScanResult(
+          success: false,
+          message: 'Invalid QR Code',
+          type: ScanResultType.invalid);
+    }
+    if (decoded['error'] == 'expired') {
+      return ScanResult(
+          success: false,
+          message: 'QR Code Expired.',
+          type: ScanResultType.expired);
+    }
+    final labourId = decoded['labourId']!;
+    final alreadyMarked = await isAlreadyMarkedToday(labourId);
+    if (alreadyMarked) {
+      final name = await _getLabourName(labourId);
+      return ScanResult(
+          success: false,
+          message: '$name already marked today',
+          type: ScanResultType.duplicate,
+          labourName: name);
+    }
+    final connectivityResults = await Connectivity().checkConnectivity();
+    final isOnline = !connectivityResults.contains(ConnectivityResult.none);
+    if (isOnline) {
+      return _markViaCloudFunctionWithStatus(labourId, rawToken, status);
+    }
+    return _markOffline(labourId, status: status);
+  }
+
   // ---- Main entry point ------------------------------------------------------
 
   Future<ScanResult> processScan(String rawToken) async {
@@ -213,6 +329,117 @@ class ScannerService {
   }
 
   // ---- Write paths -----------------------------------------------------------
+
+  Future<ScanResult> _markViaNewPathWithStatus(
+      String labourId, String labourName, String status) async {
+    final today = _todayString();
+    try {
+      final contractorId = _contractorId;
+      final supId = supervisorId;
+      final supRef = FirestorePaths.userRef(supId);
+
+      final nestedRef =
+          FirestorePaths.attendanceRecordRef(contractorId, today, labourId);
+      await nestedRef.set({
+        'labourId': labourId,
+        'labourName': labourName,
+        'contractorId': contractorId,
+        'supervisorId': supId,
+        'supervisorRef': supRef,
+        'date': today,
+        'status': status,
+        'overtimeHours': 0,
+        'markedVia': 'qr',
+        'markedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await FirestorePaths.attendanceDateDoc(contractorId, today).set({
+        'date': today,
+        'contractorId': contractorId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      try {
+        final existing = await _db
+            .collection('attendance')
+            .where('labourId', isEqualTo: labourId)
+            .where('date', isEqualTo: today)
+            .where('supervisorId', isEqualTo: supId)
+            .limit(1)
+            .get();
+        if (existing.docs.isEmpty) {
+          await _db.collection('attendance').add({
+            'labourId': labourId,
+            'labourName': labourName,
+            'supervisorId': supId,
+            'supervisorRef': supRef,
+            'contractorId': contractorId,
+            'date': today,
+            'status': status,
+            'overtimeHours': 0,
+            'markedVia': 'qr',
+            'isSynced': true,
+            'syncedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } catch (_) {}
+
+      _saveToHive(labourId, status, labourName: labourName, isSynced: true);
+      final label = status == 'half' ? 'Half Day' : 'Present';
+      return ScanResult(
+        success: true,
+        message: '$labourName marked $label ✓',
+        type: ScanResultType.success,
+        labourName: labourName,
+      );
+    } catch (_) {
+      return _markOffline(labourId, status: status, labourName: labourName);
+    }
+  }
+
+  Future<ScanResult> _markViaCloudFunctionWithStatus(
+      String labourId, String rawToken, String status) async {
+    try {
+      final callable = _functions.httpsCallable('validateAndMarkAttendance');
+      final result = await callable.call(<String, dynamic>{
+        'token': rawToken,
+        'supervisorId': supervisorId,
+        'contractorId': _contractorId,
+        'date': _todayString(),
+        'status': status,
+      });
+
+      final data = Map<String, dynamic>.from(result.data as Map);
+      if (data['success'] == true) {
+        final name = (data['labourName'] as String?) ?? 'Labour';
+        _saveToHive(labourId, status, labourName: name, isSynced: true);
+        final label = status == 'half' ? 'Half Day' : 'Present';
+        return ScanResult(
+          success: true,
+          message: '$name marked $label ✓',
+          type: ScanResultType.success,
+          labourName: name,
+        );
+      }
+
+      return ScanResult(
+        success: false,
+        message: (data['message'] as String?) ?? 'Validation failed',
+        type: ScanResultType.invalid,
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'already-exists') {
+        return ScanResult(
+          success: false,
+          message: 'Already marked today',
+          type: ScanResultType.duplicate,
+        );
+      }
+      return _markOffline(labourId, status: status);
+    } catch (_) {
+      return _markOffline(labourId, status: status);
+    }
+  }
 
   Future<ScanResult> _markViaNewPath(String labourId, String labourName) async {
     final today = _todayString();
@@ -323,13 +550,14 @@ class ScannerService {
     }
   }
 
-  Future<ScanResult> _markOffline(String labourId, {String? labourName}) async {
+  Future<ScanResult> _markOffline(String labourId,
+      {String? labourName, String status = 'present'}) async {
     final name = labourName ?? await _getLabourName(labourId);
-    _saveToHive(labourId, 'present', labourName: name, isSynced: false);
-
+    _saveToHive(labourId, status, labourName: name, isSynced: false);
+    final label = status == 'half' ? 'Half Day' : 'Present';
     return ScanResult(
       success: true,
-      message: '$name marked offline. Will sync when online.',
+      message: '$name marked $label (offline). Will sync later.',
       type: ScanResultType.offline,
       labourName: name,
     );
@@ -533,6 +761,56 @@ class ScannerService {
 }
 
 enum ScanResultType { success, duplicate, expired, invalid, offline }
+
+class QRPrecheck {
+  final bool isValid;
+  final bool isDuplicate;
+  final String labourId;
+  final String labourName;
+  final String errorMessage;
+  final ScanResultType errorType;
+
+  const QRPrecheck._({
+    required this.isValid,
+    required this.isDuplicate,
+    required this.labourId,
+    required this.labourName,
+    required this.errorMessage,
+    required this.errorType,
+  });
+
+  factory QRPrecheck.valid(
+          {required String labourId, required String labourName}) =>
+      QRPrecheck._(
+        isValid: true,
+        isDuplicate: false,
+        labourId: labourId,
+        labourName: labourName,
+        errorMessage: '',
+        errorType: ScanResultType.success,
+      );
+
+  factory QRPrecheck.duplicate(
+          {required String labourId, required String labourName}) =>
+      QRPrecheck._(
+        isValid: false,
+        isDuplicate: true,
+        labourId: labourId,
+        labourName: labourName,
+        errorMessage: '$labourName already marked today',
+        errorType: ScanResultType.duplicate,
+      );
+
+  factory QRPrecheck.invalid(String message, ScanResultType type) =>
+      QRPrecheck._(
+        isValid: false,
+        isDuplicate: false,
+        labourId: '',
+        labourName: '',
+        errorMessage: message,
+        errorType: type,
+      );
+}
 
 class ScanResult {
   ScanResult({
