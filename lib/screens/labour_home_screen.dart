@@ -20,7 +20,6 @@ class LabourHomeScreen extends StatefulWidget {
 }
 
 class _LabourHomeScreenState extends State<LabourHomeScreen> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   bool _loading = true;
@@ -62,19 +61,39 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
         throw Exception('Not logged in — please sign in again');
       }
 
-      final userDoc = await _db.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        throw Exception('Not registered');
+      Map<String, dynamic>? userData;
+
+      // Try by uid first
+      if (uid.isNotEmpty) {
+        final userDoc = await _db.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          userData = userDoc.data();
+        }
       }
 
-      final data = userDoc.data() ?? <String, dynamic>{};
-      final role = (data['role'] as String? ?? '').trim();
-      final isActive = data['isActive'] as bool? ?? true;
-      if (!isActive) {
-        throw Exception('Account disabled');
+      // Try by phone if uid lookup failed
+      if (userData == null && phone.length == 10) {
+        final snap = await _db
+            .collection('users')
+            .where('phone', isEqualTo: phone)
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          userData = snap.docs.first.data();
+          uid = snap.docs.first.id;
+        }
       }
+
+      if (userData == null) {
+        throw Exception('Not registered. Contact supervisor.');
+      }
+
+      final role     = (userData['role'] as String? ?? '').trim();
+      final isActive = userData['isActive'] as bool? ?? true;
+
+      if (!isActive) throw Exception('Account disabled.');
       if (role != 'labour') {
-        throw Exception('This account is not a labour account');
+        throw Exception('This account is not a labour account.');
       }
 
       final phone = _digitsOnly(
@@ -153,12 +172,21 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
             SessionService.instance.contractorId ?? supervisorId;
       }
 
+      // Cache for next launch
+      await prefs.setString('role',         'labour');
+      await prefs.setString('uid',           uid);
+      await prefs.setString('phone',         phone);
+      await prefs.setString('name',          userName);
+      await prefs.setString('labourId',      labourId);
+      await prefs.setString('supervisorId',  supervisorId);
+      await prefs.setBool('isLoggedIn',      true);
+
       _session = _LabourSession(
-        uid: user.uid,
-        phone: phone,
-        role: role,
-        userName: userName,
-        labourId: labourId,
+        uid:          uid,
+        phone:        phone,
+        role:         role,
+        userName:     userName,
+        labourId:     labourId,
         supervisorId: supervisorId,
         contractorId: contractorId,
       );
@@ -173,12 +201,8 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
 
   String _digitsOnly(String value) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length == 12 && digits.startsWith('91')) {
-      return digits.substring(2);
-    }
-    if (digits.length > 10) {
-      return digits.substring(digits.length - 10);
-    }
+    if (digits.length == 12 && digits.startsWith('91')) return digits.substring(2);
+    if (digits.length > 10) return digits.substring(digits.length - 10);
     return digits;
   }
 
@@ -213,9 +237,7 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final session = _session;
@@ -265,7 +287,7 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
       const QRScreen(showAppBar: false),
       _LabourDashboardTab(session: session),
       LabourMyAttendanceScreen(
-        labourId: session.labourId,
+        labourId:     session.labourId,
         contractorId: session.contractorId,
       ),
       LabourReportTab(
@@ -281,10 +303,7 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-          ),
+          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
       body: IndexedStack(index: _tabIndex, children: tabs),
@@ -345,7 +364,6 @@ class _LabourSession {
 
 class _LabourDashboardTab extends StatefulWidget {
   const _LabourDashboardTab({required this.session});
-
   final _LabourSession session;
 
   @override
@@ -689,7 +707,6 @@ class _LabourDashboardTabState extends State<_LabourDashboardTab> {
 
 class _LabourPaymentsTab extends StatelessWidget {
   const _LabourPaymentsTab({required this.session});
-
   final _LabourSession session;
 
   DateTime _toDate(dynamic raw) {

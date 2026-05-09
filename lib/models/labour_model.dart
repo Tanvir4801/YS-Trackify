@@ -1,6 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+String contractorId = '';
 @HiveType(typeId: 20)
 class Labour extends HiveObject {
   Labour({
@@ -52,6 +52,9 @@ class Labour extends HiveObject {
   @HiveField(9)
   String? firestoreId;
 
+  @HiveField(20)
+  String contractorId = '';
+
   @HiveField(10)
   DateTime? lastSyncedAt;
 
@@ -98,6 +101,7 @@ class Labour extends HiveObject {
       isActive: (data['isActive'] as bool?) ?? true,
     )
       ..firestoreId = doc.id
+      ..contractorId = (data['contractorId'] as String?) ?? ''
       ..isSynced = true
       ..lastSyncedAt = (data['syncedAt'] as Timestamp?)?.toDate()
       ..syncedAt = (data['syncedAt'] as Timestamp?)?.toDate();

@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../models/labour_model.dart';
-import 'firestore_paths.dart';
 import 'session_service.dart';
 
 class LabourService {
@@ -20,83 +19,84 @@ class LabourService {
   final FirebaseAuth _auth;
   final Box<Labour> _labourBox;
 
+  // ── helpers ──────────────────────────────────
+
   String _requireUid() {
     final uid = _auth.currentUser?.uid;
-    if (uid == null || uid.isEmpty) {
-      throw Exception('User not logged in');
-    }
+    if (uid == null || uid.isEmpty) throw Exception('User not logged in');
     return uid;
   }
 
-  /// Resolves the contractor scope for queries/writes.
-  ///
-  /// Falls back to the supervisor uid when no SessionService user is cached
-  /// (e.g. legacy supervisor account whose user doc has no contractorId yet).
   String _contractorScope(String uid) {
     final cached = SessionService.instance.contractorId;
     if (cached != null && cached.isNotEmpty) return cached;
     return uid;
   }
 
-  void _logWrite(String collection, String operation, String docId) {
-    debugPrint(
-      '🔥 FIRESTORE | $collection | $operation | $docId | user: ${_auth.currentUser?.uid}',
-    );
-  }
+  void _log(String op, String docId) => debugPrint(
+        '🔥 FIRESTORE | labours | $op | $docId | '
+        'user:${_auth.currentUser?.uid}',
+      );
 
-  Future<void> addLabour(Labour labour) async {
-    try {
-      final uid = _requireUid();
-      final contractorId = _contractorScope(uid);
-      final oldLocalId = labour.id;
+  // ── ADD ──────────────────────────────────────
 
       labour.supervisorId = uid;
       labour.contractorId = contractorId;
       labour.isSynced = false;
 
-      await _labourBox.put(labour.id, labour);
+    // 1. Save to Hive immediately (offline backup)
+    labour.supervisorId = uid;
+    labour.isSynced = false;
+    await _labourBox.put(labour.id, labour);
 
+    try {
+      // 2. Write to Firestore
       final docRef = await _db.collection('labours').add({
-        'id': '',
         'supervisorId': uid,
-        'supervisorRef': FirestorePaths.userRef(uid),
+        // Store as DocumentReference for admin panel compatibility
+        'supervisorRef': _db.doc('users/$uid'),
         'contractorId': contractorId,
         'name': labour.name,
         'phone': labour.phone,
         'dailyWage': labour.dailyWage,
+        'dailyRate': labour.dailyWage, // alias for admin panel
         'overtimeWagePerHour': labour.overtimeWagePerHour,
         'defaultOvertimeHours': labour.defaultOvertimeHours,
         'joiningDate': Timestamp.fromDate(labour.joiningDate),
+        'skill': '',
         'isActive': true,
         'isSynced': true,
         'syncedAt': FieldValue.serverTimestamp(),
       });
-      _logWrite('labours', 'ADD', docRef.id);
 
+      // 3. Update doc with its own ID
       await docRef.update({'id': docRef.id});
-      _logWrite('labours', 'UPDATE_ID', docRef.id);
+      _log('ADD', docRef.id);
 
-      if (oldLocalId != docRef.id) {
-        await _labourBox.delete(oldLocalId);
-        labour.id = docRef.id;
-      }
-
+      // 4. Update Hive with Firestore ID
+      final oldId = labour.id;
+      labour.id = docRef.id;
       labour.firestoreId = docRef.id;
       labour.isSynced = true;
       labour.lastSyncedAt = DateTime.now();
       labour.syncedAt = labour.lastSyncedAt;
+
+      if (oldId != docRef.id) await _labourBox.delete(oldId);
       await _labourBox.put(labour.id, labour);
 
       debugPrint('Labour added: ${labour.name} | supervisor=$uid contractorId=$contractorId');
     } catch (e) {
-      debugPrint('Labour sync failed: $e');
+      debugPrint('❌ Labour Firestore write failed: $e');
       rethrow;
     }
   }
 
+  // ── UPDATE ───────────────────────────────────
+
   Future<void> updateLabour(Labour labour) async {
     final uid = _requireUid();
     final contractorId = _contractorScope(uid);
+
     labour.supervisorId = uid;
     labour.contractorId = contractorId;
     labour.isSynced = false;
@@ -107,19 +107,21 @@ class LabourService {
       await _db.collection('labours').doc(docId).set({
         'id': docId,
         'supervisorId': uid,
-        'supervisorRef': FirestorePaths.userRef(uid),
+        'supervisorRef': _db.doc('users/$uid'),
         'contractorId': contractorId,
         'name': labour.name,
         'phone': labour.phone,
         'dailyWage': labour.dailyWage,
+        'dailyRate': labour.dailyWage,
         'overtimeWagePerHour': labour.overtimeWagePerHour,
         'defaultOvertimeHours': labour.defaultOvertimeHours,
         'joiningDate': Timestamp.fromDate(labour.joiningDate),
+        'skill': '',
         'isActive': labour.isActive,
         'isSynced': true,
         'syncedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      _logWrite('labours', 'UPDATE', docId);
+      _log('UPDATE', docId);
 
       labour.firestoreId = docId;
       labour.isSynced = true;
@@ -127,10 +129,12 @@ class LabourService {
       labour.syncedAt = labour.lastSyncedAt;
       await _labourBox.put(labour.id, labour);
     } catch (e) {
-      debugPrint('Labour update sync failed: $e');
+      debugPrint('❌ Labour update failed: $e');
       rethrow;
     }
   }
+
+  // ── DELETE ───────────────────────────────────
 
   Future<void> deleteLabour(Labour labour) async {
     _requireUid();
@@ -145,17 +149,19 @@ class LabourService {
           'isSynced': true,
           'syncedAt': FieldValue.serverTimestamp(),
         });
-        _logWrite('labours', 'SOFT_DELETE', labour.firestoreId!);
+        _log('SOFT_DELETE', labour.firestoreId!);
         labour.isSynced = true;
         labour.lastSyncedAt = DateTime.now();
         labour.syncedAt = labour.lastSyncedAt;
         await _labourBox.put(labour.id, labour);
       }
     } catch (e) {
-      debugPrint('Labour delete sync failed: $e');
+      debugPrint('❌ Labour delete failed: $e');
       rethrow;
     }
   }
+
+  // ── READ LOCAL ───────────────────────────────
 
   List<Labour> getLocalLabours() {
     final uid = _auth.currentUser?.uid;
@@ -174,6 +180,8 @@ class LabourService {
     items.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return items;
   }
+
+  // ── FETCH AND SYNC FROM FIRESTORE ────────────
 
   Future<void> fetchAndSyncLabours() async {
     try {
@@ -229,6 +237,9 @@ class LabourService {
         } catch (e) {
           debugPrint('contractorId(session) labour query failed: $e');
         }
+        debugPrint('📥 supervisorId query: ${snap.docs.length} docs');
+      } catch (e) {
+        debugPrint('supervisorId query failed: $e');
       }
 
       for (final labour in merged.values) {
@@ -236,33 +247,59 @@ class LabourService {
       }
       debugPrint('Total unique labours fetched: ${merged.length}');
     } catch (e) {
-      debugPrint('Fetch labours failed: $e - using local data');
+      debugPrint('❌ fetchAndSyncLabours failed: $e');
       rethrow;
     }
   }
 
+  // ── REAL-TIME STREAMS ────────────────────────
+
+  /// PRIMARY stream — use this everywhere in UI.
+  /// Tries supervisorRef first (admin panel compatible),
+  /// falls back to supervisorId string.
   Stream<List<Labour>> labourStream() {
     final uid = _requireUid();
     return _db
         .collection('labours')
-        .where('supervisorId', isEqualTo: uid)
+        .where('supervisorRef', isEqualTo: _db.doc('users/$uid'))
         .where('isActive', isEqualTo: true)
+        .orderBy('name')
         .snapshots()
-        .map((snap) => snap.docs.map(Labour.fromFirestore).toList());
+        .map((snap) {
+          final labours = snap.docs.map((d) {
+            final l = Labour.fromFirestore(d);
+            l.supervisorId = uid; // ensure local field is populated
+            return l;
+          }).toList();
+          debugPrint('🔴 labourStream: ${labours.length} labours');
+          return labours;
+        });
   }
 
-  /// Newer-style stream filtered purely by contractorId. Use this when the
-  /// caller is sure their data is migrated.
+  /// Stream by contractorId — use for admin-panel-added labours
+  /// that may not have supervisorRef set yet.
   Stream<List<Labour>> labourStreamByContractor() {
     final uid = _requireUid();
     final contractorId = _contractorScope(uid);
+
     return _db
         .collection('labours')
         .where('contractorId', isEqualTo: contractorId)
         .where('isActive', isEqualTo: true)
+        .orderBy('name')
         .snapshots()
-        .map((snap) => snap.docs.map(Labour.fromFirestore).toList());
+        .map((snap) {
+          final labours = snap.docs.map((d) {
+            final l = Labour.fromFirestore(d);
+            l.supervisorId = uid;
+            return l;
+          }).toList();
+          debugPrint('🔴 labourStreamByContractor: ${labours.length} labours');
+          return labours;
+        });
   }
+
+  // ── SEARCH ───────────────────────────────────
 
   List<Labour> searchLabours(String query) {
     return getLocalLabours()

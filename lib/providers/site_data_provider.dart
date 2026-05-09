@@ -16,6 +16,10 @@ import '../services/session_service.dart';
 class SiteDataProvider extends ChangeNotifier {
   SiteDataProvider({required HiveService hiveService})
       : _hiveService = hiveService;
+  StreamSubscription<List<Labour>>? _labourSubscription;
+  List<Labour> _labours = [];
+
+  List<Labour> get labours => _labours;
 
   final HiveService _hiveService;
   PaymentService get _paymentService => PaymentService(hiveService: _hiveService);
@@ -54,6 +58,13 @@ class SiteDataProvider extends ChangeNotifier {
   Future<void> initialize() async {
     _setLoading(true);
     _attendanceRecords = _hiveService.getAllAttendanceRecords();
+    _labours = _hiveService.getAllLabours();
+    final contractorId = SessionService.instance.contractorId ??
+        FirebaseAuth.instance.currentUser?.uid ??
+        '';
+    if (contractorId.isNotEmpty) {
+      startLabourStream(contractorId);
+    }
     await _backfillAdvancePayments();
     _setLoading(false);
   }
@@ -102,6 +113,58 @@ class SiteDataProvider extends ChangeNotifier {
         debugPrint('❌ Labour stream error: $e');
       },
     );
+  }
+  
+
+  void startLabourStream(String contractorId) {
+    _labourSubscription?.cancel();
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final db = FirebaseFirestore.instance;
+
+    final stream = db
+        .collection('labours')
+        .where('contractorId', isEqualTo: contractorId)
+        .where('isActive', isEqualTo: true)
+        .snapshots();
+
+    _labourSubscription = stream.map((snap) {
+      return snap.docs.map((doc) {
+        final data = doc.data();
+        return Labour(
+          id: doc.id,
+          name: (data['name'] as String?) ?? '',
+          role: (data['skill'] as String?) ?? (data['role'] as String?) ?? '',
+          dailyWage: ((data['dailyWage'] ?? data['dailyRate']) as num?)?.toDouble() ?? 0,
+          phoneNumber: (data['phone'] as String?) ?? (data['phoneNumber'] as String?) ?? '',
+          advanceAmount: ((data['advanceAmount'] as num?) ?? 0).toDouble(),
+          extraHours: ((data['defaultOvertimeHours'] as num?) ?? 0).toDouble(),
+          overtimeRate: ((data['overtimeWagePerHour'] as num?) ?? 0).toDouble(),
+        );
+      }).toList();
+    }).listen(
+      (labourList) {
+        _labours = labourList;
+        debugPrint('🔴 SiteDataProvider stream: ${labourList.length} labours');
+        notifyListeners();
+      },
+      onError: (e) {
+        debugPrint('❌ Labour stream error: $e');
+      },
+    );
+  }
+
+  void stopLabourStream() {
+    _labourSubscription?.cancel();
+    _labourSubscription = null;
+  }
+
+  @override
+  void dispose() {
+    stopLabourStream();
+    super.dispose();
   }
 
   void stopLabourStream() {
