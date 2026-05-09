@@ -79,44 +79,59 @@ class _LabourScreenState extends State<LabourScreen> {
               _buildSearchBar(),
               _buildWageLiabilityCard(totalWage),
               Expanded(
-                child: data.labours.isEmpty
-                    ? EmptyState(
-                        icon: Icons.badge_outlined,
-                        title: 'No Labour Added',
-                        subtitle: 'Add your first worker to get started.',
-                        actionLabel: 'Add Labour',
-                        onAction: () async {
-                          try {
-                            await _showLabourDialog(this.context);
-                          } catch (_) {}
-                        },
-                      )
-                    : filtered.isEmpty
-                        ? const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.search_off_outlined,
-                                    size: 48, color: AppColors.textTertiary),
-                                SizedBox(height: 12),
-                                Text('No results found',
-                                    style: AppTextStyles.headingMedium),
-                                SizedBox(height: 4),
-                                Text('Try a different search term',
-                                    style: AppTextStyles.bodyMedium),
-                              ],
+                child: RefreshIndicator(
+                  color: AppColors.primary,
+                  onRefresh: () async {
+                    context.read<SiteDataProvider>().startLabourStream();
+                    await Future.delayed(const Duration(milliseconds: 800));
+                  },
+                  child: data.labours.isEmpty
+                      ? SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height:
+                                MediaQuery.of(context).size.height * 0.6,
+                            child: EmptyState(
+                              icon: Icons.badge_outlined,
+                              title: 'No Labour Added',
+                              subtitle:
+                                  'Add your first worker to get started.',
+                              actionLabel: 'Add Labour',
+                              onAction: () async {
+                                try {
+                                  await _showLabourDialog(this.context);
+                                } catch (_) {}
+                              },
                             ),
-                          )
-                        : RefreshIndicator(
-                            color: AppColors.primary,
-                            onRefresh: () async {
-                              context
-                                  .read<SiteDataProvider>()
-                                  .startLabourStream();
-                              await Future.delayed(
-                                  const Duration(milliseconds: 800));
-                            },
-                            child: ListView.separated(
+                          ),
+                        )
+                      : filtered.isEmpty
+                          ? SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: SizedBox(
+                                height:
+                                    MediaQuery.of(context).size.height * 0.6,
+                                child: const Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.search_off_outlined,
+                                          size: 48,
+                                          color: AppColors.textTertiary),
+                                      SizedBox(height: 12),
+                                      Text('No results found',
+                                          style:
+                                              AppTextStyles.headingMedium),
+                                      SizedBox(height: 4),
+                                      Text('Try a different search term',
+                                          style: AppTextStyles.bodyMedium),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(
                                   16, 8, 16, 110),
                               itemCount: filtered.length,

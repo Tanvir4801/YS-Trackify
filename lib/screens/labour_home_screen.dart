@@ -40,17 +40,25 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
     });
 
     try {
-      // Wait for Firebase Auth to restore session (critical on web)
+      // Wait for Firebase Auth to restore persisted session (critical on web).
+      // authStateChanges() fires null immediately on web before restoring the
+      // session from IndexedDB — we MUST skip null events and wait for the
+      // first real user or a 12-second timeout.
       User? user = _auth.currentUser;
       if (user == null) {
-        user = await _auth.authStateChanges().first.timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => null,
-        );
+        try {
+          user = await _auth
+              .authStateChanges()
+              .where((u) => u != null)
+              .first
+              .timeout(const Duration(seconds: 12));
+        } catch (_) {
+          user = null;
+        }
       }
 
       if (user == null) {
-        throw Exception('Not logged in');
+        throw Exception('Not logged in — please sign in again');
       }
 
       final userDoc = await _db.collection('users').doc(user.uid).get();
@@ -227,7 +235,7 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.error_outline,
@@ -497,7 +505,7 @@ class _LabourDashboardTabState extends State<_LabourDashboardTab> {
                 gradient: LinearGradient(
                   colors: [
                     Theme.of(context).colorScheme.primary,
-                    Theme.of(context).colorScheme.primary.withOpacity(0.75),
+                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.75),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -511,7 +519,7 @@ class _LabourDashboardTabState extends State<_LabourDashboardTab> {
                     children: [
                       CircleAvatar(
                         radius: 24,
-                        backgroundColor: Colors.white.withOpacity(0.25),
+                        backgroundColor: Colors.white.withValues(alpha: 0.25),
                         child: Text(
                           labourName.isNotEmpty
                               ? labourName[0].toUpperCase()
@@ -550,7 +558,7 @@ class _LabourDashboardTabState extends State<_LabourDashboardTab> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: _statusColor(todayStatus).withOpacity(0.25),
+                          color: _statusColor(todayStatus).withValues(alpha: 0.25),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                               color: Colors.white38, width: 1),
@@ -737,17 +745,17 @@ class _LabourPaymentsTab extends StatelessWidget {
               return Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E40AF).withOpacity(0.08),
+                  color: const Color(0xFF1E40AF).withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                      color: const Color(0xFF1E40AF).withOpacity(0.2)),
+                      color: const Color(0xFF1E40AF).withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E40AF).withOpacity(0.15),
+                        color: const Color(0xFF1E40AF).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.account_balance_wallet,
@@ -791,7 +799,7 @@ class _LabourPaymentsTab extends StatelessWidget {
                 border: Border.all(color: Colors.black12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -802,7 +810,7 @@ class _LabourPaymentsTab extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
+                      color: Colors.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(Icons.currency_rupee,
@@ -891,9 +899,9 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         children: [
@@ -912,7 +920,7 @@ class _StatCard extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 11,
-              color: color.withOpacity(0.8),
+              color: color.withValues(alpha: 0.8),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -940,16 +948,16 @@ class _EarningsCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 20),
@@ -959,7 +967,7 @@ class _EarningsCard extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: color.withOpacity(0.8),
+                color: color.withValues(alpha: 0.8),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
