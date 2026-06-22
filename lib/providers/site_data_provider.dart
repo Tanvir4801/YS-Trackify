@@ -264,6 +264,22 @@ class SiteDataProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> assignSite(String labourId, String siteId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('labours')
+          .doc(labourId)
+          .set({'siteId': siteId}, SetOptions(merge: true));
+      debugPrint('✅ Labour $labourId assigned to site $siteId');
+    } catch (e) {
+      debugPrint('❌ assignSite failed: $e');
+      rethrow;
+    }
+  }
+
   Future<void> deleteLabour(String labourId) async {
     try {
       await FirebaseFirestore.instance
