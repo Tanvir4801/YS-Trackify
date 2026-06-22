@@ -297,18 +297,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  // siteAttendanceMap: labourId → siteId (set when attendance is marked)
-  // Site cards show how many labours were marked at each site today.
-  // No permanent labour→site assignment exists.
-  Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, Map<String, String> siteAttendanceMap) {
+  Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, Map<String, String> siteMap) {
     // Count how many labours were marked at each site today
     final markedBySite = <String, int>{};
-    for (final entry in siteAttendanceMap.entries) {
+    for (final entry in siteMap.entries) {
       if (attendanceByLabour.containsKey(entry.key) && entry.value.isNotEmpty) {
         markedBySite[entry.value] = (markedBySite[entry.value] ?? 0) + 1;
       }
     }
-    final totalPending = attendanceByLabour.keys.where((id) => !siteAttendanceMap.containsKey(id)).length;
+
+    SiteModel? selectedSite;
+    if (_selectedSiteId != null) {
+      try { selectedSite = sites.firstWhere((s) => s.id == _selectedSiteId); } catch (_) {}
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,20 +320,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             children: [
               const Icon(Icons.apartment_rounded, size: 13, color: AppColors.textTertiary),
               const SizedBox(width: 5),
-              const Text('Select Site to Mark', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textTertiary, letterSpacing: 0.5)),
-              const SizedBox(width: 6),
-              Container(height: 1, width: 40, color: AppColors.borderLight),
+              Text(
+                'Sites — ${sites.length}',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textTertiary, letterSpacing: 0.5),
+              ),
               const Spacer(),
               if (_selectedSiteId != null)
                 GestureDetector(
                   onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
-                  child: const Text('Clear', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                  child: const Text('Show All', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
                 ),
             ],
           ),
         ),
         SizedBox(
-          height: 112,
+          height: 90,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -340,8 +342,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               _SiteCard(
                 label: 'All Sites',
                 icon: Icons.grid_view_rounded,
-                pending: totalPending,
-                total: attendanceByLabour.length,
+                count: attendanceByLabour.length,
+                countLabel: '${attendanceByLabour.length} marked',
                 selected: _selectedSiteId == null,
                 onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
               ),
@@ -352,8 +354,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   child: _SiteCard(
                     label: site.name,
                     icon: Icons.location_on_rounded,
-                    pending: 0,
-                    total: markedHere,
+                    count: markedHere,
+                    countLabel: markedHere > 0 ? '$markedHere marked' : 'Tap to mark',
                     selected: _selectedSiteId == site.id,
                     onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = site.id); },
                   ),
@@ -362,6 +364,43 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ],
           ),
         ),
+        // Active site banner
+        if (selectedSite != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: AppColors.primarySurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on_rounded, size: 15, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                        children: [
+                          const TextSpan(text: 'Marking for '),
+                          TextSpan(
+                            text: selectedSite.name,
+                            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
+                    child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textTertiary),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -592,36 +631,36 @@ class _SiteCard extends StatelessWidget {
   const _SiteCard({
     required this.label,
     required this.icon,
-    required this.pending,
-    required this.total,
+    required this.count,
+    required this.countLabel,
     required this.selected,
     required this.onTap,
   });
   final String label;
   final IconData icon;
-  final int pending;
-  final int total;
+  final int count;
+  final String countLabel;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final isDone = total > 0 && pending == 0;
+    final hasActivity = count > 0;
 
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        width: 130,
-        padding: const EdgeInsets.all(12),
+        width: 118,
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary : AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected
                 ? AppColors.primary
-                : isDone
-                    ? AppColors.present.withValues(alpha: 0.5)
+                : hasActivity
+                    ? AppColors.present.withValues(alpha: 0.45)
                     : AppColors.border,
             width: selected ? 2 : 1,
           ),
@@ -646,32 +685,21 @@ class _SiteCard extends StatelessWidget {
                   child: Icon(icon, size: 14, color: selected ? Colors.white : AppColors.primary),
                 ),
                 const Spacer(),
-                if (isDone)
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? Colors.white.withValues(alpha: 0.2)
-                          : AppColors.present.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.check_rounded, size: 10, color: selected ? Colors.white : AppColors.present),
-                  )
-                else if (pending > 0)
+                if (count > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: selected
                           ? Colors.white.withValues(alpha: 0.22)
-                          : AppColors.absent.withValues(alpha: 0.10),
+                          : AppColors.present.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '$pending',
+                      '$count',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: selected ? Colors.white : AppColors.absent,
+                        color: selected ? Colors.white : AppColors.present,
                       ),
                     ),
                   ),
@@ -681,26 +709,22 @@ class _SiteCard extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: selected ? Colors.white : AppColors.textPrimary,
               ),
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
             Text(
-              total == 0
-                  ? 'No labours'
-                  : isDone
-                      ? 'All marked ✓'
-                      : '$pending of $total pending',
+              countLabel,
               style: TextStyle(
                 fontSize: 10,
-                fontWeight: isDone ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: hasActivity ? FontWeight.w600 : FontWeight.w400,
                 color: selected
                     ? Colors.white.withValues(alpha: 0.75)
-                    : isDone
+                    : hasActivity
                         ? AppColors.present
                         : AppColors.textTertiary,
               ),
