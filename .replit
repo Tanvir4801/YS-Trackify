@@ -1,4 +1,4 @@
-modules = ["web", "nodejs-20", "swift-5.8", "ruby-3.2"]
+modules = ["nodejs-20", "web", "swift-5.8"]
 [agent]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"
@@ -27,12 +27,16 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd Trackify_Admin && node node_modules/vite/dist/node/cli.js"
+args = "cd Trackify_Admin && npm run dev"
 waitForPort = 5000
 
 [[ports]]
 localPort = 3000
 externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [deployment]
 deploymentTarget = "static"

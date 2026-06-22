@@ -1,0 +1,227 @@
+PROJECT CONTEXT:
+This is a Flutter mobile app + React admin panel with Firebase backend 
+for construction site labour management. Read ALL existing files before 
+making any changes.
+
+EXISTING STRUCTURE (already in project):
+- Flutter app: lib/ folder with existing screens, models, services
+- React admin: admin/ or web/ folder  
+- Firebase: Firestore + Auth already configured
+- firebase_options.dart already exists with project config
+
+═══════════════════════════════════════════════════════════
+FEATURE 1: SHARED PENDING POOL (Most Critical)
+═══════════════════════════════════════════════════════════
+
+LOGIC: 40 labours = ONE global pool per day across ALL sites.
+Once marked at any site → vanishes from every other site's list.
+
+FIRESTORE STRUCTURE (create/update):
+
+Collection: labours/{labourId}
+  - name: string
+  - dailyWage: number
+  - type: "regular" | "temporary"
+  - isActive: boolean
+  - phone: string (optional)
+  - joiningDate: timestamp
+
+Collection: attendance/{YYYY-MM-DD}/records/{labourId}
+  - labourId: string
+  - labourName: string (snapshot)
+  - siteId: string
+  - siteName: string (snapshot)
+  - wageAtTime: number ← COPY from labour at time of marking, never reference live wage
+  - remark: string (default "")
+  - markedAt: timestamp
+  - markedBy: string (uid)
+  - isTemp: boolean
+  - status: "present" | "absent"
+
+Collection: sites/{siteId}
+  - name: string
+  - isActive: boolean
+  - supervisorId: string
+
+FLUTTER - AttendanceService (lib/services/attendance_service.dart):
+
+getAvailableLabours(String date) {
+  // 1. Fetch all active regular labours from labours collection
+  // 2. Fetch all attendance records for today: attendance/{date}/records/
+  // 3. Return labours WHERE their labourId does NOT exist in today's records
+  // Use real-time Stream so UI updates instantly when another site marks someone
+}
+
+markAttendance(labourId, siteId, remark, wage) {
+  // Write to attendance/{today}/records/{labourId}
+  // Store wageAtTime = labour.dailyWage AT THIS MOMENT (snapshot, not reference)
+  // Use transaction to prevent race condition if 2 supervisors mark same person simultaneously
+}
+
+═══════════════════════════════════════════════════════════
+FEATURE 2: TEMPORARY LABOUR
+═══════════════════════════════════════════════════════════
+
+FLUTTER - Quick Add Bottom Sheet on Attendance Screen:
+- Fields: Name, Daily Wage, Site (auto-filled), Remark
+- On submit: 
+  1. Create temp labour doc in labours/ with type:"temporary", isActive:false
+  2. Immediately write attendance record with isTemp:true
+  3. Temp labours do NOT appear in future days' available pool
+  4. They DO appear in payroll reports with separate "Temporary Labour" section
+
+═══════════════════════════════════════════════════════════
+FEATURE 3: REMARK FIELD
+═══════════════════════════════════════════════════════════
+
+- Add remark TextField on attendance marking screen
+- Hint text: "e.g. tile fixing 2nd floor, shuttering work..."
+- Optional field, max 200 chars
+- Show remark in:
+  1. Labour profile screen → activity timeline
+  2. Site report screen → each day's entry
+  3. Excel/PDF export → separate column
+
+═══════════════════════════════════════════════════════════
+FEATURE 4: WAGE SNAPSHOT (Critical for Payroll Accuracy)
+═══════════════════════════════════════════════════════════
+
+RULE: attendance.wageAtTime is written ONCE at marking time.
+Never update it. Never reference labour.dailyWage in reports.
+All payroll calculations use wageAtTime only.
+
+If admin changes a labour's wage today → old attendance records 
+stay unchanged. Only future markings use new wage.
+
+═══════════════════════════════════════════════════════════
+FEATURE 5: SAFETY NET — "ALREADY MARKED TODAY" PANEL
+═══════════════════════════════════════════════════════════
+
+FLUTTER - Bottom collapsible section on Attendance Screen:
+
+"Already Marked Today (12)" ← count badge, tap to expand
+
+Shows list of:
+- Labour name + site where marked + time marked
+- Edit button → opens dialog to:
+  a) Change site assignment
+  b) Edit remark
+  c) Change status present/absent
+- Lock rule: records lock at midnight OR if payroll is generated, 
+  whichever comes first
+- Show locked state clearly (lock icon, greyed edit button)
+
+═══════════════════════════════════════════════════════════
+FEATURE 6: REPORTS — 3 LEVELS
+═══════════════════════════════════════════════════════════
+
+REACT ADMIN — Reports Page:
+
+TAB 1: Site-wise Report
+  - Filter: Site dropdown + Date range picker
+  - Table: Date | Present count | Total wage | Temp labour count | Temp wage
+  - Footer: Grand total for selected range
+  - Export: Excel with remark column
+
+TAB 2: Labour-wise Report  
+  - Filter: Labour search + Date range
+  - Table: Date | Site | Status | Wage | Remark
+  - Shows full history across ALL sites
+  - Highlight when labour moved between sites
+
+TAB 3: Overall Payroll
+  - Date range selector
+  - Cards: Total regular wage | Total temp wage | Grand total | Total man-days
+  - Breakdown table by site
+  - Separate section: Temporary Labour list with individual amounts
+  - Export full payroll as PDF/Excel
+
+═══════════════════════════════════════════════════════════
+FEATURE 7: LABOUR PROFILE SCREEN (Flutter)
+═══════════════════════════════════════════════════════════
+
+ROUTE: /labour/:labourId
+
+SCREEN LAYOUT:
+
+[Avatar with initials] [Name] [Type badge: Regular/Temp]
+[Daily Wage] [Phone] [Joining Date] [Status: Active/Inactive]
+
+STATS ROW (last 30 days):
+[Days Present] [Total Earned] [Sites Worked] [Avg per day]
+
+ACTIVITY TIMELINE (reverse chronological):
+Each entry shows:
+- Date (bold)
+- Site name (colored chip by site)
+- Status dot: green=present, red=absent  
+- Wage earned that day (from wageAtTime)
+- Remark (if any) — italic, muted color
+- Separator line between entries
+
+FILTER OPTIONS on timeline:
+- All / Present only / By site dropdown / Date range
+
+WAGE HISTORY section:
+- Chart or list showing when wage was changed
+- "₹X from [date] to [date]" format
+- Built from wageAtTime changes detected across attendance records
+
+If labour is TEMPORARY:
+- Show "One-time worker" badge
+- Show only the single day they worked
+- No future scheduling section
+
+═══════════════════════════════════════════════════════════
+BUGS TO FIX ACROSS THE APP
+═══════════════════════════════════════════════════════════
+
+1. RACE CONDITION: Two supervisors marking same labour simultaneously
+   FIX: Use Firestore transaction in markAttendance()
+   
+2. DATE TIMEZONE BUG: attendance/{date} key must use local date not UTC
+   FIX: format date as YYYY-MM-DD using device local timezone always
+   
+3. WAGE CALCULATION BUG: Reports must never use labour.dailyWage
+   FIX: Audit all report queries — replace with wageAtTime field
+   
+4. OFFLINE SUPPORT: App should work offline and sync when back online
+   FIX: Enable Firestore offline persistence in main.dart:
+   FirebaseFirestore.instance.settings = 
+     Settings(persistenceEnabled: true, cacheSizeBytes: 104857600);
+
+5. STREAM LEAK: Dispose all StreamSubscriptions in dispose() methods
+   FIX: Check every StatefulWidget that uses streams
+
+6. MISSING LOADING STATES: Show shimmer/skeleton while fetching data
+   FIX: Add loading state to all async screens
+
+7. EMPTY STATE: Show helpful message when no labours available
+   e.g. "All 40 labours have been marked today across sites"
+
+═══════════════════════════════════════════════════════════
+IMPLEMENTATION ORDER (do in this sequence)
+═══════════════════════════════════════════════════════════
+
+Step 1: Update Firestore security rules + indexes
+Step 2: Update Labour model + Attendance model with new fields
+Step 3: Rewrite AttendanceService with shared pool logic
+Step 4: Update Flutter attendance screen UI (available + marked panels)
+Step 5: Add quick-add temp labour bottom sheet
+Step 6: Build Labour Profile screen with timeline
+Step 7: Update React admin reports (3 tabs)
+Step 8: Add Excel/PDF export
+Step 9: Fix all bugs listed above
+Step 10: Test race condition with 2 simultaneous markings
+
+═══════════════════════════════════════════════════════════
+CODE QUALITY REQUIREMENTS
+═══════════════════════════════════════════════════════════
+
+- No hardcoded strings — use constants file
+- All Firestore calls in service classes, never in UI widgets
+- Use freezed or manual copyWith on all models
+- Every service method has try/catch with proper error messages
+- No print() statements — use logger package
+- Null safety strict mode
+- All dates stored as Firestore Timestamp, displayed in local timezone
