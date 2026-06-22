@@ -228,7 +228,7 @@ export default function Attendance() {
       if (search && !l.name?.toLowerCase().includes(search.toLowerCase()) && !l.phone?.includes(search)) return false;
       if (supervisorFilter !== 'all' && l.supervisorId !== supervisorFilter) return false;
       if (statusFilter !== 'all' && rows[l.id]?.status !== statusFilter) return false;
-      if (selectedSite !== null && (l.siteId || null) !== selectedSite) return false;
+      if (selectedSite !== null && (rows[l.id]?.siteId || null) !== selectedSite) return false;
       return true;
     });
   }, [labours, rows, search, supervisorFilter, statusFilter, selectedSite]);
@@ -441,6 +441,7 @@ export default function Attendance() {
       </div>
 
       {/* ── SITE CARDS ──────────────────────────────────────────────────── */}
+      {/* Sites are standalone — siteId is on the attendance record, not the labour */}
       {sites.length > 0 && (
         <div className="flex gap-3 overflow-x-auto pb-1">
           {/* All card */}
@@ -457,19 +458,18 @@ export default function Attendance() {
             <span className={`text-xs ${selectedSite === null ? 'text-blue-100' : 'text-slate-400'}`}>
               {labours.length} labours
             </span>
-            {labours.filter((l) => !markedLabourIds.has(l.id)).length > 0 && (
+            {pendingLabours.length > 0 && (
               <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${selectedSite === null ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>
-                {labours.filter((l) => !markedLabourIds.has(l.id)).length} pending
+                {pendingLabours.length} pending
               </span>
             )}
-            {labours.length > 0 && labours.filter((l) => !markedLabourIds.has(l.id)).length === 0 && (
+            {labours.length > 0 && pendingLabours.length === 0 && (
               <span className={`text-xs font-semibold ${selectedSite === null ? 'text-white' : 'text-green-600'}`}>All ✓</span>
             )}
           </button>
-          {/* Per-site cards */}
+          {/* Per-site cards — show how many labours were marked at this site today */}
           {sites.map((s) => {
-            const siteLabours = labours.filter((l) => l.siteId === s.id);
-            const pending = siteLabours.filter((l) => !markedLabourIds.has(l.id)).length;
+            const markedHere = records.filter((r) => r.siteId === s.id).length;
             const isActive = selectedSite === s.id;
             return (
               <button
@@ -484,16 +484,12 @@ export default function Attendance() {
                 <MapPin className={`h-5 w-5 ${isActive ? 'text-white' : 'text-blue-500'}`} />
                 <span className="text-sm font-semibold leading-tight">{s.name}</span>
                 <span className={`text-xs ${isActive ? 'text-blue-100' : 'text-slate-400'}`}>
-                  {siteLabours.length} labours
+                  {markedHere} marked today
                 </span>
-                {pending > 0 ? (
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>
-                    {pending} pending
-                  </span>
-                ) : siteLabours.length > 0 ? (
-                  <span className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-green-600'}`}>All ✓</span>
+                {markedHere > 0 ? (
+                  <span className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-green-600'}`}>{markedHere} ✓</span>
                 ) : (
-                  <span className={`text-xs ${isActive ? 'text-blue-200' : 'text-slate-300'}`}>No labours</span>
+                  <span className={`text-xs ${isActive ? 'text-blue-200' : 'text-slate-300'}`}>None yet</span>
                 )}
               </button>
             );

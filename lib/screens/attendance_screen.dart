@@ -143,12 +143,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         final attendanceByLabour = data.attendanceMap;
         final sites = sitesData.sites;
 
-        // Filter labours by selected site
-        List<Labour> allLabours = data.labours;
-        if (_selectedSiteId != null && _selectedSiteId!.isNotEmpty) {
-          // Show labours assigned to this site only
-          allLabours = allLabours.where((l) => l.siteId == _selectedSiteId).toList();
-        }
+        // All labours are available every morning — no permanent site assignment.
+        // Site is only recorded on the attendance record for that day.
+        final List<Labour> allLabours = data.labours;
 
         // Apply search
         final filteredLabours = _searchQuery.isEmpty
@@ -160,28 +157,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         final pendingList = filteredLabours.where((l) => !attendanceByLabour.containsKey(l.id)).toList();
         final markedList  = filteredLabours.where((l) => attendanceByLabour.containsKey(l.id)).toList();
 
-        // Stats are scoped to whichever labours are currently visible (all or one site)
-        final siteLabourIds = allLabours.map((l) => l.id).toSet();
-        final presentCount = attendanceByLabour.entries.where((e) => siteLabourIds.contains(e.key) && e.value == 'present').length;
-        final absentCount  = attendanceByLabour.entries.where((e) => siteLabourIds.contains(e.key) && e.value == 'absent').length;
-        final halfDayCount = attendanceByLabour.entries.where((e) => siteLabourIds.contains(e.key) && e.value == 'half').length;
+        // Stats across all labours
+        final presentCount = attendanceByLabour.values.where((v) => v == 'present').length;
+        final absentCount  = attendanceByLabour.values.where((v) => v == 'absent').length;
+        final halfDayCount = attendanceByLabour.values.where((v) => v == 'half').length;
         final totalMarked  = presentCount + absentCount + halfDayCount;
         final totalLabours = allLabours.length;
-
-        // Build site-wise grouping for "All Sites" view
-        final Map<String, List<Labour>> laboursBySite = {};
-        if (_selectedSiteId == null && sites.isNotEmpty && _searchQuery.isEmpty) {
-          for (final site in sites) {
-            final siteLabours = data.labours
-                .where((l) => l.siteId == site.id && !attendanceByLabour.containsKey(l.id))
-                .toList();
-            if (siteLabours.isNotEmpty) laboursBySite[site.id] = siteLabours;
-          }
-          final unassigned = data.labours
-              .where((l) => l.siteId.isEmpty && !attendanceByLabour.containsKey(l.id))
-              .toList();
-          if (unassigned.isNotEmpty) laboursBySite['__unassigned__'] = unassigned;
-        }
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -192,7 +173,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
               // ── SITES SELECTOR ──────────────────────────────────────────
               if (sites.isNotEmpty)
-                _buildSiteSelector(sites, attendanceByLabour, data.labours),
+                _buildSiteSelector(sites, attendanceByLabour, data.siteMap),
 
               _buildSearchBar(),
               _buildSummaryRow(presentCount, absentCount, halfDayCount),
@@ -258,42 +239,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                   ),
                                 ),
 
-                              // Site-wise grouped view in "All Sites" mode
-                              if (_selectedSiteId == null && laboursBySite.isNotEmpty && _searchQuery.isEmpty)
-                                ..._buildSiteGroupedList(laboursBySite, sites, attendanceByLabour, data)
-                              else if (_selectedSiteId != null && pendingList.isEmpty && _searchQuery.isEmpty)
-                                // Empty state when a specific site is selected but no labours assigned
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: AppColors.border),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      const Icon(Icons.location_off_outlined, color: AppColors.textTertiary, size: 32),
-                                      const SizedBox(height: 10),
-                                      const Text('No labours assigned to this site',
-                                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary)),
-                                      const SizedBox(height: 4),
-                                      const Text('Assign labours to this site from the Admin Panel.',
-                                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary), textAlign: TextAlign.center),
-                                    ],
-                                  ),
-                                )
-                              else
-                                ...pendingList.map((labour) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _AttendanceCard(
-                                    labour: labour,
-                                    status: attendanceByLabour[labour.id],
-                                    remark: data.remarkMap[labour.id] ?? '',
-                                    data: data,
-                                    siteName: _siteName(sites, labour.siteId),
-                                  ),
-                                )),
+                              // All pending labours shown — site is applied at mark time
+                              // via the site card selected above.
+                              ...pendingList.map((labour) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _AttendanceCard(
+                                  labour: labour,
+                                  status: attendanceByLabour[labour.id],
+                                  remark: data.remarkMap[labour.id] ?? '',
+                                  data: data,
+                                  siteId: _selectedSiteId ?? '',
+                                ),
+                              )),
                             ],
 
                             // Temp labours for today
@@ -340,94 +297,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  List<Widget> _buildSiteGroupedList(
-    Map<String, List<Labour>> laboursBySite,
-    List<SiteModel> sites,
-    Map<String, String> attendanceByLabour,
-    AttendanceProvider data,
-  ) {
-    final widgets = <Widget>[];
-    for (final entry in laboursBySite.entries) {
-      final siteId = entry.key;
-      final siteLabours = entry.value;
-      final name = siteId == '__unassigned__'
-          ? 'Unassigned'
-          : _siteName(sites, siteId);
-      final color = siteId == '__unassigned__'
-          ? AppColors.textTertiary
-          : AppColors.primary;
-
-      widgets.add(Padding(
-        padding: const EdgeInsets.only(bottom: 8, top: 4),
-        child: Row(
-          children: [
-            Icon(
-              siteId == '__unassigned__'
-                  ? Icons.help_outline_rounded
-                  : Icons.location_on_rounded,
-              size: 13,
-              color: color,
-            ),
-            const SizedBox(width: 5),
-            Text(
-              name,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: color,
-                letterSpacing: 0.3,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${siteLabours.length} pending',
-                style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
-              ),
-            ),
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.only(left: 8),
-                height: 1,
-                color: color.withValues(alpha: 0.15),
-              ),
-            ),
-          ],
-        ),
-      ));
-
-      for (final labour in siteLabours) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: _AttendanceCard(
-            labour: labour,
-            status: attendanceByLabour[labour.id],
-            remark: data.remarkMap[labour.id] ?? '',
-            data: data,
-            siteName: name == 'Unassigned' ? '' : name,
-          ),
-        ));
+  // siteAttendanceMap: labourId → siteId (set when attendance is marked)
+  // Site cards show how many labours were marked at each site today.
+  // No permanent labour→site assignment exists.
+  Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, Map<String, String> siteAttendanceMap) {
+    // Count how many labours were marked at each site today
+    final markedBySite = <String, int>{};
+    for (final entry in siteAttendanceMap.entries) {
+      if (attendanceByLabour.containsKey(entry.key) && entry.value.isNotEmpty) {
+        markedBySite[entry.value] = (markedBySite[entry.value] ?? 0) + 1;
       }
     }
-    return widgets;
-  }
-
-  Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, List<Labour> allDataLabours) {
-    final pendingBySite = <String, int>{};
-    final totalBySite   = <String, int>{};
-    for (final site in sites) {
-      totalBySite[site.id]   = allDataLabours.where((l) => l.siteId == site.id).length;
-      pendingBySite[site.id] = allDataLabours
-          .where((l) => l.siteId == site.id && !attendanceByLabour.containsKey(l.id))
-          .length;
-    }
-    final totalPending = allDataLabours.where((l) => !attendanceByLabour.containsKey(l.id)).length;
-    final totalAll     = allDataLabours.length;
+    final totalPending = attendanceByLabour.keys.where((id) => !siteAttendanceMap.containsKey(id)).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,14 +319,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             children: [
               const Icon(Icons.apartment_rounded, size: 13, color: AppColors.textTertiary),
               const SizedBox(width: 5),
-              const Text('Sites', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textTertiary, letterSpacing: 0.5)),
+              const Text('Select Site to Mark', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textTertiary, letterSpacing: 0.5)),
               const SizedBox(width: 6),
               Container(height: 1, width: 40, color: AppColors.borderLight),
               const Spacer(),
               if (_selectedSiteId != null)
                 GestureDetector(
                   onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
-                  child: const Text('Show All', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                  child: const Text('Clear', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
                 ),
             ],
           ),
@@ -460,21 +341,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 label: 'All Sites',
                 icon: Icons.grid_view_rounded,
                 pending: totalPending,
-                total: totalAll,
+                total: attendanceByLabour.length,
                 selected: _selectedSiteId == null,
                 onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
               ),
-              ...sites.map((site) => Padding(
-                padding: const EdgeInsets.only(left: 10),
-                child: _SiteCard(
-                  label: site.name,
-                  icon: Icons.location_on_rounded,
-                  pending: pendingBySite[site.id] ?? 0,
-                  total: totalBySite[site.id] ?? 0,
-                  selected: _selectedSiteId == site.id,
-                  onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = site.id); },
-                ),
-              )),
+              ...sites.map((site) {
+                final markedHere = markedBySite[site.id] ?? 0;
+                return Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: _SiteCard(
+                    label: site.name,
+                    icon: Icons.location_on_rounded,
+                    pending: 0,
+                    total: markedHere,
+                    selected: _selectedSiteId == site.id,
+                    onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = site.id); },
+                  ),
+                );
+              }),
             ],
           ),
         ),
@@ -554,11 +438,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ...markedList.map((labour) {
               final status = data.attendanceMap[labour.id] ?? 'absent';
               final remark = data.remarkMap[labour.id] ?? '';
-              final siteN = _siteName(sites, labour.siteId);
+              final markedSiteId = data.siteMap[labour.id] ?? '';
+              final siteN = _siteName(sites, markedSiteId);
               return _SafetyNetCard(
                 labour: labour,
                 status: status,
-                siteId: labour.siteId,
+                siteId: markedSiteId,
                 siteName: siteN,
                 remark: remark,
                 data: data,
@@ -972,7 +857,7 @@ class _AttendanceCard extends StatefulWidget {
     required this.remark,
     required this.data,
     this.isTemp = false,
-    this.siteName = '',
+    this.siteId = '',
   });
 
   final Labour labour;
@@ -980,7 +865,7 @@ class _AttendanceCard extends StatefulWidget {
   final String remark;
   final AttendanceProvider data;
   final bool isTemp;
-  final String siteName;
+  final String siteId;
 
   @override
   State<_AttendanceCard> createState() => _AttendanceCardState();
@@ -1070,13 +955,6 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                             decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(6)),
                             child: Text('TEMP', style: TextStyle(fontSize: 9, color: Colors.purple.shade700, fontWeight: FontWeight.w700)),
                           ),
-                        if (widget.siteName.isNotEmpty && !widget.isTemp)
-                          Container(
-                            margin: const EdgeInsets.only(left: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: AppColors.primarySurface, borderRadius: BorderRadius.circular(6)),
-                            child: Text(widget.siteName, style: const TextStyle(fontSize: 9, color: AppColors.primary, fontWeight: FontWeight.w600)),
-                          ),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -1095,17 +973,17 @@ class _AttendanceCardState extends State<_AttendanceCard> {
             children: [
               Expanded(child: _statusBtn('P', 'Present', status == 'present', AppColors.present, () {
                 HapticUtils.select();
-                widget.data.markAttendance(labour.id, 'present', remark: _remarkCtrl.text.trim());
+                widget.data.markAttendance(labour.id, 'present', remark: _remarkCtrl.text.trim(), siteId: widget.siteId);
               })),
               const SizedBox(width: 8),
               Expanded(child: _statusBtn('A', 'Absent', status == 'absent', AppColors.absent, () {
                 HapticUtils.select();
-                widget.data.markAttendance(labour.id, 'absent', remark: _remarkCtrl.text.trim());
+                widget.data.markAttendance(labour.id, 'absent', remark: _remarkCtrl.text.trim(), siteId: widget.siteId);
               })),
               const SizedBox(width: 8),
               Expanded(child: _statusBtn('H', 'Half', status == 'half', AppColors.halfDay, () {
                 HapticUtils.select();
-                widget.data.markAttendance(labour.id, 'half', remark: _remarkCtrl.text.trim());
+                widget.data.markAttendance(labour.id, 'half', remark: _remarkCtrl.text.trim(), siteId: widget.siteId);
               })),
             ],
           ),

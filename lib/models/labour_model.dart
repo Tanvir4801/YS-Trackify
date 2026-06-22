@@ -21,7 +21,6 @@ class Labour extends HiveObject {
     this.defaultOvertimeHours = 0,
     this.contractorId = '',
     this.type = LabourType.regular,
-    this.siteId = '',
   });
 
   static const String boxName = 'v2_labours';
@@ -71,8 +70,9 @@ class Labour extends HiveObject {
   @HiveField(14)
   LabourType type;
 
-  @HiveField(15)
-  String siteId;
+  // Field 15 (siteId) intentionally removed — site is now stored only on the
+  // attendance record for the day. Kept in HiveAdapter.read() as a no-op so
+  // existing boxes with 16 fields continue to load correctly.
 
   bool get isTemporary => type == LabourType.temporary;
 
@@ -89,7 +89,6 @@ class Labour extends HiveObject {
       'joiningDate': Timestamp.fromDate(joiningDate),
       'isActive': isActive,
       'type': type == LabourType.temporary ? 'temporary' : 'regular',
-      'siteId': siteId,
       'isSynced': true,
       'syncedAt': FieldValue.serverTimestamp(),
     };
@@ -112,7 +111,6 @@ class Labour extends HiveObject {
       joiningDate: (data['joiningDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isActive: (data['isActive'] as bool?) ?? true,
       type: typeStr == 'temporary' ? LabourType.temporary : LabourType.regular,
-      siteId: (data['siteId'] as String?) ?? '',
     )
       ..firestoreId = doc.id
       ..contractorId = (data['contractorId'] as String?) ?? ''
@@ -137,7 +135,6 @@ class Labour extends HiveObject {
     double? overtimeWagePerHour,
     double? defaultOvertimeHours,
     LabourType? type,
-    String? siteId,
   }) {
     return Labour(
       id: id ?? this.id,
@@ -155,7 +152,6 @@ class Labour extends HiveObject {
       overtimeWagePerHour: overtimeWagePerHour ?? this.overtimeWagePerHour,
       defaultOvertimeHours: defaultOvertimeHours ?? this.defaultOvertimeHours,
       type: type ?? this.type,
-      siteId: siteId ?? this.siteId,
     );
   }
 }
@@ -174,6 +170,7 @@ class LabourAdapter extends TypeAdapter<Labour> {
 
     final typeStr = fields[14] as String? ?? 'regular';
 
+    // fields[15] (siteId) is intentionally ignored — backward compat read only.
     return Labour(
       id: fields[0] as String,
       supervisorId: fields[1] as String,
@@ -190,14 +187,13 @@ class LabourAdapter extends TypeAdapter<Labour> {
       defaultOvertimeHours: (fields[12] as num?)?.toDouble() ?? 0,
       contractorId: fields[13] as String? ?? '',
       type: typeStr == 'temporary' ? LabourType.temporary : LabourType.regular,
-      siteId: fields[15] as String? ?? '',
     );
   }
 
   @override
   void write(BinaryWriter writer, Labour obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -227,8 +223,6 @@ class LabourAdapter extends TypeAdapter<Labour> {
       ..writeByte(13)
       ..write(obj.contractorId)
       ..writeByte(14)
-      ..write(obj.type == LabourType.temporary ? 'temporary' : 'regular')
-      ..writeByte(15)
-      ..write(obj.siteId);
+      ..write(obj.type == LabourType.temporary ? 'temporary' : 'regular');
   }
 }

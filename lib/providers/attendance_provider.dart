@@ -227,6 +227,7 @@ class AttendanceProvider extends ChangeNotifier {
   Future<void> markAttendance(String labourId, String status, {
     String remark = '',
     double? wageAtTimeOverride,
+    String siteId = '',
   }) async {
     final existingOt = overtimeMap[labourId] ?? 0.0;
     final ot = status == 'absent' ? 0.0 : existingOt;
@@ -237,7 +238,9 @@ class AttendanceProvider extends ChangeNotifier {
       wageAtTime = labour?.dailyWage ?? 0.0;
     }
 
-    final labourSiteId = _labourBox.get(labourId)?.siteId ?? '';
+    // siteId comes from whichever site card the supervisor tapped —
+    // it is NOT stored on the labour document.
+    final resolvedSiteId = siteId.isNotEmpty ? siteId : (siteMap[labourId] ?? '');
 
     final att = Attendance(
       id: '${labourId}_$selectedDateStr',
@@ -248,13 +251,14 @@ class AttendanceProvider extends ChangeNotifier {
       overtimeHours: ot,
       wageAtTime: wageAtTime,
       remark: remark.isNotEmpty ? remark : (remarkMap[labourId] ?? ''),
-      siteId: labourSiteId,
+      siteId: resolvedSiteId,
     );
 
     await _service.markAttendance(att, wageAtTime: wageAtTime, remark: att.remark);
 
     attendanceMap[labourId] = status;
     wageAtTimeMap[labourId] = wageAtTime;
+    if (resolvedSiteId.isNotEmpty) siteMap[labourId] = resolvedSiteId;
     if (ot > 0) {
       overtimeMap[labourId] = ot;
     } else {
@@ -272,7 +276,8 @@ class AttendanceProvider extends ChangeNotifier {
     final status = attendanceMap[labourId] ?? 'present';
     final wageAtTime = wageAtTimeMap[labourId] ?? 0.0;
     final remark = remarkMap[labourId] ?? '';
-    final labourSiteId = _labourBox.get(labourId)?.siteId ?? '';
+    // Site is already recorded in siteMap from when attendance was first marked
+    final resolvedSiteId = siteMap[labourId] ?? '';
 
     final att = Attendance(
       id: '${labourId}_$selectedDateStr',
@@ -283,7 +288,7 @@ class AttendanceProvider extends ChangeNotifier {
       overtimeHours: safe,
       wageAtTime: wageAtTime,
       remark: remark,
-      siteId: labourSiteId,
+      siteId: resolvedSiteId,
     );
     await _service.markAttendance(att, wageAtTime: wageAtTime, remark: remark);
 

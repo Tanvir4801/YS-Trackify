@@ -153,10 +153,8 @@ class AttendanceService {
 
     attendance.supervisorId = uid;
     attendance.contractorId = contractorId;
-    if (attendance.siteId.isEmpty) {
-      final labour = _labourBox.get(attendance.labourId);
-      attendance.siteId = labour?.siteId ?? '';
-    }
+    // siteId is supplied by the caller from the tapped site card.
+    // There is no permanent siteId on the labour document.
     attendance.wageAtTime = wageAtTime > 0 ? wageAtTime : attendance.wageAtTime;
     attendance.remark = remark.isNotEmpty ? remark : attendance.remark;
     if (attendance.remark.isNotEmpty) attendance.notes = attendance.remark;
