@@ -1,0 +1,1358 @@
+I have a Flutter app called Trackify V2 — Labour Attendance 
+Management System for construction contractors.
+
+Upgrade the entire app UI to a premium, professional level.
+DO NOT change any logic, Firebase code, or functionality.
+ONLY improve visual design, animations, and polish.
+
+Current stack: Flutter, Provider, Firebase, Hive
+Current theme: Light with teal/green primary color
+
+=============================================================
+DESIGN SYSTEM — Apply these consistently across entire app
+=============================================================
+
+## Color Palette
+```dart
+// lib/core/theme/app_colors.dart — replace with this:
+
+class AppColors {
+  // Primary brand
+  static const primary        = Color(0xFF1B8B6E); // deep teal
+  static const primaryLight   = Color(0xFF26C49A); // light teal
+  static const primaryDark    = Color(0xFF0F6B53); // dark teal
+  static const primarySurface = Color(0xFFE8F5F1); // teal tint bg
+
+  // Accent
+  static const accent         = Color(0xFF2563EB); // blue
+  static const accentSurface  = Color(0xFFEFF6FF);
+
+  // Semantic
+  static const present        = Color(0xFF16A34A); // green
+  static const presentSurface = Color(0xFFF0FDF4);
+  static const absent         = Color(0xFFDC2626); // red
+  static const absentSurface  = Color(0xFFFEF2F2);
+  static const halfDay        = Color(0xFFD97706); // amber
+  static const halfSurface    = Color(0xFFFFFBEB);
+
+  // Neutral
+  static const background     = Color(0xFFF8FAFB);
+  static const surface        = Color(0xFFFFFFFF);
+  static const surfaceElevated= Color(0xFFF1F5F9);
+  static const border         = Color(0xFFE2E8F0);
+  static const borderLight    = Color(0xFFF1F5F9);
+
+  // Text
+  static const textPrimary    = Color(0xFF0F172A);
+  static const textSecondary  = Color(0xFF475569);
+  static const textTertiary   = Color(0xFF94A3B8);
+  static const textOnPrimary  = Color(0xFFFFFFFF);
+
+  // Cards
+  static const blueCard       = Color(0xFFEFF6FF);
+  static const greenCard      = Color(0xFFF0FDF4);
+  static const redCard        = Color(0xFFFEF2F2);
+  static const amberCard      = Color(0xFFFFFBEB);
+  static const purpleCard     = Color(0xFFF5F3FF);
+  static const slateCard      = Color(0xFFF8FAFC);
+
+  // Gradient
+  static const gradientStart  = Color(0xFF1B8B6E);
+  static const gradientEnd    = Color(0xFF0EA5E9);
+}
+```
+
+## Typography
+```dart
+// lib/core/theme/app_text_styles.dart
+
+class AppTextStyles {
+  static const displayLarge = TextStyle(
+    fontSize: 28, fontWeight: FontWeight.w800,
+    color: AppColors.textPrimary, letterSpacing: -0.5,
+    height: 1.2,
+  );
+  static const displayMedium = TextStyle(
+    fontSize: 22, fontWeight: FontWeight.w700,
+    color: AppColors.textPrimary, letterSpacing: -0.3,
+  );
+  static const headingLarge = TextStyle(
+    fontSize: 18, fontWeight: FontWeight.w700,
+    color: AppColors.textPrimary,
+  );
+  static const headingMedium = TextStyle(
+    fontSize: 15, fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+  static const bodyLarge = TextStyle(
+    fontSize: 14, fontWeight: FontWeight.w400,
+    color: AppColors.textSecondary, height: 1.5,
+  );
+  static const bodyMedium = TextStyle(
+    fontSize: 13, fontWeight: FontWeight.w400,
+    color: AppColors.textSecondary,
+  );
+  static const caption = TextStyle(
+    fontSize: 11, fontWeight: FontWeight.w500,
+    color: AppColors.textTertiary, letterSpacing: 0.3,
+  );
+  static const labelLarge = TextStyle(
+    fontSize: 13, fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+  static const moneyLarge = TextStyle(
+    fontSize: 26, fontWeight: FontWeight.w800,
+    color: AppColors.primary, letterSpacing: -0.5,
+  );
+  static const moneyMedium = TextStyle(
+    fontSize: 18, fontWeight: FontWeight.w700,
+    color: AppColors.primary,
+  );
+}
+```
+
+## Theme Config
+```dart
+// lib/core/theme/app_theme.dart
+
+ThemeData get appTheme => ThemeData(
+  useMaterial3: true,
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: AppColors.primary,
+    brightness: Brightness.light,
+    surface: AppColors.background,
+  ),
+  scaffoldBackgroundColor: AppColors.background,
+  fontFamily: 'Inter', // or keep default
+
+  appBarTheme: const AppBarTheme(
+    backgroundColor: AppColors.surface,
+    foregroundColor: AppColors.textPrimary,
+    elevation: 0,
+    centerTitle: false,
+    titleTextStyle: AppTextStyles.headingLarge,
+    surfaceTintColor: Colors.transparent,
+    shadowColor: Colors.transparent,
+    systemOverlayStyle: SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  ),
+
+  cardTheme: CardThemeData(
+    elevation: 0,
+    color: AppColors.surface,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: const BorderSide(color: AppColors.border, width: 1),
+    ),
+    margin: EdgeInsets.zero,
+  ),
+
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      backgroundColor: AppColors.primary,
+      foregroundColor: AppColors.textOnPrimary,
+      elevation: 0,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+    ),
+  ),
+
+  filledButtonTheme: FilledButtonThemeData(
+    style: FilledButton.styleFrom(
+      backgroundColor: AppColors.primary,
+      foregroundColor: AppColors.textOnPrimary,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  ),
+
+  inputDecorationTheme: InputDecorationTheme(
+    filled: true,
+    fillColor: AppColors.surfaceElevated,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.border),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.border),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.primary, width: 2),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    hintStyle: AppTextStyles.bodyMedium,
+  ),
+
+  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+    backgroundColor: AppColors.surface,
+    selectedItemColor: AppColors.primary,
+    unselectedItemColor: AppColors.textTertiary,
+    elevation: 0,
+    type: BottomNavigationBarType.fixed,
+  ),
+
+  navigationBarTheme: NavigationBarThemeData(
+    backgroundColor: AppColors.surface,
+    indicatorColor: AppColors.primarySurface,
+    iconTheme: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.selected)) {
+        return const IconThemeData(color: AppColors.primary, size: 22);
+      }
+      return const IconThemeData(color: AppColors.textTertiary, size: 22);
+    }),
+    labelTextStyle: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.selected)) {
+        return const TextStyle(
+          fontSize: 11, fontWeight: FontWeight.w600,
+          color: AppColors.primary,
+        );
+      }
+      return const TextStyle(
+        fontSize: 11, color: AppColors.textTertiary,
+      );
+    }),
+  ),
+);
+```
+
+=============================================================
+REUSABLE PREMIUM COMPONENTS
+Create these in lib/widgets/
+=============================================================
+
+## 1. Premium Stat Card
+```dart
+// lib/widgets/stat_card.dart
+
+class StatCard extends StatelessWidget {
+  const StatCard({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+    this.subtitle,
+    this.onTap,
+    this.trend,        // "+12%" text
+    this.trendUp,      // true=green false=red
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final String? subtitle;
+  final VoidCallback? onTap;
+  final String? trend;
+  final bool? trendUp;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8, offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                if (trend != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (trendUp ?? true)
+                          ? AppColors.presentSurface
+                          : AppColors.absentSurface,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      trend!,
+                      style: TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w600,
+                        color: (trendUp ?? true)
+                            ? AppColors.present : AppColors.absent,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(value,
+              style: const TextStyle(
+                fontSize: 24, fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary, letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(title, style: AppTextStyles.caption),
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(subtitle!, style: AppTextStyles.caption),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+## 2. Premium Labour Card
+```dart
+// lib/widgets/labour_card.dart
+
+class LabourCard extends StatelessWidget {
+  const LabourCard({
+    super.key,
+    required this.labour,
+    required this.advanceAmount,
+    this.todayStatus,
+    this.onTap,
+    this.onAdvanceTap,
+    this.onMenuTap,
+  });
+
+  final Labour labour;
+  final double advanceAmount;
+  final String? todayStatus;
+  final VoidCallback? onTap;
+  final VoidCallback? onAdvanceTap;
+  final VoidCallback? onMenuTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = labour.name.isNotEmpty
+        ? labour.name[0].toUpperCase() : '?';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8, offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                // Avatar with status indicator
+                Stack(
+                  children: [
+                    Container(
+                      width: 48, height: 48,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primary,
+                            AppColors.primaryLight,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(initial,
+                          style: const TextStyle(
+                            color: Colors.white, fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (todayStatus != null)
+                      Positioned(
+                        right: 0, bottom: 0,
+                        child: Container(
+                          width: 14, height: 14,
+                          decoration: BoxDecoration(
+                            color: todayStatus == 'present'
+                                ? AppColors.present
+                                : todayStatus == 'half'
+                                    ? AppColors.halfDay
+                                    : AppColors.absent,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(labour.name,
+                        style: AppTextStyles.headingMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${labour.skill.isNotEmpty ? labour.skill : "Worker"}'
+                        ' • ₹${labour.dailyWage.toStringAsFixed(0)}/day',
+                        style: AppTextStyles.bodyMedium,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onMenuTap,
+                  icon: const Icon(Icons.more_vert,
+                    color: AppColors.textTertiary, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 1, color: AppColors.borderLight),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                // Phone
+                Icon(Icons.phone_outlined,
+                  size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 4),
+                Text(labour.phone, style: AppTextStyles.bodyMedium),
+                const Spacer(),
+                // Advance badge
+                if (advanceAmount > 0)
+                  GestureDetector(
+                    onTap: onAdvanceTap,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.amberCard,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.halfDay.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.currency_rupee,
+                            size: 12, color: AppColors.halfDay),
+                          Text(
+                            'Advance ₹${advanceAmount.toStringAsFixed(0)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.halfDay,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                // Add advance button
+                GestureDetector(
+                  onTap: onAdvanceTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add,
+                          size: 12, color: AppColors.primary),
+                        const SizedBox(width: 3),
+                        Text('Advance',
+                          style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+## 3. Premium Section Header
+```dart
+// lib/widgets/section_header.dart
+
+class SectionHeader extends StatelessWidget {
+  const SectionHeader({
+    super.key,
+    required this.title,
+    this.action,
+    this.actionLabel,
+  });
+
+  final String title;
+  final VoidCallback? action;
+  final String? actionLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+      child: Row(
+        children: [
+          Text(title, style: AppTextStyles.headingMedium),
+          const Spacer(),
+          if (action != null && actionLabel != null)
+            GestureDetector(
+              onTap: action,
+              child: Text(actionLabel!,
+                style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+## 4. Premium Empty State
+```dart
+// lib/widgets/empty_state.dart
+
+class EmptyState extends StatelessWidget {
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.primarySurface,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon,
+                size: 36, color: AppColors.primary),
+            ),
+            const SizedBox(height: 20),
+            Text(title,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.headingMedium),
+            const SizedBox(height: 8),
+            Text(subtitle,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyLarge),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(actionLabel!),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+## 5. Premium Status Badge
+```dart
+// lib/widgets/status_badge.dart
+
+class StatusBadge extends StatelessWidget {
+  const StatusBadge({super.key, required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final config = switch (status.toLowerCase()) {
+      'present' => (
+        color: AppColors.present,
+        bg: AppColors.presentSurface,
+        label: 'Present',
+        icon: Icons.check_circle_outline,
+      ),
+      'absent' => (
+        color: AppColors.absent,
+        bg: AppColors.absentSurface,
+        label: 'Absent',
+        icon: Icons.cancel_outlined,
+      ),
+      'half' => (
+        color: AppColors.halfDay,
+        bg: AppColors.halfSurface,
+        label: 'Half Day',
+        icon: Icons.timelapse_outlined,
+      ),
+      _ => (
+        color: AppColors.textTertiary,
+        bg: AppColors.surfaceElevated,
+        label: status,
+        icon: Icons.help_outline,
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: config.bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: config.color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(config.icon, size: 13, color: config.color),
+          const SizedBox(width: 4),
+          Text(config.label,
+            style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600,
+              color: config.color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+## 6. Premium Loading Shimmer
+```dart
+// lib/widgets/shimmer_loader.dart
+// Add shimmer: ^3.0.0 to pubspec.yaml
+
+class ShimmerCard extends StatelessWidget {
+  const ShimmerCard({super.key, this.height = 80});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppColors.surfaceElevated,
+      highlightColor: AppColors.surface,
+      child: Container(
+        height: height,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+    );
+  }
+}
+
+class ShimmerList extends StatelessWidget {
+  const ShimmerList({super.key, this.count = 4});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(count,
+        (_) => const ShimmerCard()),
+    );
+  }
+}
+```
+
+=============================================================
+SCREEN-BY-SCREEN UPGRADES
+=============================================================
+
+## Dashboard Screen — Premium Redesign
+
+Replace existing dashboard layout with:
+
+```dart
+// Gradient header card
+Container(
+  margin: const EdgeInsets.all(16),
+  padding: const EdgeInsets.all(20),
+  decoration: BoxDecoration(
+    gradient: LinearGradient(
+      colors: [AppColors.primary, AppColors.primaryLight],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    ),
+    borderRadius: BorderRadius.circular(24),
+    boxShadow: [
+      BoxShadow(
+        color: AppColors.primary.withValues(alpha: 0.3),
+        blurRadius: 20, offset: const Offset(0, 8),
+      ),
+    ],
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.business,
+            color: Colors.white, size: 20),
+        ),
+        const SizedBox(width: 10),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(provider.contractorName,
+            style: const TextStyle(
+              color: Colors.white, fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text('From Site to System',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 12,
+            ),
+          ),
+        ]),
+      ]),
+      const SizedBox(height: 20),
+      // Today summary inside header
+      Row(children: [
+        _headerStat('Total', '${provider.totalLabours}', 'Workers'),
+        _headerDivider(),
+        _headerStat('Present', '${provider.presentToday}', 'Today'),
+        _headerDivider(),
+        _headerStat('Absent', '${provider.absentToday}', 'Today'),
+      ]),
+    ],
+  ),
+),
+
+// Helper widgets inside dashboard:
+Widget _headerStat(String label, String value, String sub) =>
+  Expanded(child: Column(children: [
+    Text(value, style: const TextStyle(
+      color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+    Text('$label\n$sub', textAlign: TextAlign.center,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.8), fontSize: 11)),
+  ]));
+
+Widget _headerDivider() => Container(
+  width: 1, height: 40,
+  color: Colors.white.withValues(alpha: 0.2));
+```
+
+Stats grid below header — 2x2:
+```dart
+Padding(
+  padding: const EdgeInsets.symmetric(horizontal: 16),
+  child: GridView.count(
+    crossAxisCount: 2,
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    crossAxisSpacing: 12,
+    mainAxisSpacing: 12,
+    childAspectRatio: 1.4,
+    children: [
+      StatCard(
+        title: 'Total Labour',
+        value: '${provider.totalLabours}',
+        icon: Icons.people_outline_rounded,
+        color: AppColors.accent,
+      ),
+      StatCard(
+        title: 'Today Present',
+        value: '${provider.presentToday}',
+        icon: Icons.check_circle_outline_rounded,
+        color: AppColors.present,
+      ),
+      StatCard(
+        title: 'Today Absent',
+        value: '${provider.absentToday}',
+        icon: Icons.cancel_outlined,
+        color: AppColors.absent,
+      ),
+      StatCard(
+        title: 'Half Day',
+        value: '${provider.halfToday}',
+        icon: Icons.timelapse_outlined,
+        color: AppColors.halfDay,
+      ),
+    ],
+  ),
+),
+```
+
+Wage snapshot section:
+```dart
+// Replace plain wage cards with premium design
+Container(
+  margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+  padding: const EdgeInsets.all(20),
+  decoration: BoxDecoration(
+    color: AppColors.surface,
+    borderRadius: BorderRadius.circular(20),
+    border: Border.all(color: AppColors.border),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(children: [
+        const Icon(Icons.account_balance_wallet_outlined,
+          size: 18, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Text('Wage Snapshot', style: AppTextStyles.headingMedium),
+      ]),
+      const SizedBox(height: 16),
+      // Three wage rows
+      _wageRow('Today', provider.todayWages, AppColors.accent),
+      const Divider(height: 20),
+      _wageRow('This Week', provider.weekWages, AppColors.primary),
+      const Divider(height: 20),
+      _wageRow('This Month', provider.monthWages, AppColors.present),
+    ],
+  ),
+),
+
+Widget _wageRow(String label, double amount, Color color) =>
+  Row(children: [
+    Text(label, style: AppTextStyles.bodyLarge),
+    const Spacer(),
+    Text('₹${amount.toStringAsFixed(0)}',
+      style: TextStyle(
+        fontSize: 16, fontWeight: FontWeight.w700, color: color)),
+  ]);
+```
+
+## Labour Screen — Premium List
+
+Replace ListView items with LabourCard widget:
+```dart
+ListView.separated(
+  padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+  itemCount: provider.filteredLabours.length,
+  separatorBuilder: (_, __) => const SizedBox(height: 12),
+  itemBuilder: (context, index) {
+    final labour = provider.filteredLabours[index];
+    return LabourCard(
+      labour: labour,
+      advanceAmount: labour.advanceAmount,
+      onTap: () => _showLabourDetail(labour),
+      onAdvanceTap: () => _showAddAdvance(labour),
+      onMenuTap: () => _showLabourMenu(labour),
+    );
+  },
+),
+```
+
+Search bar at top — premium style:
+```dart
+Padding(
+  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+  child: TextField(
+    onChanged: provider.search,
+    decoration: InputDecoration(
+      hintText: 'Search labours...',
+      prefixIcon: const Icon(Icons.search,
+        color: AppColors.textTertiary, size: 20),
+      suffixIcon: provider.searchQuery.isNotEmpty
+          ? IconButton(
+              icon: const Icon(Icons.clear,
+                size: 18, color: AppColors.textTertiary),
+              onPressed: () => provider.search(''),
+            )
+          : null,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16, vertical: 12),
+    ),
+  ),
+),
+```
+
+Total wage liability card:
+```dart
+Container(
+  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+  padding: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    gradient: LinearGradient(
+      colors: [
+        AppColors.absent.withValues(alpha: 0.08),
+        AppColors.halfDay.withValues(alpha: 0.08),
+      ],
+    ),
+    borderRadius: BorderRadius.circular(16),
+    border: Border.all(
+      color: AppColors.halfDay.withValues(alpha: 0.2)),
+  ),
+  child: Row(children: [
+    Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.halfDay.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(Icons.account_balance_wallet,
+        color: AppColors.halfDay, size: 20),
+    ),
+    const SizedBox(width: 12),
+    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Total Wage Liability',
+        style: AppTextStyles.caption),
+      Text('₹${totalWage.toStringAsFixed(0)}',
+        style: const TextStyle(
+          fontSize: 20, fontWeight: FontWeight.w800,
+          color: AppColors.halfDay,
+        ),
+      ),
+    ]),
+    const Spacer(),
+    Text('Across all workers',
+      style: AppTextStyles.caption),
+  ]),
+),
+```
+
+FAB — premium style:
+```dart
+floatingActionButton: FloatingActionButton.extended(
+  onPressed: _showAddLabour,
+  backgroundColor: AppColors.primary,
+  foregroundColor: Colors.white,
+  elevation: 4,
+  icon: const Icon(Icons.person_add_outlined),
+  label: const Text('Add Labour',
+    style: TextStyle(fontWeight: FontWeight.w600)),
+),
+```
+
+## Attendance Screen — Premium Cards
+
+Attendance list item upgrade:
+```dart
+Card(
+  margin: const EdgeInsets.only(bottom: 12),
+  child: Padding(
+    padding: const EdgeInsets.all(14),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          // Avatar
+          Container(
+            width: 42, height: 42,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.primary, AppColors.primaryLight]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: Text(
+                labour.name[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white, fontSize: 16,
+                  fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(labour.name, style: AppTextStyles.headingMedium),
+              Text(
+                '${labour.phone} • ₹${labour.dailyWage.toStringAsFixed(0)}/day',
+                style: AppTextStyles.bodyMedium),
+            ],
+          )),
+          // Current status badge
+          if (status != null) StatusBadge(status: status!),
+        ]),
+        const SizedBox(height: 14),
+        // Status buttons — more polished
+        Row(children: [
+          Expanded(child: _statusBtn('P', 'Present',
+            status == 'present', AppColors.present,
+            () => data.markAttendance(labour.id, 'present'))),
+          const SizedBox(width: 8),
+          Expanded(child: _statusBtn('A', 'Absent',
+            status == 'absent', AppColors.absent,
+            () => data.markAttendance(labour.id, 'absent'))),
+          const SizedBox(width: 8),
+          Expanded(child: _statusBtn('H', 'Half',
+            status == 'half', AppColors.halfDay,
+            () => data.markAttendance(labour.id, 'half'))),
+        ]),
+      ],
+    ),
+  ),
+),
+
+// Premium status button
+Widget _statusBtn(String short, String label, bool selected,
+    Color color, VoidCallback onTap) {
+  return GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      height: 44,
+      decoration: BoxDecoration(
+        color: selected ? color : color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected ? color : color.withValues(alpha: 0.2),
+          width: selected ? 0 : 1,
+        ),
+        boxShadow: selected ? [
+          BoxShadow(
+            color: color.withValues(alpha: 0.3),
+            blurRadius: 8, offset: const Offset(0, 3),
+          ),
+        ] : [],
+      ),
+      child: Center(
+        child: Text(
+          selected ? label : short,
+          style: TextStyle(
+            fontSize: selected ? 12 : 14,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : color,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+```
+
+## Bottom Navigation Bar — Premium
+
+```dart
+// Replace NavigationBar with custom premium bar
+Container(
+  decoration: BoxDecoration(
+    color: AppColors.surface,
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.08),
+        blurRadius: 20, offset: const Offset(0, -4),
+      ),
+    ],
+  ),
+  child: SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          _navItem(0, Icons.dashboard_outlined,
+            Icons.dashboard_rounded, 'Dashboard'),
+          _navItem(1, Icons.badge_outlined,
+            Icons.badge_rounded, 'Labour'),
+          _navItem(2, Icons.fact_check_outlined,
+            Icons.fact_check_rounded, 'Attendance'),
+          _navItem(3, Icons.bar_chart_outlined,
+            Icons.bar_chart_rounded, 'Reports'),
+          _navItem(4, Icons.qr_code_scanner_outlined,
+            Icons.qr_code_scanner_rounded, 'Scanner'),
+        ],
+      ),
+    ),
+  ),
+),
+
+Widget _navItem(int index, IconData icon,
+    IconData activeIcon, String label) {
+  final selected = _tabIndex == index;
+  return Expanded(
+    child: GestureDetector(
+      onTap: () => setState(() => _tabIndex = index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primarySurface
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected ? activeIcon : icon,
+              color: selected
+                  ? AppColors.primary
+                  : AppColors.textTertiary,
+              size: 22,
+            ),
+            const SizedBox(height: 3),
+            Text(label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: selected
+                    ? FontWeight.w700 : FontWeight.w400,
+                color: selected
+                    ? AppColors.primary
+                    : AppColors.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+```
+
+## Scanner Screen — Premium
+
+```dart
+// Scanner result overlay — premium
+AnimatedContainer(
+  duration: const Duration(milliseconds: 300),
+  curve: Curves.easeOutBack,
+  padding: const EdgeInsets.all(16),
+  margin: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    color: result.success ? AppColors.present : AppColors.absent,
+    borderRadius: BorderRadius.circular(20),
+    boxShadow: [
+      BoxShadow(
+        color: (result.success
+            ? AppColors.present : AppColors.absent)
+            .withValues(alpha: 0.4),
+        blurRadius: 20,
+        offset: const Offset(0, 8),
+      ),
+    ],
+  ),
+  child: Row(children: [
+    Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        result.success
+            ? Icons.check_circle_rounded
+            : Icons.cancel_rounded,
+        color: Colors.white, size: 28,
+      ),
+    ),
+    const SizedBox(width: 12),
+    Expanded(child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          result.success
+              ? 'Attendance Marked!' : 'Scan Failed',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15, fontWeight: FontWeight.w700,
+          ),
+        ),
+        Text(result.message,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.9),
+            fontSize: 12,
+          ),
+        ),
+      ],
+    )),
+  ]),
+),
+```
+
+Scan list item:
+```dart
+ListTile(
+  dense: true,
+  contentPadding: const EdgeInsets.symmetric(
+    horizontal: 16, vertical: 4),
+  leading: CircleAvatar(
+    radius: 18,
+    backgroundColor: scan['isSynced'] == true
+        ? AppColors.presentSurface
+        : AppColors.halfSurface,
+    child: Icon(
+      scan['isSynced'] == true
+          ? Icons.cloud_done_outlined
+          : Icons.cloud_off_outlined,
+      size: 16,
+      color: scan['isSynced'] == true
+          ? AppColors.present : AppColors.halfDay,
+    ),
+  ),
+  title: FutureBuilder<String>(
+    future: _getLabourName(scan['labourId'] ?? ''),
+    builder: (ctx, snap) => Text(
+      snap.data ?? 'Loading...',
+      style: AppTextStyles.labelLarge,
+    ),
+  ),
+  subtitle: Text(
+    '${scan['scannedAt']?.toString().substring(11,16) ?? ''}'
+    ' • ${scan['isSynced'] == true ? "Synced" : "Pending"}',
+    style: AppTextStyles.caption,
+  ),
+  trailing: StatusBadge(status: scan['status'] ?? 'present'),
+),
+```
+
+=============================================================
+ANIMATIONS — Add these throughout
+=============================================================
+
+```dart
+// Page transition
+class FadeSlideTransition extends PageRouteBuilder {
+  FadeSlideTransition({required this.page})
+      : super(
+          pageBuilder: (ctx, anim, sec) => page,
+          transitionsBuilder: (ctx, anim, sec, child) {
+            return FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.05),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: anim, curve: Curves.easeOut)),
+                child: child,
+              ),
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 250),
+        );
+  final Widget page;
+}
+
+// Number counter animation for stat cards
+class AnimatedCounter extends StatelessWidget {
+  const AnimatedCounter({
+    super.key,
+    required this.value,
+    required this.style,
+    this.prefix = '',
+  });
+
+  final double value;
+  final TextStyle style;
+  final String prefix;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOut,
+      builder: (ctx, val, _) => Text(
+        '$prefix${val.toStringAsFixed(0)}',
+        style: style,
+      ),
+    );
+  }
+}
+```
+
+=============================================================
+PUBSPEC — Add these packages
+=============================================================
+
+```yaml
+dependencies:
+  shimmer: ^3.0.0        # loading skeleton
+  flutter_animate: ^4.5.0 # easy animations
+```
+
+=============================================================
+IMPLEMENTATION ORDER
+=============================================================
+
+1. Update AppColors and AppTheme — apply globally
+2. Add all reusable widgets to lib/widgets/
+3. Update Dashboard screen
+4. Update Labour screen with new cards
+5. Update Attendance screen
+6. Update Bottom Navigation Bar
+7. Update Scanner screen
+8. Add shimmer loading to all list screens
+9. Add page transition animations
+10. Add number counter animations to stat cards
+
+DO NOT change any Provider, Service, or Firebase code.
+DO NOT change any business logic.
+ONLY change Widget build methods and styling.
+Keep all existing functionality working exactly as before.
+Show complete updated file for each screen.

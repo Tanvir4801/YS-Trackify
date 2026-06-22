@@ -1,0 +1,543 @@
+I have a React admin panel for Trackify - YS Construction
+(Labour Attendance Management System).
+Firebase project: ys-construction
+
+Upgrade this admin panel to a professional startup-level 
+product with all real-world business features.
+Keep all existing working features. Only ADD new ones.
+
+## CURRENT TECH STACK
+- React 18 (Vite)
+- Firebase v10 (Firestore + Auth)
+- Tailwind CSS
+- React Router v6
+- recharts for charts
+
+---
+
+## FEATURE 1 — Professional Dashboard
+
+### Stats cards (real-time from Firebase)
+- Total Active Labours
+- Present Today (with % of total)
+- Absent Today (with % of total)  
+- Half Day Today
+- This Month Payroll (₹ total)
+- Pending Advances (₹ total unpaid)
+- Total Supervisors
+- Sync Pending (count of isSynced=false records)
+
+### Attendance trend chart
+- Bar chart: last 14 days
+- 3 bars per day: Present (green) / Absent (red) / Half (orange)
+- X axis: date labels DD/MM
+- Y axis: count of workers
+- Data from attendance collection filtered by date range
+
+### Today's attendance live feed
+- Table showing today's records as they come in
+- Columns: Labour Name, Supervisor, Status badge, Time, OT Hours
+- Real-time — updates without page refresh using onSnapshot
+- Shows "Live" green dot indicator in header
+
+### Payroll summary card
+- This month total gross salary
+- This month total advances
+- This month net payable
+- Progress bar showing advance vs gross ratio
+
+### Quick actions bar
+- Mark bulk attendance button
+- Add labour button
+- Generate report button
+- Export today's data button
+
+---
+
+## FEATURE 2 — Advanced Labour Management
+
+### Labour list improvements
+- Search by name or phone (instant filter)
+- Filter by supervisor (dropdown)
+- Filter by status (active/inactive)
+- Sort by: Name, Daily Wage, Joining Date, OT Rate
+- Show total wage liability (sum of all daily wages)
+- Bulk actions: select multiple → bulk delete/activate/deactivate
+
+### Labour profile page (/labours/:id)
+Full detail page for each labour:
+- Personal info card: name, phone, daily wage, OT rate, joining date
+- This month summary: present/absent/half counts, salary earned
+- Last 30 days attendance calendar heatmap
+  - Green = present, Red = absent, Orange = half, Gray = no record
+- Payment history table: all payments sorted by date
+- Advance balance: total advances - total salary paid
+- Edit button → opens edit modal
+- Download individual labour report as CSV
+
+### Labour calendar heatmap component
+```jsx
+function AttendanceHeatmap({ labourId }) {
+  // Show last 30 days as a grid of colored squares
+  // Each square = one day
+  // Color based on attendance status
+  // Hover shows date and status tooltip
+  const [data, setData] = useState({});
+  
+  useEffect(() => {
+    // Fetch last 30 days attendance for this labour
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().split('T')[0]);
+    }
+    // Query attendance collection
+    // Map labourId → status for each date
+  }, [labourId]);
+
+  return (
+    <div className="grid grid-cols-10 gap-1">
+      {days.map(day => (
+        <div
+          key={day}
+          title={`${day}: ${data[day] || 'No record'}`}
+          className={`w-6 h-6 rounded-sm cursor-pointer ${
+            data[day] === 'present' ? 'bg-green-500' :
+            data[day] === 'absent'  ? 'bg-red-400'   :
+            data[day] === 'half'    ? 'bg-orange-400' :
+            'bg-gray-200'
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+## FEATURE 3 — Advanced Attendance Management
+
+### Date navigation
+- Previous/Next day arrow buttons
+- Date picker to jump to any date
+- "Today" button to jump back to today
+- Show day name (Monday, Tuesday etc)
+
+### Attendance table improvements
+- Show labour photo placeholder (circle with initials)
+- Inline status change: click badge → cycles present→absent→half
+- Inline OT hours edit: click number → input field appears
+- Show daily wage next to each labour
+- Show calculated wage for that day (based on status + OT)
+- Bulk actions:
+  - Mark all present
+  - Mark all absent
+  - Copy yesterday's attendance
+
+### Summary bar above table
+Total: 12 workers | Present: 8 (67%) | Absent: 3 (25%) | Half: 1 (8%) Today's wage liability: ₹4,500
+### Attendance filter
+- Filter by supervisor
+- Filter by status
+- Search by labour name
+
+---
+
+## FEATURE 4 — Payroll & Payments
+
+### Payroll calculator page (/payroll)
+Monthly payroll calculation:
+- Select month + year
+- Select supervisor (or all)
+- Click "Calculate Payroll" button
+- Shows table:
+  | Labour | Days | OT Hrs | Gross | Advances | Net |
+- Grand totals row at bottom
+- Export to CSV button
+- "Mark as Paid" button — creates payment records
+  for all selected labours at once
+
+### Payment recording
+- Add payment modal with fields:
+  - Labour (searchable dropdown)
+  - Type: Salary / Advance / Overtime Bonus / Deduction
+  - Amount (₹)
+  - Date
+  - Notes
+  - Payment method: Cash / Bank Transfer / UPI
+- Payment history table with filters:
+  - By type
+  - By date range
+  - By labour
+  - By supervisor
+- Running balance per labour
+  (total salary earned - total paid - advances)
+
+### Advance management
+- Dedicated advances section
+- Shows each labour's advance balance
+- Add advance button
+- Recovery schedule (how much to deduct per month)
+
+---
+
+## FEATURE 5 — Reports & Analytics
+
+### Report types
+1. Monthly Salary Report
+   - All labours for selected month
+   - Attendance breakdown + salary calculation
+   - Export CSV + Print view
+
+2. Attendance Summary Report
+   - Date range selector
+   - Per labour attendance percentage
+   - Present/Absent/Half counts
+   - Absenteeism rate
+
+3. Overtime Report
+   - Which labours worked overtime
+   - Total OT hours per labour
+   - Total OT cost
+
+4. Payment Report
+   - All payments in date range
+   - Grouped by type (salary/advance/bonus)
+   - Total by supervisor
+
+5. Labour Productivity Report
+   - Attendance rate per labour (%)
+   - Sorted by most to least attendance
+   - Helps identify unreliable labours
+
+### Report UI
+- Report type selector tabs
+- Date range picker (from/to)
+- Supervisor filter
+- "Generate" button with loading state
+- Results table with sort
+- Export CSV button
+- Print button (opens print-friendly view)
+
+---
+
+## FEATURE 6 — Supervisor Management
+
+### Supervisors page (/supervisors)
+- List all users with role=supervisor
+- For each supervisor show:
+  - Name, Phone, Active status
+  - Number of labours under them
+  - Today's attendance marked count
+  - This month payroll amount
+- Add supervisor button
+- View supervisor detail → shows all their labours
+
+---
+
+## FEATURE 7 — Notifications & Alerts
+
+### Alert system
+Show alerts on dashboard for:
+
+1. Attendance not marked today
+   "5 labours have no attendance marked today"
+   → Click to go to attendance page for today
+
+2. Pending sync records
+   "12 records pending Firebase sync from app"
+   → Shows which records are isSynced=false
+
+3. High advance balance
+   "Ram has advance balance of ₹8,000 — consider deducting"
+
+4. Labours with 3+ consecutive absences
+   "Shyam has been absent for 3 days in a row"
+
+### Alert component
+```jsx
+function AlertBanner({ type, message, actionLabel, onAction }) {
+  const colors = {
+    warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+    error:   'bg-red-50 border-red-200 text-red-800',
+    info:    'bg-blue-50 border-blue-200 text-blue-800',
+  };
+  return (
+    <div className={`flex items-center justify-between 
+      p-3 rounded-lg border mb-2 ${colors[type]}`}>
+      <span className="text-sm">{message}</span>
+      {actionLabel && (
+        <button onClick={onAction}
+          className="text-xs font-medium underline ml-4">
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## FEATURE 8 — Search & Filters
+
+### Global search bar (in header)
+- Search across all collections
+- Press Cmd+K or Ctrl+K to open
+- Results grouped by type:
+  - Labours (name, phone)
+  - Supervisors (name)
+  - Payments (amount, date)
+- Click result → navigate to that record
+
+```jsx
+function GlobalSearch() {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState({
+    labours: [], payments: []
+  });
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setOpen(true);
+      }
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
+  // Search Firestore when query changes
+  // Debounce 300ms
+}
+```
+
+---
+
+## FEATURE 9 — Data Export & Backup
+
+### Export options
+On every page add export button:
+- Export current view as CSV
+- Export as PDF (print stylesheet)
+
+### Backup page (/settings/backup)
+- Show count of unsynced records
+  from Flutter app (isSynced=false)
+- "Force Sync" button — marks all records as synced
+- Last backup timestamp
+- Download full backup as JSON
+
+### CSV export utility
+```javascript
+// lib/utils/exportCSV.js
+export const exportCSV = (data, filename, columns) => {
+  // columns: [{ key: 'name', label: 'Labour Name' }, ...]
+  const BOM = '\uFEFF';
+  const headers = columns.map(c => c.label);
+  const rows = data.map(item =>
+    columns.map(c => {
+      const val = item[c.key] ?? '';
+      // Format special types
+      if (val instanceof Date) {
+        return val.toLocaleDateString('en-IN');
+      }
+      if (typeof val === 'number' && c.currency) {
+        return `₹${val.toLocaleString('en-IN')}`;
+      }
+      return String(val).replace(/"/g, '""');
+    })
+  );
+  const csv = BOM + [headers, ...rows]
+    .map(r => r.map(v => `"${v}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+```
+
+---
+
+## FEATURE 10 — Settings & Configuration
+
+### Settings page (/settings)
+
+#### Company settings
+- Company name (shown in reports header)
+- Company logo upload
+- Default working hours per day
+- Weekly off days (Sunday/Saturday etc)
+- Overtime calculation method:
+  - After 8 hours
+  - Flat rate per extra hour
+
+#### Admin management
+- View all admin users
+- Add new admin (email + password)
+- Deactivate admin
+
+#### Notification settings
+- Enable/disable each alert type
+- Alert threshold values
+  (e.g. "Alert after X consecutive absences")
+
+---
+
+## FEATURE 11 — UI Polish & Professional Design
+
+### Sidebar improvements
+- Show logged-in admin name + email at bottom
+- Active page highlighted with accent color
+- Collapse sidebar button (icon-only mode)
+- Notification badge on relevant menu items
+- Tooltips on collapsed icons
+
+### Table improvements
+- Sticky header when scrolling
+- Row hover highlight
+- Click row to expand details
+- Column resize
+- Remember sort preference in localStorage
+- Pagination with: First / Prev / 1 2 3 ... / Next / Last
+- Rows per page selector: 10 / 25 / 50 / 100
+
+### Form improvements
+- Real-time validation with error messages
+- Confirm before closing if unsaved changes
+- Auto-save draft to localStorage
+- Phone number formatter (+91 XXXXX XXXXX)
+- Currency input with ₹ symbol
+
+### Responsive design
+- Mobile-friendly tables (horizontal scroll)
+- Sidebar collapses on mobile (hamburger menu)
+- Touch-friendly buttons (min 44px height)
+- Cards stack vertically on mobile
+
+### Color system
+Use these consistent colors:
+- Present/Success: green-500 (#22c55e)
+- Absent/Danger:   red-500   (#ef4444)
+- Half/Warning:    amber-500 (#f59e0b)
+- Synced:          green-600
+- Pending sync:    orange-500
+- Primary action:  blue-600
+- Supervisor role: blue-100 badge
+- Labour role:     gray-100 badge
+
+---
+
+## FEATURE 12 — Activity Log
+
+### Recent activity feed
+Track and show last 50 actions:
+- Labour added by admin
+- Attendance marked
+- Payment recorded
+- Labour profile updated
+
+```javascript
+// lib/services/activityService.js
+export const logActivity = async (action, details, userId) => {
+  await addDoc(collection(db, 'activity_log'), {
+    action,      // 'labour_added' | 'attendance_marked' etc
+    details,     // human readable string
+    userId,
+    timestamp: serverTimestamp(),
+  });
+};
+
+export const getRecentActivity = async (limit = 50) => {
+  const snap = await getDocs(query(
+    collection(db, 'activity_log'),
+    orderBy('timestamp', 'desc'),
+    limit(limit)
+  ));
+  return snap.docs.map(d => ({
+    id: d.id, ...d.data(),
+    timestamp: d.data().timestamp?.toDate?.() || null,
+  }));
+};
+```
+
+Show on dashboard as timeline:
+🟢 2 mins ago — Ram marked Present by Supervisor Ramesh 💰 1 hr ago — Advance ₹2,000 paid to Shyam 👷 3 hrs ago — New labour Vijay added
+---
+
+## ROUTING — add all new pages
+
+```jsx
+// App.jsx — add these routes
+<Route path="/labours/:id" element={
+  <ProtectedRoute><LabourProfile /></ProtectedRoute>
+} />
+<Route path="/payroll" element={
+  <ProtectedRoute><Payroll /></ProtectedRoute>
+} />
+<Route path="/supervisors" element={
+  <ProtectedRoute><Supervisors /></ProtectedRoute>
+} />
+<Route path="/settings" element={
+  <ProtectedRoute><Settings /></ProtectedRoute>
+} />
+<Route path="/settings/backup" element={
+  <ProtectedRoute><Backup /></ProtectedRoute>
+} />
+```
+
+Add to sidebar navigation:
+- Dashboard
+- Labours
+- Attendance
+- Payroll (new)
+- Payments
+- Reports
+- Supervisors (new)
+- Settings (new)
+  - Company
+  - Backup
+  - Admins
+
+---
+
+## PERFORMANCE
+
+- Use React.memo on table row components
+- Debounce search inputs (300ms)
+- Limit Firestore queries with .limit(100)
+- Use pagination for large tables
+- Unsubscribe all onSnapshot listeners on unmount
+- Use useMemo for expensive calculations
+  like salary totals
+
+---
+
+## IMPLEMENTATION ORDER
+
+Build features in this exact order:
+1. Fix all existing Firebase queries (supervisorId + contractorId)
+2. Dashboard real-time stats
+3. Labour profile page with heatmap
+4. Advanced attendance with inline edit
+5. Payroll calculator
+6. Reports with all 5 report types
+7. Supervisors page
+8. Global search
+9. Alert system
+10. Settings page
+11. Activity log
+12. UI polish throughout
+
+Show complete code for each feature.
+Test Firebase connection before each feature.
+Keep all existing features working.

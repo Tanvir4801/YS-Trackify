@@ -1,0 +1,1019 @@
+You are an expert Flutter + Firebase developer.
+I have an existing Flutter app for a labour management system.
+The app connects to Firebase Firestore + Firebase Auth.
+There is also a React admin panel (already built) using the same Firebase project.
+Everything must stay in real-time sync between Flutter app and React admin panel.
+
+════════════════════════════════════════════════
+EXISTING FLUTTER APP — WHAT IS ALREADY BUILT
+════════════════════════════════════════════════
+
+Already working:
+  ✅ Firebase Auth login for supervisor and labour roles
+  ✅ Basic attendance marking
+  ✅ QR code generation and scanning
+  ✅ Supervisor dashboard
+  ✅ Supervisor reports
+  ✅ Supervisor attendance screen
+
+NOT working / needs to be built:
+  ❌ Role-based screen separation (supervisor vs labour see different apps)
+  ❌ QR-based attendance properly writing to new Firestore structure
+  ❌ Real-time sync with admin panel
+  ❌ Contractor isolation (contractorId filtering)
+  ❌ Supervisor sees only their assigned labours
+  ❌ Labour sees only their own data
+  ❌ Proper role detection after login
+
+════════════════════════════════════════════════
+FIREBASE PROJECT — SAME AS ADMIN PANEL
+════════════════════════════════════════════════
+
+This Flutter app uses the EXACT SAME Firebase project
+as the React admin panel. All data must sync in real-time.
+
+════════════════════════════════════════════════
+FIRESTORE STRUCTURE — USE EXACTLY THIS
+════════════════════════════════════════════════
+
+── users/{userId} ──────────────────────────────
+Document ID = Firebase Auth UID
+{
+  name: String,
+  email: String,
+  role: String,  // "super_admin" | "contractor" | "supervisor" | "labour"
+  contractorId: String,
+  supervisorRef: DocumentReference | null,
+  isActive: bool,
+  createdAt: Timestamp,
+  updatedAt: Timestamp
+}
+
+── labours/{labourId} ──────────────────────────
+{
+  contractorId: String,
+  name: String,
+  phone: String | null,
+  skill: String | null,
+  dailyRate: double,
+  supervisorRef: DocumentReference,  // reference to users/{uid}
+  isActive: bool,
+  createdAt: Timestamp,
+  updatedAt: Timestamp
+}
+
+── attendance/{contractorId}/dates/{dateKey}/records/{labourId} ──
+dateKey = "YYYY-MM-DD" string
+labourId = document ID
+{
+  labourId: String,
+  contractorId: String,
+  date: String,         // "YYYY-MM-DD"
+  status: String,       // "present" | "absent" | "half_day" | "leave"
+  hoursWorked: double,
+  checkIn: String | null,   // "HH:mm" format
+  checkOut: String | null,  // "HH:mm" format
+  markedBy: DocumentReference,  // ref to users/{uid}
+  markedVia: String,    // "qr" | "manual" | "admin"
+  updatedAt: Timestamp
+}
+
+── payments/{paymentId} ────────────────────────
+{
+  contractorId: String,
+  labourId: String,
+  labourRef: DocumentReference,
+  amount: double,
+  date: String,         // "YYYY-MM-DD"
+  status: String,       // "paid" | "pending" | "cancelled"
+  notes: String | null,
+  createdBy: DocumentReference,
+  createdAt: Timestamp,
+  updatedAt: Timestamp
+}
+
+── contractors/{contractorId} ──────────────────
+{
+  name: String,
+  email: String,
+  phone: String | null,
+  plan: String,
+  isActive: bool,
+  createdAt: Timestamp
+}
+
+════════════════════════════════════════════════
+3 ROLES IN FLUTTER APP
+════════════════════════════════════════════════
+
+After login → fetch users/{uid} from Firestore
+Read role field → show completely different app experience
+
+━━ ROLE: supervisor ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After login → SupervisorApp (bottom nav)
+
+Bottom navigation tabs:
+  1. Dashboard   (home icon)
+  2. Labours     (people icon)
+  3. Attendance  (calendar icon)
+  4. Reports     (bar chart icon)
+  5. Profile     (person icon)
+
+Data scope:
+  - contractorId = users/{uid}.contractorId
+  - Their labours = labours where supervisorRef == doc("users", uid)
+  - Their attendance = attendance for their contractorId + their labours only
+
+━━ ROLE: labour ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After login → LabourApp (bottom nav)
+
+Bottom navigation tabs:
+  1. Home        (my today status, earnings summary)
+  2. Attendance  (my attendance history)
+  3. Payments    (my payment history)
+  4. Profile     (my info)
+
+Data scope:
+  - Their own labourId = uid (or fetched from labours where userId == uid)
+  - See only their own records
+
+════════════════════════════════════════════════
+AUTH FLOW — EXACT IMPLEMENTATION
+════════════════════════════════════════════════
+
+class AuthService {
+  
+  Future<AppUser> getUserProfile(String uid) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
+    return AppUser.fromMap(doc.id, doc.data()!);
+  }
+
+  Stream<User?> get authStateChanges => 
+      FirebaseAuth.instance.authStateChanges();
+}
+
+// In main app — listen to auth state:
+StreamBuilder<User?>(
+  stream: AuthService().authStateChanges,
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return SplashScreen();
+    }
+    if (snapshot.hasData && snapshot.data != null) {
+      return FutureBuilder<AppUser>(
+        future: AuthService().getUserProfile(snapshot.data!.uid),
+        builder: (context, userSnap) {
+          if (!userSnap.hasData) return LoadingScreen();
+          
+          final user = userSnap.data!;
+          
+          // Route based on role:
+          switch (user.role) {
+            case 'supervisor':
+              return SupervisorApp(user: user);
+            case 'labour':
+              return LabourApp(user: user);
+            default:
+              return UnauthorizedScreen();
+          }
+        },
+      );
+    }
+    return LoginScreen();
+  },
+)
+
+════════════════════════════════════════════════
+QR CODE ATTENDANCE SYSTEM — FULL FLOW
+════════════════════════════════════════════════
+
+HOW QR WORKS:
+
+Step 1 — QR Code Content (what is encoded in QR):
+  JSON string containing:
+  {
+    "labourId": "abc123",
+    "contractorId": "xyz789",
+    "labourName": "Ramesh Patel",
+    "generatedAt": "2026-04-29T10:00:00Z",
+    "expiresAt": "2026-04-29T23:59:59Z"
+  }
+
+Step 2 — QR Generation (Supervisor side):
+  - Supervisor opens Labours tab
+  - Each labour row has a QR icon button
+  - Tapping generates a QR code dialog
+  - QR encodes the JSON above
+  - QR is valid for current day only (expiresAt = end of today)
+  - Use qr_flutter package to display QR
+
+Step 3 — QR Scanning (Supervisor scans for labour):
+  - Supervisor opens Attendance tab
+  - Taps "Scan QR" button
+  - Camera opens (mobile_scanner package)
+  - Scans labour's QR code
+  - Decodes JSON, validates:
+      → contractorId matches supervisor's contractorId
+      → expiresAt is not past
+      → labour exists in Firestore
+  - If valid: marks attendance as "present" with checkIn time
+  - Writes to:
+      attendance/{contractorId}/dates/{today}/records/{labourId}
+  - Shows success toast with labour name
+  - Real-time: admin panel updates instantly
+
+Step 4 — Labour shows their own QR:
+  - Labour opens Home screen
+  - Sees their personal QR code always visible
+  - Supervisor scans it to mark them present
+  - Labour cannot mark their own attendance
+
+ATTENDANCE WRITE FUNCTION:
+Future<void> markAttendanceViaQR({
+  required String contractorId,
+  required String labourId,
+  required String markedByUid,
+}) async {
+  final now = DateTime.now();
+  final dateKey = DateFormat('yyyy-MM-dd').format(now);
+  final checkInTime = DateFormat('HH:mm').format(now);
+
+  await FirebaseFirestore.instance
+      .collection('attendance')
+      .doc(contractorId)
+      .collection('dates')
+      .doc(dateKey)
+      .collection('records')
+      .doc(labourId)
+      .set({
+        'labourId': labourId,
+        'contractorId': contractorId,
+        'date': dateKey,
+        'status': 'present',
+        'hoursWorked': 0,
+        'checkIn': checkInTime,
+        'checkOut': null,
+        'markedBy': FirebaseFirestore.instance.doc('users/$markedByUid'),
+        'markedVia': 'qr',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+}
+
+════════════════════════════════════════════════
+SUPERVISOR APP — ALL SCREENS
+════════════════════════════════════════════════
+
+━━ Tab 1: Dashboard ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Real-time stat cards:
+  - My Labours (count of labours where supervisorRef == me)
+  - Present Today (from today's attendance records)
+  - Absent Today
+  - Pending (not yet marked today)
+
+Today's attendance summary list:
+  - Labour name | status chip | checkIn time
+  - Sorted: unmarked first, then present, absent
+
+Real-time via Firestore streams (StreamBuilder)
+
+━━ Tab 2: Labours ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+List of assigned labours only:
+  Query: labours where supervisorRef == doc('users', supervisorUid)
+                   AND contractorId == contractorId
+                   AND isActive == true
+
+Each labour card shows:
+  - Name, phone, skill, daily rate
+  - Today's attendance status chip (real-time)
+  - QR button → opens QR dialog for that labour
+  - Tap card → Labour detail screen
+
+Labour detail screen:
+  - Full profile info
+  - Attendance history (last 30 days)
+  - Payment history
+  - QR code for this labour
+
+━━ Tab 3: Attendance ━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Date picker at top (default today)
+
+Shows all assigned labours with attendance status
+
+Actions per labour row:
+  - Status dropdown: present/absent/half_day/leave
+  - Hours worked input
+  - Check In time picker
+  - Check Out time picker
+
+Bulk actions:
+  - "Scan QR" button → opens camera scanner
+  - "Mark All Present" button
+  - "Save All" button → batch write
+
+Real-time stream from:
+  attendance/{contractorId}/dates/{dateKey}/records/
+  Filter client-side for supervisor's labours
+
+━━ Tab 4: Reports ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Date range picker
+
+Shows attendance summary for supervisor's labours:
+  Table: Labour | Days Present | Days Absent | 
+         Half Days | Total Hours | Total Earned
+
+Total earned calculation:
+  present  → dailyRate
+  half_day → dailyRate / 2
+  absent   → 0
+  leave    → 0
+  if hoursWorked > 0 → (hoursWorked / 8) * dailyRate
+
+Export option: share as text/CSV
+
+━━ Tab 5: Profile ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Supervisor's own info:
+  - Name, email, role badge
+  - Contractor name
+  - Logout button
+
+════════════════════════════════════════════════
+LABOUR APP — ALL SCREENS
+════════════════════════════════════════════════
+
+━━ Tab 1: Home ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+My QR Code (large, always visible at top):
+  - Shows personal QR encoding their labourId + contractorId
+  - Refreshes daily (new expiresAt each day)
+  - Label: "Show this to your supervisor"
+
+Today's status card:
+  - Status chip: Present / Absent / Not Marked
+  - Check in time (if marked)
+  - Hours worked
+
+This month summary:
+  - Days present, days absent, total earned this month
+
+━━ Tab 2: Attendance History ━━━━━━━━━━━━━━━━━━
+
+Monthly calendar view OR list view toggle
+
+List shows last 60 days:
+  Date | Status chip | Hours | Earned
+
+Query:
+  collectionGroup('records')
+  where labourId == uid
+  where date >= startDate
+  orderBy date descending
+
+━━ Tab 3: Payments ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+List of payments:
+  Date | Amount | Status chip | Notes
+
+Query:
+  payments where labourId == uid
+  orderBy date descending
+
+Total received (sum of paid payments)
+Total pending (sum of pending payments)
+
+━━ Tab 4: Profile ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Labour's own info from labours/{labourId}:
+  - Name, phone, skill
+  - Daily rate
+  - Supervisor name (resolved from supervisorRef)
+  - Contractor name
+  - Logout button
+
+════════════════════════════════════════════════
+FLUTTER PACKAGES — USE EXACTLY THESE
+════════════════════════════════════════════════
+
+Add to pubspec.yaml:
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Firebase
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.0.0
+  cloud_firestore: ^5.0.0
+  
+  # QR
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.0.0
+  
+  # State Management
+  provider: ^6.1.0
+  
+  # UI
+  intl: ^0.19.0
+  fl_chart: ^0.68.0
+  
+  # Utils
+  shared_preferences: ^2.2.0
+  fluttertoast: ^8.2.0
+  
+════════════════════════════════════════════════
+FLUTTER APP ARCHITECTURE
+════════════════════════════════════════════════
+
+lib/
+├── main.dart
+├── firebase_options.dart
+├── models/
+│   ├── app_user.dart
+│   ├── labour.dart
+│   ├── attendance_record.dart
+│   └── payment.dart
+├── services/
+│   ├── auth_service.dart
+│   ├── labour_service.dart
+│   ├── attendance_service.dart
+│   └── payment_service.dart
+├── providers/
+│   └── auth_provider.dart
+├── screens/
+│   ├── login_screen.dart
+│   ├── splash_screen.dart
+│   ├── unauthorized_screen.dart
+│   ├── supervisor/
+│   │   ├── supervisor_app.dart       ← bottom nav shell
+│   │   ├── dashboard_screen.dart
+│   │   ├── labours_screen.dart
+│   │   ├── labour_detail_screen.dart
+│   │   ├── attendance_screen.dart
+│   │   ├── qr_scanner_screen.dart
+│   │   ├── reports_screen.dart
+│   │   └── profile_screen.dart
+│   └── labour/
+│       ├── labour_app.dart           ← bottom nav shell
+│       ├── home_screen.dart          ← QR code + today status
+│       ├── attendance_history_screen.dart
+│       ├── payments_screen.dart
+│       └── profile_screen.dart
+└── widgets/
+    ├── status_chip.dart
+    ├── stat_card.dart
+    ├── labour_qr_dialog.dart
+    ├── attendance_row_widget.dart
+    └── loading_widget.dart
+
+════════════════════════════════════════════════
+MODELS — EXACT IMPLEMENTATIONS
+════════════════════════════════════════════════
+
+// app_user.dart
+class AppUser {
+  final String id;
+  final String name;
+  final String email;
+  final String role;
+  final String contractorId;
+  final bool isActive;
+
+  AppUser.fromMap(String id, Map<String, dynamic> map)
+    : id = id,
+      name = map['name'] ?? '',
+      email = map['email'] ?? '',
+      role = map['role'] ?? '',
+      contractorId = map['contractorId'] ?? '',
+      isActive = map['isActive'] ?? true;
+}
+
+// labour.dart
+class Labour {
+  final String id;
+  final String contractorId;
+  final String name;
+  final String? phone;
+  final String? skill;
+  final double dailyRate;
+  final DocumentReference? supervisorRef;
+  final bool isActive;
+
+  Labour.fromMap(String id, Map<String, dynamic> map)
+    : id = id,
+      contractorId = map['contractorId'] ?? '',
+      name = map['name'] ?? '',
+      phone = map['phone'],
+      skill = map['skill'],
+      dailyRate = (map['dailyRate'] ?? 0).toDouble(),
+      supervisorRef = map['supervisorRef'],
+      isActive = map['isActive'] ?? true;
+}
+
+// attendance_record.dart
+class AttendanceRecord {
+  final String labourId;
+  final String contractorId;
+  final String date;
+  final String status;
+  final double hoursWorked;
+  final String? checkIn;
+  final String? checkOut;
+  final String markedVia;
+
+  AttendanceRecord.fromMap(Map<String, dynamic> map)
+    : labourId = map['labourId'] ?? '',
+      contractorId = map['contractorId'] ?? '',
+      date = map['date'] ?? '',
+      status = map['status'] ?? 'absent',
+      hoursWorked = (map['hoursWorked'] ?? 0).toDouble(),
+      checkIn = map['checkIn'],
+      checkOut = map['checkOut'],
+      markedVia = map['markedVia'] ?? 'manual';
+
+  Map<String, dynamic> toMap(String markedByUid) => {
+    'labourId': labourId,
+    'contractorId': contractorId,
+    'date': date,
+    'status': status,
+    'hoursWorked': hoursWorked,
+    'checkIn': checkIn,
+    'checkOut': checkOut,
+    'markedBy': FirebaseFirestore.instance.doc('users/$markedByUid'),
+    'markedVia': markedVia,
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
+}
+
+════════════════════════════════════════════════
+SERVICES — EXACT FIRESTORE PATHS
+════════════════════════════════════════════════
+
+// attendance_service.dart
+
+class AttendanceService {
+  final _db = FirebaseFirestore.instance;
+
+  // Path helper
+  CollectionReference _recordsRef(String contractorId, String dateKey) {
+    return _db
+        .collection('attendance')
+        .doc(contractorId)
+        .collection('dates')
+        .doc(dateKey)
+        .collection('records');
+  }
+
+  DocumentReference _recordDoc(
+      String contractorId, String dateKey, String labourId) {
+    return _db
+        .collection('attendance')
+        .doc(contractorId)
+        .collection('dates')
+        .doc(dateKey)
+        .collection('records')
+        .doc(labourId);
+  }
+
+  // Real-time stream for a date
+  Stream<List<AttendanceRecord>> streamAttendanceByDate(
+      String contractorId, String dateKey) {
+    return _recordsRef(contractorId, dateKey)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => AttendanceRecord.fromMap(
+                d.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  // Mark single attendance
+  Future<void> markAttendance({
+    required String contractorId,
+    required String labourId,
+    required String dateKey,
+    required String status,
+    required String markedByUid,
+    String markedVia = 'manual',
+    double hoursWorked = 0,
+    String? checkIn,
+    String? checkOut,
+  }) async {
+    await _recordDoc(contractorId, dateKey, labourId).set({
+      'labourId': labourId,
+      'contractorId': contractorId,
+      'date': dateKey,
+      'status': status,
+      'hoursWorked': hoursWorked,
+      'checkIn': checkIn,
+      'checkOut': checkOut,
+      'markedBy': _db.doc('users/$markedByUid'),
+      'markedVia': markedVia,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  // Bulk mark attendance — batch write
+  Future<void> bulkMarkAttendance({
+    required String contractorId,
+    required String dateKey,
+    required List<Map<String, dynamic>> records,
+    required String markedByUid,
+  }) async {
+    final batch = _db.batch();
+    for (final record in records) {
+      final ref = _recordDoc(contractorId, dateKey, record['labourId']);
+      batch.set(ref, {
+        ...record,
+        'contractorId': contractorId,
+        'date': dateKey,
+        'markedBy': _db.doc('users/$markedByUid'),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  // Get attendance range for reports
+  Future<List<AttendanceRecord>> getAttendanceRange({
+    required String contractorId,
+    required String startDate,
+    required String endDate,
+    String? labourId,
+  }) async {
+    Query query = _db
+        .collectionGroup('records')
+        .where('contractorId', isEqualTo: contractorId)
+        .where('date', isGreaterThanOrEqualTo: startDate)
+        .where('date', isLessThanOrEqualTo: endDate)
+        .orderBy('date', descending: true);
+
+    if (labourId != null) {
+      query = query.where('labourId', isEqualTo: labourId);
+    }
+
+    final snap = await query.get();
+    return snap.docs
+        .map((d) => AttendanceRecord.fromMap(d.data() as Map<String, dynamic>))
+        .toList();
+  }
+}
+
+// labour_service.dart
+
+class LabourService {
+  final _db = FirebaseFirestore.instance;
+
+  // Get supervisor's labours — real-time
+  Stream<List<Labour>> streamSupervisorLabours(
+      String contractorId, String supervisorUid) {
+    return _db
+        .collection('labours')
+        .where('contractorId', isEqualTo: contractorId)
+        .where('supervisorRef',
+            isEqualTo: _db.doc('users/$supervisorUid'))
+        .where('isActive', isEqualTo: true)
+        .orderBy('name')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => Labour.fromMap(d.id, d.data()))
+            .toList());
+  }
+
+  // Get single labour
+  Future<Labour?> getLabour(String labourId) async {
+    final doc = await _db.collection('labours').doc(labourId).get();
+    if (!doc.exists) return null;
+    return Labour.fromMap(doc.id, doc.data()!);
+  }
+}
+
+════════════════════════════════════════════════
+QR CODE IMPLEMENTATION
+════════════════════════════════════════════════
+
+// labour_qr_dialog.dart — shown to supervisor per labour
+class LabourQRDialog extends StatelessWidget {
+  final Labour labour;
+  final String contractorId;
+
+  @override
+  Widget build(BuildContext context) {
+    final qrData = jsonEncode({
+      'labourId': labour.id,
+      'contractorId': contractorId,
+      'labourName': labour.name,
+      'generatedAt': DateTime.now().toIso8601String(),
+      'expiresAt': DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+        23, 59, 59,
+      ).toIso8601String(),
+    });
+
+    return AlertDialog(
+      title: Text('QR Code — ${labour.name}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          QrImageView(
+            data: qrData,
+            version: QrVersions.auto,
+            size: 250,
+          ),
+          SizedBox(height: 12),
+          Text('Valid for today only',
+              style: TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(labour.skill ?? '', 
+              style: TextStyle(fontSize: 14)),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+// qr_scanner_screen.dart — supervisor scans to mark present
+class QRScannerScreen extends StatefulWidget {
+  final String contractorId;
+  final String supervisorUid;
+
+  @override
+  State<QRScannerScreen> createState() => _QRScannerScreenState();
+}
+
+class _QRScannerScreenState extends State<QRScannerScreen> {
+  final AttendanceService _service = AttendanceService();
+  bool _isProcessing = false;
+
+  Future<void> _onQRDetected(String rawValue) async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+
+    try {
+      final data = jsonDecode(rawValue) as Map<String, dynamic>;
+
+      // Validate contractorId matches
+      if (data['contractorId'] != widget.contractorId) {
+        Fluttertoast.showToast(msg: 'Invalid QR — wrong contractor');
+        return;
+      }
+
+      // Validate not expired
+      final expiresAt = DateTime.parse(data['expiresAt']);
+      if (DateTime.now().isAfter(expiresAt)) {
+        Fluttertoast.showToast(msg: 'QR code expired');
+        return;
+      }
+
+      final labourId = data['labourId'] as String;
+      final labourName = data['labourName'] as String;
+      final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final checkIn = DateFormat('HH:mm').format(DateTime.now());
+
+      await _service.markAttendance(
+        contractorId: widget.contractorId,
+        labourId: labourId,
+        dateKey: dateKey,
+        status: 'present',
+        markedByUid: widget.supervisorUid,
+        markedVia: 'qr',
+        checkIn: checkIn,
+      );
+
+      Fluttertoast.showToast(
+        msg: '✅ $labourName marked present at $checkIn',
+        backgroundColor: Colors.green,
+      );
+      
+      Navigator.pop(context); // close scanner
+
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Error: ${e.toString()}');
+    } finally {
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Scan Labour QR')),
+      body: MobileScanner(
+        onDetect: (capture) {
+          final barcode = capture.barcodes.first;
+          if (barcode.rawValue != null) {
+            _onQRDetected(barcode.rawValue!);
+          }
+        },
+      ),
+    );
+  }
+}
+
+// home_screen.dart (labour) — shows their own QR
+Widget _buildMyQR(Labour labour, String contractorId) {
+  final qrData = jsonEncode({
+    'labourId': labour.id,
+    'contractorId': contractorId,
+    'labourName': labour.name,
+    'generatedAt': DateTime.now().toIso8601String(),
+    'expiresAt': DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+      23, 59, 59,
+    ).toIso8601String(),
+  });
+
+  return Card(
+    elevation: 4,
+    child: Padding(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Text('My Attendance QR',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          SizedBox(height: 8),
+          Text('Show this to your supervisor',
+              style: TextStyle(color: Colors.grey)),
+          SizedBox(height: 16),
+          QrImageView(data: qrData, size: 220),
+          SizedBox(height: 8),
+          Text('Valid today only',
+              style: TextStyle(fontSize: 12, color: Colors.grey)),
+        ],
+      ),
+    ),
+  );
+}
+
+════════════════════════════════════════════════
+REAL-TIME SYNC WITH ADMIN PANEL
+════════════════════════════════════════════════
+
+All Firestore writes from Flutter immediately appear in the 
+React admin panel because they share the same Firebase project.
+
+The following Flutter writes sync to admin panel in real-time:
+  1. markAttendance → admin panel Attendance page updates live
+  2. bulkMarkAttendance → admin panel Dashboard stats update live
+  3. QR scan mark present → admin panel shows new present record
+
+The following React admin writes sync to Flutter in real-time:
+  1. Admin adds labour → Flutter supervisor sees new labour
+  2. Admin marks attendance → Flutter shows updated status
+  3. Admin adds payment → Labour Flutter app shows new payment
+
+Ensure all StreamBuilder widgets in Flutter use real-time streams
+(not Future/one-time reads) for attendance and dashboard data.
+
+════════════════════════════════════════════════
+STATUS CHIP WIDGET
+════════════════════════════════════════════════
+
+class StatusChip extends StatelessWidget {
+  final String status;
+
+  Color get _color {
+    switch (status) {
+      case 'present':  return Colors.green;
+      case 'absent':   return Colors.red;
+      case 'half_day': return Colors.orange;
+      case 'leave':    return Colors.grey;
+      case 'paid':     return Colors.green;
+      case 'pending':  return Colors.orange;
+      default:         return Colors.grey;
+    }
+  }
+
+  String get _label {
+    switch (status) {
+      case 'present':  return 'Present';
+      case 'absent':   return 'Absent';
+      case 'half_day': return 'Half Day';
+      case 'leave':    return 'Leave';
+      case 'paid':     return 'Paid';
+      case 'pending':  return 'Pending';
+      default:         return status;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: _color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _color.withOpacity(0.4)),
+      ),
+      child: Text(
+        _label,
+        style: TextStyle(
+          color: _color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+════════════════════════════════════════════════
+CRITICAL RULES — NEVER BREAK
+════════════════════════════════════════════════
+
+1. Attendance path is ALWAYS:
+   .collection('attendance')
+   .doc(contractorId)
+   .collection('dates')
+   .doc(dateKey)         // "YYYY-MM-DD" string
+   .collection('records')
+   .doc(labourId)
+   NEVER use flat attendance collection
+
+2. supervisorRef stored as DocumentReference:
+   FirebaseFirestore.instance.doc('users/$supervisorUid')
+   When querying:
+   .where('supervisorRef', isEqualTo: 
+     FirebaseFirestore.instance.doc('users/$uid'))
+
+3. dateKey always formatted:
+   DateFormat('yyyy-MM-dd').format(DateTime.now())
+   from intl package
+
+4. After QR scan → write attendance with markedVia: 'qr'
+   After manual mark → write with markedVia: 'manual'
+
+5. Labour sees ONLY their own data (labourId == their uid OR
+   fetch their labours/{labourId} where userId == uid)
+
+6. Supervisor sees ONLY labours where supervisorRef == their uid
+
+7. All streams must be disposed properly in StatefulWidget:
+   late StreamSubscription _sub;
+   @override void dispose() { _sub.cancel(); super.dispose(); }
+
+8. contractorId always from user profile — never hardcoded
+
+9. Use SetOptions(merge: true) for all attendance writes
+   so partial updates don't overwrite existing data
+
+10. QR codes expire at end of current day — validate before marking
+
+════════════════════════════════════════════════
+BUILD ORDER
+════════════════════════════════════════════════
+
+Build in this exact order:
+
+1.  pubspec.yaml                    ← add all packages
+2.  lib/models/app_user.dart
+3.  lib/models/labour.dart
+4.  lib/models/attendance_record.dart
+5.  lib/models/payment.dart
+6.  lib/services/auth_service.dart
+7.  lib/services/labour_service.dart
+8.  lib/services/attendance_service.dart
+9.  lib/services/payment_service.dart
+10. lib/providers/auth_provider.dart
+11. lib/widgets/status_chip.dart
+12. lib/widgets/stat_card.dart
+13. lib/widgets/loading_widget.dart
+14. lib/widgets/labour_qr_dialog.dart
+15. lib/widgets/attendance_row_widget.dart
+16. lib/screens/login_screen.dart
+17. lib/screens/splash_screen.dart
+18. lib/screens/supervisor/supervisor_app.dart
+19. lib/screens/supervisor/dashboard_screen.dart
+20. lib/screens/supervisor/labours_screen.dart
+21. lib/screens/supervisor/labour_detail_screen.dart
+22. lib/screens/supervisor/attendance_screen.dart
+23. lib/screens/supervisor/qr_scanner_screen.dart
+24. lib/screens/supervisor/reports_screen.dart
+25. lib/screens/supervisor/profile_screen.dart
+26. lib/screens/labour/labour_app.dart
+27. lib/screens/labour/home_screen.dart
+28. lib/screens/labour/attendance_history_screen.dart
+29. lib/screens/labour/payments_screen.dart
+30. lib/screens/labour/profile_screen.dart
+31. lib/main.dart
+
+Build every file completely.
+Zero placeholders. Zero TODOs. Full working Flutter code.
+Real Firestore streams and queries everywhere.
+Start with pubspec.yaml now.

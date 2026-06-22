@@ -1,0 +1,814 @@
+I have a REACT admin panel for Trackify - YS Construction
+(Labour Attendance Management System).
+Firebase project: ys-construction (asia-south1)
+
+Do a complete audit and fix of the entire admin panel.
+Make everything work perfectly with real Firebase data.
+
+## MY EXACT FIREBASE STRUCTURE (verified working)
+
+### Collection: users/{uid}
+{
+  uid: string,
+  name: string,
+  phone: string,
+  role: "supervisor" | "labour" | "admin" | "contractor" | "super_admin",
+  isActive: boolean,
+  contractorId: string,
+  supervisorId: string | null,
+  labourId: string | null,
+  createdAt: Timestamp
+}
+
+### Collection: labours/{labourId}
+{
+  id: string,
+  name: string,
+  phone: string,
+  dailyWage: number,
+  overtimeWagePerHour: number,  // NEW field — may be 0 or missing in old docs
+  defaultOvertimeHours: number, // NEW field — may be 0 or missing in old docs
+  supervisorId: string,
+  contractorId: string,         // same value as supervisorId in most docs
+  supervisorRef: string,        // reference path
+  joiningDate: Timestamp,
+  isActive: boolean,
+  isSynced: boolean,
+  syncedAt: Timestamp
+}
+
+### Collection: attendance/{attendanceId}
+// FLAT structure — each record is its own document
+// DO NOT use nested structure attendance/contractorId/dates/date
+{
+  id: string,
+  labourId: string,
+  supervisorId: string,
+  date: string,                 // "YYYY-MM-DD" format string
+  status: "present" | "absent" | "half",
+  overtimeHours: number,
+  isSynced: boolean,
+  syncedAt: Timestamp
+}
+
+### Collection: payments/{paymentId}
+{
+  id: string,
+  labourId: string,
+  supervisorId: string,
+  contractorId: string,
+  type: "salary" | "advance" | "overtime_bonus",
+  amount: number,
+  date: Timestamp,
+  notes: string,
+  isSynced: boolean,
+  updatedAt: Timestamp
+}
+
+### Collection: contractors/{contractorId}
+{
+  id: string,
+  name: string,
+  phone: string,
+  isActive: boolean,
+  createdAt: Timestamp
+}
+
+---
+
+## STEP 1 — Fix .env.local
+
+Make sure these exact variable names exist:
+VITE_FIREBASE_API_KEY=AIzaSyDC9fZJTOi455NsbN2AQRnGz_cjZvmwedc
+VITE_FIREBASE_AUTH_DOMAIN=ys-construction.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=ys-construction
+VITE_FIREBASE_STORAGE_BUCKET=ys-construction.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=487752590406
+VITE_FIREBASE_APP_ID=1:487752590406:web:cd934161591117bc581647npm
+
+IMPORTANT: VITE needs 
+
+---
+
+## STEP 2 — Fix lib/firebase.js
+
+```javascript
+'use client';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDC9fZJTOi455NsbN2AQRnGz_cjZvmwedc",
+  authDomain: "ys-construction.firebaseapp.com",
+  projectId: "ys-construction",
+  storageBucket: "ys-construction.firebasestorage.app",
+  messagingSenderId: "487752590406",
+  appId: "1:487752590406:web:cd934161591117bc581647",
+  measurementId: "G-3LH0KG5S5Z"
+};
+
+
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+export default app;
+```
+
+---
+
+## STEP 3 — Fix all service files
+
+### lib/services/labourService.js
+```javascript
+'use client';
+import { db } from '../firebase';
+import {
+  collection, getDocs, addDoc, updateDoc, deleteDoc,
+  doc, serverTimestamp, query, where, onSnapshot
+} from 'firebase/firestore';
+
+// Fetch labours — query BOTH supervisorId AND contractorId
+// because Flutter app stores supervisor UID in both fields
+export const getLabours = async (supervisorId = null) => {
+  try {
+    let results = [];
+
+    if (supervisorId) {
+      // Query by supervisorId
+      const snap1 = await getDocs(query(
+        collection(db, 'labours'),
+        where('supervisorId', '==', supervisorId),
+        where('isActive', '==', true)
+      ));
+      // Query by contractorId (same UID stored in different field)
+      const snap2 = await getDocs(query(
+        collection(db, 'labours'),
+        where('contractorId', '==', supervisorId),
+        where('isActive', '==', true)
+      ));
+
+      // Merge and deduplicate by doc ID
+      const map = new Map();
+      [...snap1.docs, ...snap2.docs].forEach(d => {
+        map.set(d.id, {
+          id: d.id,
+          ...d.data(),
+          joiningDate: d.data().joiningDate?.toDate?.() || null,
+          syncedAt: d.data().syncedAt?.toDate?.() || null,
+          // Handle missing overtime fields gracefully
+          overtimeWagePerHour: d.data().overtimeWagePerHour || 0,
+          defaultOvertimeHours: d.data().defaultOvertimeHours || 0,
+        });
+      });
+      results = Array.from(map.values());
+    } else {
+      // Admin — fetch all labours
+      const snap = await getDocs(query(
+        collection(db, 'labours'),
+        where('isActive', '==', true)
+      ));
+      results = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        joiningDate: d.data().joiningDate?.toDate?.() || null,
+        overtimeWagePerHour: d.data().overtimeWagePerHour || 0,
+        defaultOvertimeHours: d.data().defaultOvertimeHours || 0,
+      }));
+    }
+
+    return results;
+  } catch (error) {
+    console.error('getLabours error:', error);
+    throw error;
+  }
+};
+
+// Real-time stream — also queries both fields
+export const subscribeLabours = (supervisorId, callback) => {
+  const results = new Map();
+
+  const update = () => {
+    const merged = Array.from(results.values())
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    callback(merged);
+  };
+
+  const constraints = [where('isActive', '==', true)];
+  if (supervisorId) {
+    constraints.push(where('supervisorId', '==', supervisorId));
+  }
+
+  const unsub1 = onSnapshot(
+    query(collection(db, 'labours'), ...constraints),
+    (snap) => {
+      snap.docs.forEach(d => {
+        results.set(d.id, {
+          id: d.id, ...d.data(),
+          joiningDate: d.data().joiningDate?.toDate?.() || null,
+          overtimeWagePerHour: d.data().overtimeWagePerHour || 0,
+        });
+      });
+      update();
+    }
+  );
+
+  return unsub1;
+};
+
+export const addLabour = async (data) => {
+  const ref = await addDoc(collection(db, 'labours'), {
+    ...data,
+    overtimeWagePerHour: data.overtimeWagePerHour || 0,
+    defaultOvertimeHours: data.defaultOvertimeHours || 0,
+    isActive: true,
+    isSynced: true,
+    syncedAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
+  });
+  await updateDoc(ref, { id: ref.id });
+  return ref.id;
+};
+
+export const updateLabour = async (id, data) => {
+  await updateDoc(doc(db, 'labours', id), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const deleteLabour = async (id) => {
+  await updateDoc(doc(db, 'labours', id), {
+    isActive: false,
+    deletedAt: serverTimestamp(),
+  });
+};
+```
+
+### lib/services/attendanceService.js
+```javascript
+'use client';
+import { db } from '../firebase';
+import {
+  collection, getDocs, addDoc, updateDoc,
+  doc, serverTimestamp, query, where,
+  onSnapshot, writeBatch, Timestamp
+} from 'firebase/firestore';
+
+// Helper: today as "YYYY-MM-DD"
+export const getTodayString = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${
+    String(now.getMonth()+1).padStart(2,'0')}-${
+    String(now.getDate()).padStart(2,'0')}`;
+};
+
+// Get attendance for a specific date
+export const getAttendanceByDate = async (date) => {
+  const snap = await getDocs(query(
+    collection(db, 'attendance'),
+    where('date', '==', date)
+  ));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+// Get attendance for date range — for reports
+export const getAttendanceByMonth = async (month, year, supervisorId) => {
+  const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+  const constraints = [
+    where('date', '>=', `${monthStr}-01`),
+    where('date', '<=', `${monthStr}-31`),
+  ];
+  if (supervisorId) {
+    constraints.push(where('supervisorId', '==', supervisorId));
+  }
+  const snap = await getDocs(query(
+    collection(db, 'attendance'), ...constraints
+  ));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+// Update attendance status (present/absent/half)
+export const updateAttendanceStatus = async (id, status) => {
+  await updateDoc(doc(db, 'attendance', id), {
+    status,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Update overtime hours
+export const updateOvertimeHours = async (id, overtimeHours) => {
+  await updateDoc(doc(db, 'attendance', id), {
+    overtimeHours: parseFloat(overtimeHours) || 0,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Bulk mark attendance for all labours of a supervisor
+export const bulkMarkAttendance = async (
+  supervisorId, date, status, labours
+) => {
+  const batch = writeBatch(db);
+
+  for (const labour of labours) {
+    // Check if record already exists
+    const existing = await getDocs(query(
+      collection(db, 'attendance'),
+      where('labourId', '==', labour.id),
+      where('date', '==', date),
+      where('supervisorId', '==', supervisorId)
+    ));
+
+    if (existing.docs.length > 0) {
+      batch.update(existing.docs[0].ref, {
+        status,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const ref = doc(collection(db, 'attendance'));
+      batch.set(ref, {
+        id: ref.id,
+        labourId: labour.id,
+        supervisorId,
+        date,
+        status,
+        overtimeHours: 0,
+        isSynced: true,
+        syncedAt: serverTimestamp(),
+      });
+    }
+  }
+  await batch.commit();
+};
+
+// Real-time stream for today attendance — for dashboard
+export const subscribeTodayAttendance = (callback) => {
+  const today = getTodayString();
+  return onSnapshot(
+    query(collection(db, 'attendance'), where('date', '==', today)),
+    (snap) => {
+      let present = 0, absent = 0, half = 0;
+      snap.docs.forEach(d => {
+        const s = d.data().status;
+        if (s === 'present') present++;
+        else if (s === 'absent') absent++;
+        else if (s === 'half') half++;
+      });
+      callback({
+        present, absent, half,
+        total: snap.size,
+        docs: snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      });
+    }
+  );
+};
+
+// Export attendance as CSV
+export const exportAttendanceCSV = (data, labourMap, filename) => {
+  const headers = [
+    'Labour Name', 'Phone', 'Date',
+    'Status', 'Overtime Hours', 'Supervisor ID'
+  ];
+  const rows = data.map(record => {
+    const labour = labourMap[record.labourId] || {};
+    return [
+      labour.name || record.labourId,
+      labour.phone || '',
+      record.date,
+      record.status,
+      record.overtimeHours || 0,
+      record.supervisorId,
+    ];
+  });
+
+  const BOM = '\uFEFF';
+  const csv = BOM + [headers, ...rows]
+    .map(row => row.map(v => `"${v}"`).join(','))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename || 'attendance'}_${getTodayString()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+```
+
+### lib/services/reportsService.js
+```javascript
+'use client';
+import { db } from '../firebase';
+import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+
+export const getMonthlySalaryReport = async (month, year, supervisorId) => {
+  const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
+  // Get labours — query both fields
+  const [snap1, snap2] = await Promise.all([
+    getDocs(query(
+      collection(db, 'labours'),
+      where('supervisorId', '==', supervisorId),
+      where('isActive', '==', true)
+    )),
+    getDocs(query(
+      collection(db, 'labours'),
+      where('contractorId', '==', supervisorId),
+      where('isActive', '==', true)
+    )),
+  ]);
+
+  const labourMap = new Map();
+  [...snap1.docs, ...snap2.docs].forEach(d => {
+    labourMap.set(d.id, { id: d.id, ...d.data() });
+  });
+  const labours = Array.from(labourMap.values());
+
+  const report = [];
+
+  for (const labour of labours) {
+    // Attendance this month — date field is "YYYY-MM-DD" string
+    const attSnap = await getDocs(query(
+      collection(db, 'attendance'),
+      where('labourId', '==', labour.id),
+      where('date', '>=', `${monthStr}-01`),
+      where('date', '<=', `${monthStr}-31`)
+    ));
+
+    const records = attSnap.docs.map(d => d.data());
+    const daysPresent = records.filter(r => r.status === 'present').length;
+    const daysHalf    = records.filter(r => r.status === 'half').length;
+    const daysAbsent  = records.filter(r => r.status === 'absent').length;
+    const totalOTHours = records.reduce(
+      (s, r) => s + (r.overtimeHours || 0), 0
+    );
+    const totalDays   = daysPresent + (daysHalf * 0.5);
+    const dailyWage   = labour.dailyWage || 0;
+    const otRate      = labour.overtimeWagePerHour || 0;
+    const grossSalary = (totalDays * dailyWage) + (totalOTHours * otRate);
+
+    // Advances this month
+    const startDate = new Date(year, month - 1, 1);
+    const endDate   = new Date(year, month, 0, 23, 59, 59);
+    const advSnap   = await getDocs(query(
+      collection(db, 'payments'),
+      where('labourId', '==', labour.id),
+      where('type', '==', 'advance'),
+      where('date', '>=', Timestamp.fromDate(startDate)),
+      where('date', '<=', Timestamp.fromDate(endDate))
+    ));
+
+    const totalAdvances = advSnap.docs
+      .reduce((s, d) => s + (d.data().amount || 0), 0);
+
+    report.push({
+      labourId:      labour.id,
+      labourName:    labour.name,
+      phone:         labour.phone,
+      dailyWage,
+      otRate,
+      daysPresent,
+      daysHalf,
+      daysAbsent,
+      totalOTHours,
+      totalDays,
+      grossSalary,
+      totalAdvances,
+      netPayable:    grossSalary - totalAdvances,
+    });
+  }
+
+  // Sort by name
+  return report.sort((a, b) => a.labourName.localeCompare(b.labourName));
+};
+
+// Export salary report as CSV
+export const exportSalaryCSV = (report, month, year) => {
+  const monthName = new Date(year, month-1).toLocaleString('default', {month: 'long'});
+  const headers = [
+    'Name', 'Phone', 'Daily Wage', 'OT Rate/hr',
+    'Days Present', 'Half Days', 'Days Absent',
+    'OT Hours', 'Total Days', 'Gross Salary',
+    'Advances', 'Net Payable'
+  ];
+  const rows = report.map(r => [
+    r.labourName, r.phone, r.dailyWage, r.otRate,
+    r.daysPresent, r.daysHalf, r.daysAbsent,
+    r.totalOTHours, r.totalDays, r.grossSalary,
+    r.totalAdvances, r.netPayable
+  ]);
+
+  const BOM = '\uFEFF';
+  const csv = BOM + [headers, ...rows]
+    .map(row => row.map(v => `"${v}"`).join(','))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = `Salary_Report_${monthName}_${year}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+```
+
+---
+
+## STEP 4 — Dashboard page real-time data
+
+Fix app/dashboard/page.jsx:
+```jsx
+'use client';
+import { useEffect, useState } from 'react';
+import { db } from '../../lib/firebase';
+import {
+  collection, query, where, onSnapshot
+} from 'firebase/firestore';
+import { subscribeTodayAttendance, getTodayString } from
+  '../../lib/services/attendanceService';
+
+export default function Dashboard() {
+  const [stats, setStats] = useState({
+    totalLabours: 0,
+    totalSupervisors: 0,
+    todayPresent: 0,
+    todayAbsent: 0,
+    todayHalf: 0,
+    monthlyPayments: 0,
+  });
+  const [recentAttendance, setRecentAttendance] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubs = [];
+
+    // Real-time: total active labours
+    unsubs.push(onSnapshot(
+      query(collection(db,'labours'), where('isActive','==',true)),
+      snap => setStats(s => ({...s, totalLabours: snap.size}))
+    ));
+
+    // Real-time: supervisors
+    unsubs.push(onSnapshot(
+      query(collection(db,'users'), where('role','==','supervisor')),
+      snap => setStats(s => ({...s, totalSupervisors: snap.size}))
+    ));
+
+    // Real-time: today attendance
+    unsubs.push(subscribeTodayAttendance(data => {
+      setStats(s => ({
+        ...s,
+        todayPresent: data.present,
+        todayAbsent:  data.absent,
+        todayHalf:    data.half,
+      }));
+      setRecentAttendance(data.docs || []);
+      setLoading(false);
+    }));
+
+    // Real-time: this month payments total
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    unsubs.push(onSnapshot(
+      query(collection(db,'payments'),
+        where('date', '>=', startOfMonth)
+      ),
+      snap => {
+        const total = snap.docs.reduce(
+          (s, d) => s + (d.data().amount || 0), 0
+        );
+        setStats(s => ({...s, monthlyPayments: total}));
+      }
+    ));
+
+    return () => unsubs.forEach(u => u());
+  }, []);
+
+  // Format currency Indian style
+  const formatINR = (amount) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency', currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+
+  // Keep exact existing UI layout
+  // Replace all hardcoded numbers with:
+  // stats.totalLabours, stats.totalSupervisors,
+  // stats.todayPresent, stats.todayAbsent,
+  // stats.todayHalf, formatINR(stats.monthlyPayments)
+}
+```
+
+---
+
+## STEP 5 — Labours page real-time + overtime columns
+
+Fix app/labours/page.jsx:
+
+Add these two columns to the table (after Daily Wage column):
+- OT Rate (₹/hr) — shows overtimeWagePerHour field
+- Default OT Hrs — shows defaultOvertimeHours field
+
+Add these two fields to Add/Edit Labour modal:
+```jsx
+// After Daily Wage input
+<div>
+  <label>Overtime Rate (₹/hr)</label>
+  <input
+    type="number"
+    value={formData.overtimeWagePerHour || ''}
+    onChange={e => setFormData({
+      ...formData,
+      overtimeWagePerHour: parseFloat(e.target.value) || 0
+    })}
+    placeholder="0"
+  />
+</div>
+<div>
+  <label>Default OT Hours/Day</label>
+  <input
+    type="number"
+    value={formData.defaultOvertimeHours || ''}
+    onChange={e => setFormData({
+      ...formData,
+      defaultOvertimeHours: parseFloat(e.target.value) || 0
+    })}
+    placeholder="0"
+  />
+</div>
+```
+
+---
+
+## STEP 6 — Attendance page with overtime column
+
+Fix app/attendance/page.jsx:
+
+Add overtime hours column to attendance table:
+- Column header: OT Hrs
+- Cell: shows overtimeHours value (default 0)
+- Cell is editable inline — click to edit hours
+- On change: calls updateOvertimeHours(id, hours)
+
+Status badge colors:
+- present → green badge
+- absent → red badge
+- half → orange/amber badge
+
+---
+
+## STEP 7 — Reports page with overtime in salary
+
+Fix app/reports/page.jsx:
+
+Add these columns to salary report table:
+- OT Hours (total overtime hours this month)
+- OT Rate (₹/hr)
+- Gross Salary (daily wage days + overtime pay combined)
+
+Show summary cards:
+- Total Gross Salary
+- Total Advances Paid
+- Total Net Payable
+- Total OT Hours
+
+---
+
+## STEP 8 — UI Polish (apply to ALL pages)
+
+### Loading states
+Replace any blank screens while loading with skeleton:
+```jsx
+// Skeleton card component
+function SkeletonCard() {
+  return (
+    <div className="animate-pulse bg-gray-100 rounded-lg p-4">
+      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"/>
+      <div className="h-8 bg-gray-200 rounded w-1/2"/>
+    </div>
+  );
+}
+```
+
+### Empty states
+Replace "No data" text with proper empty state:
+```jsx
+function EmptyState({ icon, title, subtitle }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="text-6xl mb-4">{icon}</div>
+      <h3 className="text-lg font-medium text-gray-700 mb-2">{title}</h3>
+      <p className="text-sm text-gray-400">{subtitle}</p>
+    </div>
+  );
+}
+// Usage:
+<EmptyState
+  icon="👷"
+  title="No labours added yet"
+  subtitle="Add labours from the Flutter app or click Add Labour"
+/>
+```
+
+### Toast notifications
+After every CRUD operation:
+```jsx
+import toast from 'react-hot-toast';
+// Success
+toast.success('Labour added successfully');
+// Error
+toast.error('Failed to save. Check connection.');
+// Loading
+const t = toast.loading('Saving...');
+// then:
+toast.dismiss(t);
+toast.success('Saved!');
+```
+
+### Sync status badge
+In labours and attendance tables add sync indicator:
+```jsx
+function SyncBadge({ isSynced }) {
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 
+      rounded-full font-medium ${
+      isSynced
+        ? 'bg-green-100 text-green-700'
+        : 'bg-orange-100 text-orange-700'
+    }`}>
+      {isSynced ? '☁️ Synced' : '⏳ Pending'}
+    </span>
+  );
+}
+```
+
+### Currency formatting
+Replace ALL Rs/amount displays with:
+```jsx
+const formatINR = (amount) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(amount || 0);
+// Shows: ₹1,23,456
+```
+
+---
+
+## STEP 9 — Firebase Connection Test
+
+Add this temporarily to dashboard to verify all collections work.
+Remove after confirming:
+```jsx
+useEffect(() => {
+  async function test() {
+    const cols = ['users','labours','attendance','payments','contractors'];
+    for (const col of cols) {
+      try {
+        const snap = await getDocs(collection(db, col));
+        console.log(`✅ ${col}: ${snap.size} docs`);
+      } catch(e) {
+        console.error(`❌ ${col}: ${e.message}`);
+      }
+    }
+  }
+  test();
+}, []);
+```
+
+Open browser console (F12) after running.
+All should show ✅. Fix any ❌ before continuing.
+
+---
+
+## STEP 10 — Final checklist
+
+After all fixes verify:
+- [ ] Dashboard shows real numbers from Firebase
+- [ ] Dashboard updates in real-time (no refresh needed)
+- [ ] Labours page shows all labours from Firebase
+- [ ] Labours page has Overtime Rate and OT Hours columns
+- [ ] Attendance page loads by date correctly
+- [ ] Attendance status can be changed inline
+- [ ] Overtime hours editable in attendance table
+- [ ] Reports generate correctly with overtime included
+- [ ] All amounts show in ₹ Indian format
+- [ ] All tables have loading skeleton
+- [ ] All empty states have helpful message
+- [ ] Toast shows on every add/edit/delete
+- [ ] Sync badge shows on labours and attendance
+- [ ] Export CSV works on attendance page
+- [ ] Export CSV works on reports page
+- [ ] No console errors in browser
+
+## RULES
+- Add 'use client' at top of every page and component file
+- Use NEXT_PUBLIC_ prefix for all env variables
+- Use getApps().length check in firebase.js
+- Keep all existing UI styling and colors
+- Only fix data layer and add missing UI elements
+- Show complete fixed file for each change
+- Test after each step before moving to next 

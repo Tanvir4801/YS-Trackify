@@ -1,0 +1,1266 @@
+I have a Flutter app called Trackify V2 - Labour Attendance 
+Management System. It is working with Firebase Firestore.
+
+Add ALL missing production-level features and polish the entire
+app to a premium level. DO NOT break any existing functionality.
+
+=============================================================
+FEATURE 1 — OFFLINE BANNER & CONNECTIVITY AWARENESS
+=============================================================
+
+Create lib/widgets/offline_banner.dart:
+
+```dart
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart';
+
+class ConnectivityBanner extends StatefulWidget {
+  const ConnectivityBanner({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<ConnectivityBanner> createState() => _ConnectivityBannerState();
+}
+
+class _ConnectivityBannerState extends State<ConnectivityBanner>
+    with SingleTickerProviderStateMixin {
+  bool _isOnline = true;
+  bool _justCameBack = false;
+  StreamSubscription? _sub;
+  late AnimationController _controller;
+  late Animation<Offset> _slideAnim;
+  Timer? _hideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller, curve: Curves.easeOut));
+
+    _checkInitial();
+    _sub = Connectivity().onConnectivityChanged.listen((results) {
+      final online = !results.contains(ConnectivityResult.none);
+      if (online && !_isOnline) {
+        // Just came back online
+        setState(() { _isOnline = true; _justCameBack = true; });
+        _controller.forward();
+        _hideTimer?.cancel();
+        _hideTimer = Timer(const Duration(seconds: 3), () {
+          if (mounted) {
+            _controller.reverse().then((_) {
+              if (mounted) setState(() => _justCameBack = false);
+            });
+          }
+        });
+      } else if (!online && _isOnline) {
+        setState(() { _isOnline = false; _justCameBack = false; });
+        _controller.forward();
+      }
+    });
+  }
+
+  Future<void> _checkInitial() async {
+    final result = await Connectivity().checkConnectivity();
+    final online = !result.contains(ConnectivityResult.none);
+    if (!online && mounted) {
+      setState(() => _isOnline = false);
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _controller.dispose();
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Banner
+        SlideTransition(
+          position: _slideAnim,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _isOnline && _justCameBack
+                ? _buildBanner(
+                    color: const Color(0xFF16A34A),
+                    icon: Icons.cloud_done_rounded,
+                    message: 'Back online — syncing data...',
+                    key: const ValueKey('online'),
+                  )
+                : !_isOnline
+                    ? _buildBanner(
+                        color: const Color(0xFFD97706),
+                        icon: Icons.cloud_off_rounded,
+                        message: 'Offline — scans are queued',
+                        key: const ValueKey('offline'),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('none')),
+          ),
+        ),
+        // Rest of app
+        Expanded(child: widget.child),
+      ],
+    );
+  }
+
+  Widget _buildBanner({
+    required Color color,
+    required IconData icon,
+    required String message,
+    required Key key,
+  }) {
+    return Container(
+      key: key,
+      width: double.infinity,
+      color: color,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(children: [
+        Icon(icon, color: Colors.white, size: 16),
+        const SizedBox(width: 8),
+        Text(message,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Spacer(),
+        if (!_isOnline)
+          const SizedBox(
+            width: 12, height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation(Colors.white),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+```
+
+Wrap the root scaffold in ConnectivityBanner.
+In supervisor home screen build method:
+```dart
+return ConnectivityBanner(
+  child: Scaffold(
+    // existing scaffold content
+  ),
+);
+```
+
+Do the same for labour home screen.
+
+=============================================================
+FEATURE 2 — AUTO SYNC ON RECONNECT
+=============================================================
+
+In ScannerService add a connectivity listener that
+auto-syncs pending scans when internet returns:
+
+```dart
+StreamSubscription? _connectivitySub;
+
+void startAutoSync() {
+  _connectivitySub?.cancel();
+  _connectivitySub = Connectivity()
+      .onConnectivityChanged
+      .listen((results) async {
+    final isOnline = !results.contains(ConnectivityResult.none);
+    if (isOnline && getPendingCount() > 0) {
+      debugPrint('Auto-syncing ${getPendingCount()} pending scans...');
+      final synced = await syncPendingScans();
+      debugPrint('Auto-sync complete: $synced synced');
+    }
+  });
+}
+
+void stopAutoSync() {
+  _connectivitySub?.cancel();
+}
+```
+
+Call startAutoSync() when supervisor logs in.
+Call stopAutoSync() on logout.
+
+Also add auto-sync for attendance records:
+```dart
+Future<void> syncPendingAttendance() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  if (uid.isEmpty) return;
+
+  final box = Hive.box<Attendance>(Attendance.boxName);
+  final pending = box.values
+      .where((a) => !a.isSynced && a.supervisorId == uid)
+      .toList();
+
+  if (pending.isEmpty) return;
+
+  debugPrint('Auto-syncing ${pending.length} attendance records...');
+  int synced = 0;
+
+  for (final att in pending) {
+    try {
+      final existing = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('labourId',     isEqualTo: att.labourId)
+          .where('supervisorId', isEqualTo: uid)
+          .where('date',         isEqualTo: att.date)
+          .limit(1).get();
+
+      if (existing.docs.isNotEmpty) {
+        await existing.docs.first.reference.update({
+          'status':        att.status.firestoreValue,
+          'overtimeHours': att.overtimeHours,
+          'isSynced':      true,
+        });
+      } else {
+        final ref = await FirebaseFirestore.instance
+            .collection('attendance').add({
+          'labourId':      att.labourId,
+          'supervisorId':  uid,
+          'contractorId':  SessionService.instance.contractorId ?? uid,
+          'date':          att.date,
+          'status':        att.status.firestoreValue,
+          'overtimeHours': att.overtimeHours,
+          'markedVia':     'manual_offline',
+          'isSynced':      true,
+          'syncedAt':      FieldValue.serverTimestamp(),
+        });
+        await ref.update({'id': ref.id});
+      }
+      att.isSynced = true;
+      await att.save();
+      synced++;
+    } catch (e) {
+      debugPrint('Sync att error: $e');
+    }
+  }
+  debugPrint('Attendance sync complete: $synced');
+}
+```
+
+=============================================================
+FEATURE 3 — BIOMETRIC / PIN APP LOCK
+=============================================================
+
+Add app security — supervisor must authenticate to open app.
+
+Add to pubspec.yaml:
+```yaml
+local_auth: ^2.3.0
+```
+
+Create lib/services/app_lock_service.dart:
+```dart
+import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AppLockService {
+  static final instance = AppLockService._();
+  AppLockService._();
+
+  final _auth = LocalAuthentication();
+
+  // Check if device supports biometrics
+  Future<bool> canUseBiometrics() async {
+    try {
+      return await _auth.canCheckBiometrics &&
+             await _auth.isDeviceSupported();
+    } catch (_) { return false; }
+  }
+
+  // Authenticate with biometrics or PIN
+  Future<bool> authenticate() async {
+    try {
+      return await _auth.authenticate(
+        localizedReason: 'Verify your identity to open Trackify',
+        options: const AuthenticationOptions(
+          biometricOnly: false, // allows PIN fallback
+          stickyAuth:    true,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Biometric auth error: $e');
+      return false;
+    }
+  }
+
+  // Check if app lock is enabled
+  Future<bool> isLockEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('app_lock_enabled') ?? false;
+  }
+
+  Future<void> setLockEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('app_lock_enabled', enabled);
+  }
+}
+```
+
+Create lib/screens/auth/app_lock_screen.dart:
+```dart
+class AppLockScreen extends StatefulWidget {
+  const AppLockScreen({super.key, required this.onUnlocked});
+  final VoidCallback onUnlocked;
+
+  @override
+  State<AppLockScreen> createState() => _AppLockScreenState();
+}
+
+class _AppLockScreenState extends State<AppLockScreen> {
+  bool _isAuthenticating = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-trigger biometric on open
+    WidgetsBinding.instance.addPostFrameCallback((_) => _authenticate());
+  }
+
+  Future<void> _authenticate() async {
+    setState(() { _isAuthenticating = true; _error = null; });
+    final success = await AppLockService.instance.authenticate();
+    if (success) {
+      widget.onUnlocked();
+    } else {
+      setState(() {
+        _isAuthenticating = false;
+        _error = 'Authentication failed. Try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B8B6E),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.lock_rounded,
+                color: Colors.white, size: 36),
+            ),
+            const SizedBox(height: 24),
+            const Text('Trackify',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            const Text('Verify your identity to continue',
+              style: TextStyle(color: Colors.grey, fontSize: 14)),
+            const SizedBox(height: 40),
+            if (_isAuthenticating)
+              const CircularProgressIndicator(
+                color: Color(0xFF1B8B6E))
+            else ...[
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(_error!,
+                    style: const TextStyle(
+                      color: Colors.red, fontSize: 13)),
+                ),
+              FilledButton.icon(
+                onPressed: _authenticate,
+                icon: const Icon(Icons.fingerprint),
+                label: const Text('Unlock App'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1B8B6E),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32, vertical: 14),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+In SplashScreen or main app, check app lock:
+```dart
+// In _checkAuth() after confirming user is logged in:
+final lockEnabled = await AppLockService.instance.isLockEnabled();
+if (lockEnabled && mounted) {
+  final canBio = await AppLockService.instance.canUseBiometrics();
+  if (canBio) {
+    // Show lock screen briefly
+    final unlocked = await AppLockService.instance.authenticate();
+    if (!unlocked && mounted) {
+      // Stay on lock screen
+      Navigator.pushReplacement(context,
+        MaterialPageRoute(builder: (_) => AppLockScreen(
+          onUnlocked: () => Navigator.pushNamedAndRemoveUntil(
+            context, '/supervisor-home', (_) => false),
+        )));
+      return;
+    }
+  }
+}
+```
+
+=============================================================
+FEATURE 4 — SMART NOTIFICATIONS (local)
+=============================================================
+
+Add to pubspec.yaml:
+```yaml
+flutter_local_notifications: ^17.2.3
+```
+
+Create lib/services/notification_service.dart:
+```dart
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tzData;
+
+class NotificationService {
+  static final instance = NotificationService._();
+  NotificationService._();
+
+  final _plugin = FlutterLocalNotificationsPlugin();
+  bool _initialized = false;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    tzData.initializeTimeZones();
+
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission:  true,
+      requestBadgePermission:  true,
+      requestSoundPermission:  true,
+    );
+
+    await _plugin.initialize(
+      const InitializationSettings(
+        android: androidSettings, iOS: iosSettings),
+    );
+    _initialized = true;
+  }
+
+  // Notify supervisor: attendance not marked for today
+  Future<void> scheduleAttendanceReminder() async {
+    await initialize();
+
+    final now  = DateTime.now();
+    final nine = DateTime(now.year, now.month, now.day, 9, 0);
+    var scheduleTime = nine;
+    if (now.isAfter(nine)) {
+      scheduleTime = nine.add(const Duration(days: 1));
+    }
+
+    await _plugin.zonedSchedule(
+      1,
+      '⏰ Mark Attendance',
+      'Don\'t forget to mark attendance for today!',
+      tz.TZDateTime.from(scheduleTime, tz.local),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'attendance_reminder',
+          'Attendance Reminder',
+          channelDescription: 'Daily attendance reminder',
+          importance: Importance.high,
+          priority:   Priority.high,
+          icon:       '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      matchDateTimeComponents: DateTimeComponents.time,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  // Instant notification: scan successful
+  Future<void> showScanSuccess(String labourName, String status) async {
+    await initialize();
+    final statusLabel = status == 'half' ? 'Half Day' : 'Present';
+    await _plugin.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      '✅ Attendance Marked',
+      '$labourName marked $statusLabel',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'scan_success', 'Scan Success',
+          channelDescription: 'QR scan confirmations',
+          importance: Importance.defaultImportance,
+          priority:   Priority.defaultPriority,
+          icon:       '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
+
+  // Sync complete notification
+  Future<void> showSyncComplete(int count) async {
+    if (count == 0) return;
+    await initialize();
+    await _plugin.show(
+      999,
+      '☁️ Sync Complete',
+      '$count attendance records synced to cloud',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'sync_complete', 'Sync Complete',
+          channelDescription: 'Data sync notifications',
+          importance: Importance.low,
+          priority:   Priority.low,
+          icon:       '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
+
+  Future<void> cancelAll() async {
+    await initialize();
+    await _plugin.cancelAll();
+  }
+}
+```
+
+Initialize in main.dart:
+```dart
+await NotificationService.instance.initialize();
+await NotificationService.instance.scheduleAttendanceReminder();
+```
+
+Call showScanSuccess in scanner after successful scan:
+```dart
+if (result.success) {
+  await NotificationService.instance.showScanSuccess(
+    result.labourName ?? 'Labour',
+    selectedStatus,
+  );
+}
+```
+
+=============================================================
+FEATURE 5 — ATTENDANCE SUMMARY WIDGET (Dashboard)
+=============================================================
+
+Add a mini attendance heatmap to supervisor dashboard
+showing last 7 days at a glance:
+
+```dart
+// lib/widgets/week_attendance_strip.dart
+
+class WeekAttendanceStrip extends StatelessWidget {
+  const WeekAttendanceStrip({
+    super.key,
+    required this.attendanceByDate,
+    // Map<dateString, Map<status, count>>
+    // e.g. {'2026-05-01': {'present': 8, 'absent': 2, 'half': 1}}
+  });
+
+  final Map<String, Map<String, int>> attendanceByDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final days = List.generate(7, (i) {
+      final d = DateTime.now().subtract(Duration(days: 6 - i));
+      return d;
+    });
+
+    return Row(
+      children: days.map((day) {
+        final key = '${day.year}-'
+            '${day.month.toString().padLeft(2,'0')}-'
+            '${day.day.toString().padLeft(2,'0')}';
+        final data    = attendanceByDate[key];
+        final present = data?['present'] ?? 0;
+        final absent  = data?['absent']  ?? 0;
+        final half    = data?['half']    ?? 0;
+        final total   = present + absent + half;
+        final isToday = key == _todayKey();
+
+        return Expanded(
+          child: Column(children: [
+            Text(
+              _dayLabel(day),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isToday
+                    ? FontWeight.w700 : FontWeight.w400,
+                color: isToday
+                    ? const Color(0xFF1B8B6E) : Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              height: 36,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                color: total == 0
+                    ? Colors.grey.shade100
+                    : null,
+                gradient: total > 0 ? LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end:   Alignment.topCenter,
+                  colors: [
+                    Colors.green.withValues(
+                      alpha: (present / total).clamp(0.2, 1.0)),
+                    Colors.green.shade300,
+                  ],
+                ) : null,
+                border: isToday ? Border.all(
+                  color: const Color(0xFF1B8B6E), width: 2) : null,
+              ),
+              child: Center(
+                child: Text(
+                  total > 0 ? '$present' : '-',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: total > 0
+                        ? Colors.white : Colors.grey.shade400,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${day.day}',
+              style: TextStyle(
+                fontSize: 9,
+                color: isToday
+                    ? const Color(0xFF1B8B6E) : Colors.grey,
+              ),
+            ),
+          ]),
+        );
+      }).toList(),
+    );
+  }
+
+  String _dayLabel(DateTime d) {
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    return days[d.weekday - 1];
+  }
+
+  String _todayKey() {
+    final n = DateTime.now();
+    return '${n.year}-'
+        '${n.month.toString().padLeft(2,'0')}-'
+        '${n.day.toString().padLeft(2,'0')}';
+  }
+}
+```
+
+Add this to DashboardProvider:
+```dart
+Map<String, Map<String, int>> weekAttendance = {};
+
+Future<void> _loadWeekAttendance(String uid) async {
+  final now   = DateTime.now();
+  final start = now.subtract(const Duration(days: 6));
+  final startStr = '${start.year}-'
+      '${start.month.toString().padLeft(2,'0')}-'
+      '${start.day.toString().padLeft(2,'0')}';
+
+  try {
+    final snap = await FirebaseFirestore.instance
+        .collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo: startStr)
+        .get();
+
+    final Map<String, Map<String, int>> result = {};
+    for (var doc in snap.docs) {
+      final date   = doc.data()['date']   as String? ?? '';
+      final status = doc.data()['status'] as String? ?? '';
+      if (date.isEmpty) continue;
+      result[date] ??= {'present': 0, 'absent': 0, 'half': 0};
+      result[date]![status] = (result[date]![status] ?? 0) + 1;
+    }
+    weekAttendance = result;
+    notifyListeners();
+  } catch (e) {
+    debugPrint('_loadWeekAttendance error: $e');
+  }
+}
+```
+
+Add to dashboard screen after wage snapshot:
+```dart
+Padding(
+  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('Last 7 Days',
+        style: TextStyle(
+          fontSize: 13, fontWeight: FontWeight.w600,
+          color: Colors.grey)),
+      const SizedBox(height: 8),
+      WeekAttendanceStrip(
+        attendanceByDate: provider.weekAttendance),
+    ],
+  ),
+),
+```
+
+=============================================================
+FEATURE 6 — PULL TO REFRESH EVERYWHERE
+=============================================================
+
+Wrap every main list with RefreshIndicator:
+
+```dart
+// Standard refresh indicator for all screens
+RefreshIndicator(
+  color: const Color(0xFF1B8B6E),
+  strokeWidth: 2.5,
+  displacement: 20,
+  onRefresh: () async {
+    await provider.initialize(); // or loadDashboard() etc
+  },
+  child: ListView.builder(
+    physics: const AlwaysScrollableScrollPhysics(),
+    // always scrollable so pull works even with few items
+    itemCount: ...,
+    itemBuilder: ...,
+  ),
+),
+```
+
+Apply to: Dashboard, Attendance, Reports,
+Labour Home dashboard tab, Labour attendance tab.
+
+=============================================================
+FEATURE 7 — BETTER ERROR HANDLING & RETRY
+=============================================================
+
+Create lib/widgets/error_retry.dart:
+
+```dart
+class ErrorRetry extends StatelessWidget {
+  const ErrorRetry({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    this.icon = Icons.cloud_off_outlined,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72, height: 72,
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon,
+                size: 32, color: Colors.red.shade400),
+            ),
+            const SizedBox(height: 16),
+            const Text('Something went wrong',
+              style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.grey, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Try Again'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1B8B6E)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+Use in every screen that shows error:
+```dart
+// Replace plain Text(_error) with:
+if (provider.error != null)
+  ErrorRetry(
+    message: provider.error!,
+    onRetry: () => provider.initialize(),
+  )
+```
+
+=============================================================
+FEATURE 8 — HAPTIC FEEDBACK THROUGHOUT
+=============================================================
+
+Add haptic feedback to key interactions:
+
+```dart
+// lib/core/utils/haptic_utils.dart
+
+import 'package:flutter/services.dart';
+
+class HapticUtils {
+  // Light tap — for button presses, selections
+  static void light() =>
+      HapticFeedback.lightImpact();
+
+  // Medium — for confirmations, success states
+  static void medium() =>
+      HapticFeedback.mediumImpact();
+
+  // Heavy — for important actions, errors
+  static void heavy() =>
+      HapticFeedback.heavyImpact();
+
+  // Selection click — for toggles, status changes
+  static void select() =>
+      HapticFeedback.selectionClick();
+}
+```
+
+Add HapticUtils.light() to:
+- Every button onPressed
+- Every attendance status button tap
+- Every nav bar item tap
+
+Add HapticUtils.medium() to:
+- Successful QR scan
+- Attendance saved successfully
+- Sync complete
+
+Add HapticUtils.heavy() to:
+- Error states
+- Duplicate scan detected
+
+=============================================================
+FEATURE 9 — APP INFO & VERSION SCREEN
+=============================================================
+
+Add to pubspec.yaml:
+```yaml
+package_info_plus: ^8.1.3
+```
+
+Create lib/screens/settings/app_info_screen.dart:
+```dart
+import 'package:package_info_plus/package_info_plus.dart';
+
+class AppInfoScreen extends StatefulWidget {
+  const AppInfoScreen({super.key});
+  @override
+  State<AppInfoScreen> createState() => _AppInfoScreenState();
+}
+
+class _AppInfoScreenState extends State<AppInfoScreen> {
+  PackageInfo? _info;
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _info = info);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('About Trackify')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          // App logo
+          Center(
+            child: Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1B8B6E), Color(0xFF26C49A)]),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.construction,
+                color: Colors.white, size: 40),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Text('Trackify',
+              style: TextStyle(
+                fontSize: 24, fontWeight: FontWeight.w800)),
+          ),
+          Center(
+            child: Text('Version ${_info?.version ?? '—'}',
+              style: TextStyle(color: Colors.grey)),
+          ),
+          const SizedBox(height: 32),
+
+          // Info tiles
+          _infoTile('App Name',   'Trackify - Labour Attendance'),
+          _infoTile('Version',    _info?.version ?? '—'),
+          _infoTile('Build',      _info?.buildNumber ?? '—'),
+          _infoTile('Platform',   'Android & iOS'),
+          _infoTile('Backend',    'Firebase Firestore'),
+          _infoTile('Developer',  'YS Construction'),
+
+          const SizedBox(height: 32),
+
+          // Logout button
+          OutlinedButton.icon(
+            onPressed: () async {
+              await AuthService().logout();
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(
+                  context, '/login', (_) => false);
+              }
+            },
+            icon: const Icon(Icons.logout, color: Colors.red),
+            label: const Text('Logout',
+              style: TextStyle(color: Colors.red)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.red),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoTile(String label, String value) =>
+    Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(children: [
+        Text(label,
+          style: const TextStyle(color: Colors.grey, fontSize: 13)),
+        const Spacer(),
+        Text(value,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600, fontSize: 13)),
+      ]),
+    );
+}
+```
+
+=============================================================
+FEATURE 10 — SHIMMER LOADING (production quality)
+=============================================================
+
+Add to pubspec.yaml:
+```yaml
+shimmer: ^3.0.0
+```
+
+Create lib/widgets/shimmer_widgets.dart:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
+
+class ShimmerLabourCard extends StatelessWidget {
+  const ShimmerLabourCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor:      Colors.grey.shade200,
+      highlightColor: Colors.grey.shade100,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        height: 110,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+    );
+  }
+}
+
+class ShimmerStatCard extends StatelessWidget {
+  const ShimmerStatCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor:      Colors.grey.shade200,
+      highlightColor: Colors.grey.shade100,
+      child: Container(
+        height: 100,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+    );
+  }
+}
+
+class ShimmerAttendanceCard extends StatelessWidget {
+  const ShimmerAttendanceCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor:      Colors.grey.shade200,
+      highlightColor: Colors.grey.shade100,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        height: 130,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+    );
+  }
+}
+
+// Use in any loading state:
+// if (isLoading)
+//   Column(children: List.generate(4, (_) => const ShimmerLabourCard()))
+// else
+//   actual list
+```
+
+Replace ALL plain CircularProgressIndicator in list screens
+with appropriate shimmer widget.
+
+=============================================================
+FEATURE 11 — SEARCH IN ATTENDANCE SCREEN
+=============================================================
+
+Add search to attendance screen so supervisor can find
+a specific labour quickly (useful when 40+ labours):
+
+```dart
+// Add to AttendanceScreen state:
+String _searchQuery = '';
+
+// Add search bar below the date picker:
+Padding(
+  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+  child: TextField(
+    onChanged: (v) => setState(() => _searchQuery = v),
+    decoration: InputDecoration(
+      hintText: 'Search labour...',
+      prefixIcon: const Icon(Icons.search,
+        size: 18, color: Colors.grey),
+      suffixIcon: _searchQuery.isNotEmpty
+          ? IconButton(
+              icon: const Icon(Icons.clear, size: 16),
+              onPressed: () =>
+                  setState(() => _searchQuery = ''),
+            )
+          : null,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(
+        vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10)),
+    ),
+  ),
+),
+
+// Filter labours list in build:
+final visibleLabours = _searchQuery.isEmpty
+    ? data.labours
+    : data.labours.where((l) =>
+        l.name.toLowerCase()
+            .contains(_searchQuery.toLowerCase())).toList();
+
+// Use visibleLabours in ListView.builder itemCount
+```
+
+=============================================================
+FEATURE 12 — TODAY ATTENDANCE QUICK STATS BAR
+=============================================================
+
+In attendance screen, add a percentage bar above the list:
+
+```dart
+// After the present/absent/half chips row:
+Builder(builder: (context) {
+  final total = presentCount + absentCount + halfDayCount;
+  if (total == 0) return const SizedBox.shrink();
+  
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    child: Column(children: [
+      // Progress bar
+      ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Row(children: [
+          if (presentCount > 0)
+            Expanded(
+              flex: presentCount,
+              child: Container(
+                height: 6, color: Colors.green)),
+          if (halfDayCount > 0)
+            Expanded(
+              flex: halfDayCount,
+              child: Container(
+                height: 6, color: Colors.orange)),
+          if (absentCount > 0)
+            Expanded(
+              flex: absentCount,
+              child: Container(
+                height: 6, color: Colors.red)),
+        ]),
+      ),
+      const SizedBox(height: 4),
+      Row(children: [
+        Text('${((presentCount/total)*100).round()}% present',
+          style: const TextStyle(
+            fontSize: 10, color: Colors.green,
+            fontWeight: FontWeight.w600)),
+        const Spacer(),
+        Text('$total total',
+          style: const TextStyle(
+            fontSize: 10, color: Colors.grey)),
+      ]),
+    ]),
+  );
+}),
+```
+
+=============================================================
+PUBSPEC.YAML — add all new packages
+=============================================================
+
+```yaml
+dependencies:
+  # Already have these — keep:
+  firebase_core:       ^3.x.x
+  firebase_auth:       ^5.x.x
+  cloud_firestore:     ^5.x.x
+  connectivity_plus:   ^6.x.x
+  hive:                ^2.x.x
+  hive_flutter:        ^1.x.x
+  shared_preferences:  ^2.x.x
+  vibration:           ^2.x.x
+  
+  # ADD these new packages:
+  shimmer:                    ^3.0.0
+  flutter_local_notifications: ^17.2.3
+  local_auth:                 ^2.3.0
+  package_info_plus:          ^8.1.3
+  timezone:                   ^0.9.4
+```
+
+Run after adding:
+```bash
+flutter pub get
+```
+
+=============================================================
+ANDROID PERMISSIONS — add to AndroidManifest.xml
+=============================================================
+
+In android/app/src/main/AndroidManifest.xml add:
+```xml
+<!-- Biometric / fingerprint -->
+<uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+<uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+
+<!-- Notifications -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+<!-- Already have these — keep: -->
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.CAMERA"/>
+```
+
+Also in MainActivity.kt or MainActivity.java — make sure
+it extends FlutterFragmentActivity not FlutterActivity
+(required for local_auth):
+```kotlin
+import io.flutter.embedding.android.FlutterFragmentActivity
+
+class MainActivity: FlutterFragmentActivity()
+```
+
+=============================================================
+IMPLEMENTATION ORDER
+=============================================================
+
+Implement in this exact order and test after each:
+
+1. Shimmer loading (Feature 10) — visual quality immediately
+2. Offline banner (Feature 1) — connectivity awareness
+3. Pull to refresh (Feature 6) — everywhere
+4. Error retry widget (Feature 7) — better UX
+5. Haptic feedback (Feature 8) — native feel
+6. Search in attendance (Feature 11) — practical for 40+ labours
+7. Today stats bar (Feature 12) — attendance percentage bar
+8. Week attendance strip (Feature 5) — dashboard heatmap
+9. Auto sync on reconnect (Feature 2) — background sync
+10. Notifications (Feature 4) — daily reminders
+11. Biometric lock (Feature 3) — app security
+12. App info screen (Feature 9) — settings/about
+
+=============================================================
+VERIFICATION AFTER ALL FEATURES
+=============================================================
+
+Test checklist:
+- [ ] Go offline → orange banner appears at top
+- [ ] Come back online → green "Back online" banner shows 3s
+- [ ] Scan QR offline → saved to Hive → come online → auto syncs
+- [ ] Notification appears on scan success
+- [ ] Daily reminder notification scheduled at 9am
+- [ ] Shimmer shows while loading (not spinner)
+- [ ] Pull down on any list → refreshes data
+- [ ] Error state shows retry button (not just text)
+- [ ] Search in attendance filters labours instantly
+- [ ] Percentage bar shows in attendance screen
+- [ ] Week heatmap shows on dashboard
+- [ ] Haptic vibration on button press
+- [ ] App info screen shows correct version number
+
+Keep all existing features working.
+Show complete file for each new feature added.

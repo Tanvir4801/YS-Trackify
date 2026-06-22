@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function callerUid() {
+      return request.auth.uid;
+    }
+
+    function callerData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && callerData().role == 'super_admin';
+    }
+
+    function isInTenant(contractorId) {
+      return isSignedIn() && callerData().contractorId == contractorId;
+    }
+
+    function isContractorAdmin(contractorId) {
+      return isInTenant(contractorId) && callerData().role == 'contractor';
+    }
+
+    function isSupervisor(contractorId) {
+      return isInTenant(contractorId) && callerData().role == 'supervisor';
+    }
+
+    function canManageTenant(contractorId) {
+      return isContractorAdmin(contractorId) || isSupervisor(contractorId);
+    }
+
+    function isOwnTenantData(contractorId) {
+      return request.resource.data.contractorId == contractorId
+          && isInTenant(contractorId);
+    }
+
+    // ── contractors/ ─────────────────────────────────────────────────────────
+
+    match /contractors/{contractorId} {
+      allow read:  if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin();
+    }
+
+    // ── users/ ───────────────────────────────────────────────────────────────
+
+    match /users/{userId} {
+      allow read: if isSuperAdmin()
+                  || request.auth.uid == userId
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && isContractorAdmin(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isContractorAdmin(resource.data.contractorId)
+                        && isInTenant(resource.data.contractorId))
+                    || (callerUid() == userId
+                        && request.resource.data.diff(resource.data)
+                           .affectedKeys().hasOnly(['name', 'phone', 'updatedAt']));
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── labours/ ─────────────────────────────────────────────────────────────
+
+    match /labours/{labourId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && canManageTenant(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && canManageTenant(resource.data.contractorId));
+
+      allow delete: if isSuperAdmin()
+                    || isContractorAdmin(resource.data.contractorId);
+    }
+
+    // ── attendance flat collection ────────────────────────────────────────────
+    // Supervisors write directly (no Cloud Function required).
+
+    match /attendance/{attendanceId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      // Supervisor or contractor admin can create; supervisorId must match caller
+      allow create: if isSignedIn()
+                    && request.resource.data.supervisorId == callerUid()
+                    && canManageTenant(request.resource.data.contractorId);
+
+      // Only the supervisor who created can update (e.g. overtime hours)
+      allow update: if isSignedIn()
+                    && resource.data.supervisorId == callerUid();
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── attendance nested path (multi-tenant model) ───────────────────────────
+    // attendance/{contractorId}/dates/{dateKey}/records/{labourId}
+
+    match /attendance/{contractorId}/{rest=**} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+
+      allow write: if isSignedIn()
+                   && canManageTenant(contractorId);
+    }
+
+    // ── payments/ ────────────────────────────────────────────────────────────
+
+    match /payments/{paymentId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && isContractorAdmin(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && isContractorAdmin(resource.data.contractorId)
+                        && request.resource.data.diff(resource.data)
+                           .affectedKeys().hasOnly(['status', 'notes', 'updatedAt']));
+
+      allow delete: if isSuperAdmin();
+    }
+  }
+}

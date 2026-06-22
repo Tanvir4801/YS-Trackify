@@ -1,0 +1,783 @@
+
+I have a Flutter app called Trackify V2.
+Currently uses Firebase Cloud Functions for QR attendance validation.
+Cloud Functions require Blaze (paid) plan.
+
+I want to move to Spark (free) plan by removing Cloud Functions
+and doing all validation directly in the Flutter app using
+Firestore + Security Rules.
+
+The app must work EXACTLY the same for users.
+Security must remain strong.
+DO NOT change any UI.
+
+=============================================================
+THE CORE CHANGE
+=============================================================
+
+Currently:
+Flutter app → calls Cloud Function → Function validates QR
+→ Function writes to Firestore
+
+After change:
+Flutter app → validates QR locally → writes directly to Firestore
+→ Firestore Rules enforce security
+
+=============================================================
+STEP 1 — Create local QR validator in Flutter
+=============================================================
+
+Create lib/services/qr_validator.dart:
+
+```dart
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+
+class QRValidator {
+  // Must match QRService._salt exactly
+  static const String _salt = 'TRACKIFY_QR_SECRET_2026';
+
+  /// Validates a QR token locally.
+  /// Returns decoded data if valid, or error info if not.
+  static QRValidationResult validate(String rawToken) {
+    try {
+      // Decode base64
+      final decoded = utf8.decode(base64Url.decode(rawToken));
+      final parts   = decoded.split('|');
+
+      if (parts.length != 3) {
+        return QRValidationResult.invalid('Bad token format');
+      }
+
+      final labourId       = parts[0];
+      final windowStr      = parts[1];
+      final receivedSig    = parts[2];
+      final windowSeconds  = int.tryParse(windowStr);
+
+      if (labourId.isEmpty || windowSeconds == null) {
+        return QRValidationResult.invalid('Missing token fields');
+      }
+
+      // ── Time check: allow ±2 windows (60 second grace) ──
+      final nowWindow = DateTime.now().millisecondsSinceEpoch ~/ 30000;
+      if ((nowWindow - windowSeconds).abs() > 2) {
+        return QRValidationResult.expired();
+      }
+
+      // ── HMAC signature check ──
+      final payload      = '$labourId|$windowSeconds';
+      final key          = utf8.encode(_salt);
+      final bytes        = utf8.encode(payload);
+      final hmac         = Hmac(sha256, key);
+      final digest       = hmac.convert(bytes);
+      final expectedSig  = digest.toString().substring(0, 16);
+
+      if (receivedSig != expectedSig) {
+        debugPrint('QR signature mismatch');
+        return QRValidationResult.invalid('Invalid signature');
+      }
+
+      // Valid token
+      return QRValidationResult.valid(
+        labourId:      labourId,
+        windowSeconds: windowSeconds,
+      );
+
+    } catch (e) {
+      debugPrint('QRValidator error: $e');
+      return QRValidationResult.invalid('Token decode failed');
+    }
+  }
+}
+
+// ── Result model ──
+enum QRValidationStatus { valid, expired, invalid }
+
+class QRValidationResult {
+  const QRValidationResult._({
+    required this.status,
+    this.labourId,
+    this.windowSeconds,
+    this.errorMessage,
+  });
+
+  final QRValidationStatus status;
+  final String?            labourId;
+  final int?               windowSeconds;
+  final String?            errorMessage;
+
+  bool get isValid   => status == QRValidationStatus.valid;
+  bool get isExpired => status == QRValidationStatus.expired;
+
+  factory QRValidationResult.valid({
+    required String labourId,
+    required int windowSeconds,
+  }) => QRValidationResult._(
+    status:        QRValidationStatus.valid,
+    labourId:      labourId,
+    windowSeconds: windowSeconds,
+  );
+
+  factory QRValidationResult.expired() => const QRValidationResult._(
+    status:       QRValidationStatus.expired,
+    errorMessage: 'QR code expired. Ask labour to refresh.',
+  );
+
+  factory QRValidationResult.invalid(String reason) => QRValidationResult._(
+    status:       QRValidationStatus.invalid,
+    errorMessage: reason,
+  );
+}
+```
+
+=============================================================
+STEP 2 — Replace ScannerService completely
+=============================================================
+
+Replace lib/services/scanner_service.dart with this:
+
+```dart
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:hive/hive.dart';
+import 'package:vibration/vibration.dart';
+
+import '../models/labour_model.dart';
+import '../services/session_service.dart';
+import 'qr_validator.dart';
+
+class ScannerService {
+  final _db   = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  String get supervisorId => _auth.currentUser?.uid ?? '';
+
+  String get _contractorId =>
+      SessionService.instance.contractorId ?? supervisorId;
+
+  // ──────────────────────────────────────────────────────
+  // MAIN SCAN HANDLER — no Cloud Function needed
+  // ──────────────────────────────────────────────────────
+  Future<ScanResult> processScan(
+    String rawToken, {
+    String status = 'present', // 'present' | 'half'
+  }) async {
+    if (supervisorId.isEmpty) {
+      return ScanResult(
+        success: false,
+        message: 'Not logged in',
+        type: ScanResultType.invalid,
+      );
+    }
+
+    // ── Step 1: Validate QR token locally ──
+    final validation = QRValidator.validate(rawToken);
+
+    if (validation.isExpired) {
+      return ScanResult(
+        success: false,
+        message: 'QR Code expired. Ask labour to refresh.',
+        type: ScanResultType.expired,
+      );
+    }
+
+    if (!validation.isValid) {
+      return ScanResult(
+        success: false,
+        message: validation.errorMessage ?? 'Invalid QR Code',
+        type: ScanResultType.invalid,
+      );
+    }
+
+    final labourId = validation.labourId!;
+    final today    = _todayString();
+
+    // ── Step 2: Check duplicate locally (Hive) ──
+    final localKey = '${labourId}_$today';
+    final pendingBox = Hive.box('pending_attendance');
+    if (pendingBox.containsKey(localKey)) {
+      final name = await _getLabourName(labourId);
+      return ScanResult(
+        success: false,
+        message: '$name already marked today',
+        type: ScanResultType.duplicate,
+        labourName: name,
+      );
+    }
+
+    // ── Step 3: Check connectivity ──
+    final connectivity = await Connectivity().checkConnectivity();
+    final isOnline = !connectivity.contains(ConnectivityResult.none);
+
+    if (isOnline) {
+      return await _markOnline(labourId, today, status);
+    } else {
+      return await _markOffline(labourId, today, status);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────
+  // ONLINE: Write directly to Firestore
+  // ──────────────────────────────────────────────────────
+  Future<ScanResult> _markOnline(
+    String labourId,
+    String date,
+    String status,
+  ) async {
+    try {
+      // Check duplicate in Firestore
+      final existing = await _db
+          .collection('attendance')
+          .where('labourId',     isEqualTo: labourId)
+          .where('supervisorId', isEqualTo: supervisorId)
+          .where('date',         isEqualTo: date)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        final name = await _getLabourName(labourId);
+        return ScanResult(
+          success: false,
+          message: '$name already marked today',
+          type: ScanResultType.duplicate,
+          labourName: name,
+        );
+      }
+
+      // Write attendance to Firestore
+      final docRef = await _db.collection('attendance').add({
+        'labourId':      labourId,
+        'supervisorId':  supervisorId,
+        'contractorId':  _contractorId,
+        'date':          date,
+        'status':        status,
+        'overtimeHours': 0,
+        'markedVia':     'qr_scan',
+        'isSynced':      true,
+        'syncedAt':      FieldValue.serverTimestamp(),
+      });
+      await docRef.update({'id': docRef.id});
+
+      // Save to Hive as synced
+      _saveToHive(
+        labourId: labourId,
+        date:     date,
+        status:   status,
+        isSynced: true,
+        docId:    docRef.id,
+      );
+
+      final name        = await _getLabourName(labourId);
+      final statusLabel = status == 'half' ? 'Half Day' : 'Present';
+      debugPrint('QR attendance marked: $name → $statusLabel');
+
+      return ScanResult(
+        success:    true,
+        message:    '$name marked $statusLabel ✓',
+        type:       ScanResultType.success,
+        labourName: name,
+      );
+
+    } catch (e) {
+      debugPrint('_markOnline error: $e');
+      // Firestore write failed — fallback to offline
+      return await _markOffline(labourId, date, status);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────
+  // OFFLINE: Save to Hive, sync later
+  // ──────────────────────────────────────────────────────
+  Future<ScanResult> _markOffline(
+    String labourId,
+    String date,
+    String status,
+  ) async {
+    _saveToHive(
+      labourId: labourId,
+      date:     date,
+      status:   status,
+      isSynced: false,
+    );
+
+    final name        = await _getLabourName(labourId);
+    final statusLabel = status == 'half' ? 'Half Day' : 'Present';
+
+    return ScanResult(
+      success:    true,
+      message:    '$name marked $statusLabel (offline). Will sync.',
+      type:       ScanResultType.offline,
+      labourName: name,
+    );
+  }
+
+  // ──────────────────────────────────────────────────────
+  // SYNC pending offline scans to Firestore
+  // ──────────────────────────────────────────────────────
+  Future<int> syncPendingScans() async {
+    if (supervisorId.isEmpty) return 0;
+
+    Box box;
+    try {
+      box = Hive.box('pending_attendance');
+    } catch (_) {
+      box = await Hive.openBox('pending_attendance');
+    }
+
+    int synced = 0;
+
+    for (final key in box.keys.toList()) {
+      try {
+        final raw = box.get(key);
+        if (raw == null) continue;
+        final record = Map<String, dynamic>.from(raw as Map);
+
+        if (record['isSynced'] == true) continue;
+
+        final labourId = record['labourId'] as String? ?? '';
+        final date     = record['date']     as String? ?? '';
+        final status   = record['status']   as String? ?? 'present';
+
+        if (labourId.isEmpty || date.isEmpty) {
+          await box.put(key, {...record, 'isSynced': true});
+          continue;
+        }
+
+        // Check if already in Firestore
+        final existing = await _db
+            .collection('attendance')
+            .where('labourId',     isEqualTo: labourId)
+            .where('supervisorId', isEqualTo: supervisorId)
+            .where('date',         isEqualTo: date)
+            .limit(1)
+            .get();
+
+        if (existing.docs.isNotEmpty) {
+          await box.put(key, {...record, 'isSynced': true});
+          synced++;
+          continue;
+        }
+
+        // Write to Firestore
+        final docRef = await _db.collection('attendance').add({
+          'labourId':      labourId,
+          'supervisorId':  supervisorId,
+          'contractorId':  _contractorId,
+          'date':          date,
+          'status':        status,
+          'overtimeHours': record['overtimeHours'] ?? 0,
+          'markedVia':     'offline_qr',
+          'isSynced':      true,
+          'syncedAt':      FieldValue.serverTimestamp(),
+        });
+        await docRef.update({'id': docRef.id});
+
+        await box.put(key, {
+          ...record,
+          'isSynced':    true,
+          'firestoreId': docRef.id,
+        });
+        synced++;
+
+      } catch (e) {
+        debugPrint('Sync error for key $key: $e');
+      }
+    }
+
+    debugPrint('syncPendingScans complete: $synced synced');
+    return synced;
+  }
+
+  // ──────────────────────────────────────────────────────
+  // CHECK if already marked today (duplicate prevention)
+  // ──────────────────────────────────────────────────────
+  Future<bool> isAlreadyMarkedToday(String labourId) async {
+    final today    = _todayString();
+    final localKey = '${labourId}_$today';
+
+    // Check Hive first (instant)
+    try {
+      final box = Hive.box('pending_attendance');
+      if (box.containsKey(localKey)) return true;
+    } catch (_) {}
+
+    // Check Firestore
+    try {
+      final snap = await _db
+          .collection('attendance')
+          .where('labourId',     isEqualTo: labourId)
+          .where('supervisorId', isEqualTo: supervisorId)
+          .where('date',         isEqualTo: today)
+          .limit(1)
+          .get();
+      return snap.docs.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────
+  // HELPERS
+  // ──────────────────────────────────────────────────────
+
+  void _saveToHive({
+    required String labourId,
+    required String date,
+    required String status,
+    required bool isSynced,
+    String? docId,
+  }) {
+    try {
+      final box = Hive.box('pending_attendance');
+      box.put('${labourId}_$date', {
+        'labourId':     labourId,
+        'supervisorId': supervisorId,
+        'contractorId': _contractorId,
+        'date':         date,
+        'status':       status,
+        'isSynced':     isSynced,
+        'firestoreId':  docId,
+        'scannedAt':    DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('_saveToHive error: $e');
+    }
+  }
+
+  Future<String> _getLabourName(String labourId) async {
+    // Check Hive first
+    try {
+      final box    = Hive.box<Labour>(Labour.boxName);
+      final labour = box.get(labourId);
+      if (labour != null && labour.name.isNotEmpty) {
+        return labour.name;
+      }
+    } catch (_) {}
+
+    // Check Firestore
+    try {
+      final doc = await _db
+          .collection('labours')
+          .doc(labourId)
+          .get();
+      if (doc.exists) {
+        return doc.data()?['name'] as String? ?? labourId;
+      }
+    } catch (_) {}
+
+    return labourId;
+  }
+
+  int getPendingCount() {
+    try {
+      final box = Hive.box('pending_attendance');
+      return box.values.where((v) {
+        try { return (v as Map)['isSynced'] != true; }
+        catch (_) { return false; }
+      }).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  String _todayString() {
+    final n = DateTime.now();
+    return '${n.year}-'
+        '${n.month.toString().padLeft(2,'0')}-'
+        '${n.day.toString().padLeft(2,'0')}';
+  }
+
+  Future<void> playSuccessFeedback() async {
+    try {
+      if (await Vibration.hasVibrator() ?? false) {
+        Vibration.vibrate(duration: 200, amplitude: 128);
+      }
+    } catch (_) {}
+    try { await SystemSound.play(SystemSoundType.click); } catch (_) {}
+  }
+
+  Future<void> playErrorFeedback() async {
+    try {
+      if (await Vibration.hasVibrator() ?? false) {
+        Vibration.vibrate(pattern: [0, 100, 100, 100]);
+      }
+    } catch (_) {}
+  }
+}
+
+// ── Result models ──
+enum ScanResultType { success, duplicate, expired, invalid, offline }
+
+class ScanResult {
+  const ScanResult({
+    required this.success,
+    required this.message,
+    required this.type,
+    this.labourName,
+    this.rawToken,
+  });
+
+  final bool           success;
+  final String         message;
+  final ScanResultType type;
+  final String?        labourName;
+  final String?        rawToken;
+}
+```
+
+=============================================================
+STEP 3 — Update Firestore Security Rules (no Cloud Functions)
+=============================================================
+
+Go to Firebase Console → Firestore → Rules tab.
+Replace everything with:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── helpers ──────────────────────────────────────────
+    function isLoggedIn() {
+      return request.auth != null;
+    }
+
+    function callerUid() {
+      return request.auth.uid;
+    }
+
+    function isOwner(uid) {
+      return isLoggedIn() && callerUid() == uid;
+    }
+
+    // ── users ─────────────────────────────────────────────
+    match /users/{userId} {
+      // Anyone logged in can read (for login lookup)
+      allow read: if true;
+      // Only the user themselves or write if creating own doc
+      allow create: if isLoggedIn();
+      allow update: if isLoggedIn() &&
+        (callerUid() == userId ||
+         request.resource.data.diff(resource.data)
+           .affectedKeys().hasOnly(['labourId','supervisorId','phone']));
+      allow delete: if false;
+    }
+
+    // ── labours ───────────────────────────────────────────
+    match /labours/{labourId} {
+      // Public read — needed for labour phone login
+      allow read: if true;
+
+      // Only logged-in supervisors can create labours
+      allow create: if isLoggedIn() &&
+        request.resource.data.supervisorId == callerUid();
+
+      // Only the supervisor who owns this labour can update
+      allow update: if isLoggedIn() &&
+        resource.data.supervisorId == callerUid();
+
+      // Soft delete only (isActive: false)
+      allow delete: if false;
+    }
+
+    // ── attendance (FLAT collection) ──────────────────────
+    match /attendance/{attendanceId} {
+      // Labours can read their own attendance
+      // Supervisors can read their labours attendance
+      allow read: if true;
+
+      // Only logged-in supervisor can create
+      // supervisorId in document must match the writer
+      allow create: if isLoggedIn() &&
+        request.resource.data.supervisorId == callerUid();
+
+      // Only the supervisor who created can update (for OT hours)
+      allow update: if isLoggedIn() &&
+        resource.data.supervisorId == callerUid();
+
+      allow delete: if false;
+    }
+
+    // ── attendance NESTED (legacy path) ──────────────────
+    match /attendance/{contractorId}/{rest=**} {
+      allow read:  if isLoggedIn();
+      allow write: if isLoggedIn();
+    }
+
+    // ── payments ─────────────────────────────────────────
+    match /payments/{paymentId} {
+      allow read: if true;
+      allow create: if isLoggedIn() &&
+        request.resource.data.supervisorId == callerUid();
+      allow update: if isLoggedIn() &&
+        resource.data.supervisorId == callerUid();
+      allow delete: if false;
+    }
+
+    // ── contractors ──────────────────────────────────────
+    match /contractors/{contractorId} {
+      allow read: if true;
+      allow write: if false; // only via admin panel
+    }
+  }
+}
+```
+
+Click Publish.
+
+=============================================================
+STEP 4 — Remove Cloud Function dependency from pubspec.yaml
+=============================================================
+
+In pubspec.yaml remove this line:
+```yaml
+# Remove this:
+cloud_functions: ^4.7.6
+```
+
+Run:
+```bash
+flutter pub get
+```
+
+=============================================================
+STEP 5 — Remove cloud_functions imports from all files
+=============================================================
+
+Search entire project for:
+
+import 'package:cloud_functions/cloud_functions.dart';
+Delete every file or line that imports cloud_functions.
+Also remove any usage of:
+- FirebaseFunctions.instance
+- httpsCallable(...)
+- callable.call(...)
+
+These are only in:
+- Old scanner_service.dart (already replaced in Step 2)
+- Possibly scanner_screen.dart
+
+In scanner_screen.dart if you see:
+```dart
+final callable = FirebaseFunctions.instance
+    .httpsCallable('validateAndMarkAttendance');
+final result = await callable.call({...});
+```
+
+Delete that block. The new ScannerService handles everything.
+
+=============================================================
+STEP 6 — Update main.dart Firebase init
+=============================================================
+
+In main.dart remove CloudFunctions initialization if present:
+```dart
+// Remove this if it exists:
+FirebaseFunctions.instance.useFunctionsEmulator('localhost', 5001);
+```
+
+Keep everything else the same.
+
+=============================================================
+STEP 7 — Downgrade Firebase plan (optional but recommended)
+=============================================================
+
+Go to Firebase Console → gear icon → Usage and billing.
+Click "Modify plan" → select "Spark" (free).
+This removes billing completely.
+
+Your app will continue working perfectly on Spark plan because:
+- Firestore reads/writes: still work ✅
+- Firebase Auth phone OTP: still works ✅  
+- Firebase Hosting: still works ✅
+- Cloud Functions: removed from app ✅
+
+=============================================================
+STEP 8 — Delete Cloud Functions (optional cleanup)
+=============================================================
+
+You can keep the functions/ folder in your project — 
+it won't affect anything. Or delete it to clean up:
+
+```bash
+# Optional cleanup
+rm -rf functions/
+```
+
+Also in firebase.json remove the functions config:
+```json
+// Remove this block from firebase.json:
+"functions": {
+  "source": "functions",
+  "codebase": "default"
+}
+
+// Keep only:
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "build/web"
+  }
+}
+```
+
+=============================================================
+VERIFICATION — test after all changes
+=============================================================
+
+Run flutter app and test:
+
+1. QR scan still works:
+   Labour shows QR → Supervisor scans →
+   attendance written directly to Firestore ✅
+
+2. Offline scan works:
+   Turn on airplane mode → scan QR →
+   shows "marked offline" → turn off airplane mode →
+   tap sync button → record appears in Firestore ✅
+
+3. Duplicate prevention works:
+   Scan same labour twice in one day →
+   second scan shows "already marked today" ✅
+
+4. Firestore rules work:
+   Open Firebase Console → Firestore →
+   attendance collection → new records appear ✅
+
+5. No cloud_functions errors in terminal ✅
+
+Add this debug line temporarily to confirm no Functions calls:
+```dart
+// In scanner_service.dart processScan():
+debugPrint('✅ Processing scan WITHOUT Cloud Functions');
+```
+
+=============================================================
+SUMMARY OF CHANGES
+=============================================================
+
+Files changed:
+1. lib/services/qr_validator.dart     (NEW — local validation)
+2. lib/services/scanner_service.dart  (REPLACED — no Functions)
+3. firestore.rules                    (UPDATED — tighter rules)
+4. pubspec.yaml                       (REMOVED cloud_functions)
+5. main.dart                          (REMOVED Functions init)
+6. firebase.json                      (REMOVED functions config)
+
+Files NOT changed (keep as is):
+- lib/services/qr_service.dart        (QR generation unchanged)
+- lib/screens/qr/qr_screen.dart       (Labour QR screen unchanged)
+- lib/screens/scanner/scanner_screen.dart (UI unchanged)
+- All other screens and providers
+
+After this change your app works on FREE Spark plan forever.
+No billing account required. No Cloud Functions.
+Same security. Same user experience.
