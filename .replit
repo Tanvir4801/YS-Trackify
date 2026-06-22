@@ -18,37 +18,25 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start Admin Panel"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node serve.js"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
-
-[[workflows.workflow]]
-name = "Start Admin Panel"
-author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd Trackify_Admin && node node_modules/vite/dist/node/cli.js"
-waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "console"
+waitForPort = 5000
 
 [[ports]]
 localPort = 3000
 externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [deployment]
 deploymentTarget = "static"
