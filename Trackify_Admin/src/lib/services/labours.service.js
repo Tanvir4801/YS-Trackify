@@ -96,6 +96,7 @@ export async function addLabour(data) {
     supervisorId,
     supervisorRef: doc(db, 'users', supervisorId),
     contractorId,
+    siteId: data.siteId || null,
     isActive: data.isActive ?? true,
     type: data.type || 'regular',
     isSynced: true,

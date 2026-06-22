@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Search, Pencil, Ban, RotateCcw, HardHat, ArrowUpDown,
+  Plus, Search, Pencil, Ban, RotateCcw, HardHat, ArrowUpDown, MapPin,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../store/authStore';
@@ -10,6 +10,7 @@ import { useSupervisors } from '../hooks/useSupervisors';
 import {
   addLabour, updateLabour, deactivateLabour, activateLabour,
 } from '../lib/services/labours.service';
+import { subscribeSites } from '../lib/services/sites.service';
 import { formatCurrency } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -27,7 +28,8 @@ const EMPTY_FORM = {
   dailyWage: '',
   overtimeWagePerHour: '',
   defaultOvertimeHours: '',
-  supervisorId: '',   // ← always start empty, never pre-fill with contractor uid
+  supervisorId: '',
+  siteId: '',
   isActive: true,
 };
 
@@ -66,6 +68,13 @@ export default function Labours() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [sites, setSites] = useState([]);
+
+  useEffect(() => {
+    if (!activeContractorId) return;
+    const unsub = subscribeSites(activeContractorId, setSites);
+    return unsub;
+  }, [activeContractorId]);
 
   // Build supervisorId → supervisor object map for display
   const supervisorMap = useMemo(() => {
@@ -73,6 +82,13 @@ export default function Labours() {
     supervisors.forEach((s) => m.set(s.id, s));
     return m;
   }, [supervisors]);
+
+  // Build siteId → site name map for display
+  const siteMap = useMemo(() => {
+    const m = new Map();
+    sites.forEach((s) => m.set(s.id, s.name));
+    return m;
+  }, [sites]);
 
   // ── Filtering and sorting ──────────────────────────────────
   const filtered = useMemo(() => {
@@ -173,6 +189,7 @@ export default function Labours() {
       overtimeWagePerHour: labour.overtimeWagePerHour ?? '',
       defaultOvertimeHours: labour.defaultOvertimeHours ?? '',
       supervisorId: labour.supervisorId || '',
+      siteId: labour.siteId || '',
       isActive: labour.isActive !== false,
     });
     setDialogOpen(true);
@@ -206,13 +223,11 @@ export default function Labours() {
           overtimeWagePerHour: form.overtimeWagePerHour,
           defaultOvertimeHours: form.defaultOvertimeHours,
           supervisorId: form.supervisorId,
-          contractorId: activeContractorId,  // ← always include
+          siteId: form.siteId || null,
+          contractorId: activeContractorId,
           isActive: form.isActive,
         });
       } else {
-        // FIX: Pass BOTH supervisorId AND contractorId
-        // supervisorId = Ramesh's UID (selected from dropdown)
-        // contractorId = YS Constructions ID (from auth store)
         await addLabour({
           name: form.name.trim(),
           phone: form.phone.trim() || null,
@@ -220,8 +235,9 @@ export default function Labours() {
           dailyWage: form.dailyWage,
           overtimeWagePerHour: form.overtimeWagePerHour,
           defaultOvertimeHours: form.defaultOvertimeHours,
-          supervisorId: form.supervisorId,       // ← Ramesh's UID
-          contractorId: activeContractorId,      // ← YS Constructions ID
+          supervisorId: form.supervisorId,
+          siteId: form.siteId || null,
+          contractorId: activeContractorId,
         });
       }
       toast.dismiss(t);
@@ -375,6 +391,7 @@ export default function Labours() {
                     </th>
                     <th className="px-4 py-3 text-right">Default OT Hrs</th>
                     <th className="px-4 py-3">Supervisor</th>
+                    <th className="px-4 py-3">Site</th>
                     <th className="px-4 py-3">Status</th>
                     {!isSupervisor && (
                       <th className="px-4 py-3 text-right">Actions</th>
@@ -430,6 +447,13 @@ export default function Labours() {
                         </td>
                         <td className="px-4 py-3 text-slate-700">
                           {sup?.name || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {l.siteId && siteMap.get(l.siteId) ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                              <MapPin className="h-3 w-3" />{siteMap.get(l.siteId)}
+                            </span>
+                          ) : '—'}
                         </td>
                         <td className="px-4 py-3">
                           <StatusBadge
@@ -595,6 +619,23 @@ export default function Labours() {
               </p>
             )}
           </div>
+
+          {/* SITE DROPDOWN */}
+          {sites.length > 0 && (
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1"><MapPin className="h-3 w-3 text-blue-500" /> Site</Label>
+              <select
+                value={form.siteId}
+                onChange={(e) => setForm({ ...form, siteId: e.target.value })}
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="">No site assigned</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {editing && (
             <label className="flex items-center gap-2 text-sm text-slate-700">
