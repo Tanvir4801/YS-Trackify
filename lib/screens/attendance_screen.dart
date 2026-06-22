@@ -146,6 +146,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         // Filter labours by selected site
         List<Labour> allLabours = data.labours;
         if (_selectedSiteId != null && _selectedSiteId!.isNotEmpty) {
+          // Show labours assigned to this site only
           allLabours = allLabours.where((l) => l.siteId == _selectedSiteId).toList();
         }
 
@@ -166,6 +167,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         final halfDayCount = attendanceByLabour.entries.where((e) => siteLabourIds.contains(e.key) && e.value == 'half').length;
         final totalMarked  = presentCount + absentCount + halfDayCount;
         final totalLabours = allLabours.length;
+
+        // Build site-wise grouping for "All Sites" view
+        final Map<String, List<Labour>> laboursBySite = {};
+        if (_selectedSiteId == null && sites.isNotEmpty && _searchQuery.isEmpty) {
+          for (final site in sites) {
+            final siteLabours = data.labours
+                .where((l) => l.siteId == site.id && !attendanceByLabour.containsKey(l.id))
+                .toList();
+            if (siteLabours.isNotEmpty) laboursBySite[site.id] = siteLabours;
+          }
+          final unassigned = data.labours
+              .where((l) => l.siteId.isEmpty && !attendanceByLabour.containsKey(l.id))
+              .toList();
+          if (unassigned.isNotEmpty) laboursBySite['__unassigned__'] = unassigned;
+        }
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -241,16 +257,43 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                     ],
                                   ),
                                 ),
-                              ...pendingList.map((labour) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: _AttendanceCard(
-                                  labour: labour,
-                                  status: attendanceByLabour[labour.id],
-                                  remark: data.remarkMap[labour.id] ?? '',
-                                  data: data,
-                                  siteName: _siteName(sites, labour.siteId),
-                                ),
-                              )),
+
+                              // Site-wise grouped view in "All Sites" mode
+                              if (_selectedSiteId == null && laboursBySite.isNotEmpty && _searchQuery.isEmpty)
+                                ..._buildSiteGroupedList(laboursBySite, sites, attendanceByLabour, data)
+                              else if (_selectedSiteId != null && pendingList.isEmpty && _searchQuery.isEmpty)
+                                // Empty state when a specific site is selected but no labours assigned
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: AppColors.border),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      const Icon(Icons.location_off_outlined, color: AppColors.textTertiary, size: 32),
+                                      const SizedBox(height: 10),
+                                      const Text('No labours assigned to this site',
+                                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary)),
+                                      const SizedBox(height: 4),
+                                      const Text('Assign labours to this site from the Admin Panel.',
+                                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary), textAlign: TextAlign.center),
+                                    ],
+                                  ),
+                                )
+                              else
+                                ...pendingList.map((labour) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _AttendanceCard(
+                                    labour: labour,
+                                    status: attendanceByLabour[labour.id],
+                                    remark: data.remarkMap[labour.id] ?? '',
+                                    data: data,
+                                    siteName: _siteName(sites, labour.siteId),
+                                  ),
+                                )),
                             ],
 
                             // Temp labours for today
@@ -295,6 +338,83 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     } catch (_) {
       return '';
     }
+  }
+
+  List<Widget> _buildSiteGroupedList(
+    Map<String, List<Labour>> laboursBySite,
+    List<SiteModel> sites,
+    Map<String, String> attendanceByLabour,
+    AttendanceProvider data,
+  ) {
+    final widgets = <Widget>[];
+    for (final entry in laboursBySite.entries) {
+      final siteId = entry.key;
+      final siteLabours = entry.value;
+      final name = siteId == '__unassigned__'
+          ? 'Unassigned'
+          : _siteName(sites, siteId);
+      final color = siteId == '__unassigned__'
+          ? AppColors.textTertiary
+          : AppColors.primary;
+
+      widgets.add(Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 4),
+        child: Row(
+          children: [
+            Icon(
+              siteId == '__unassigned__'
+                  ? Icons.help_outline_rounded
+                  : Icons.location_on_rounded,
+              size: 13,
+              color: color,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${siteLabours.length} pending',
+                style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(left: 8),
+                height: 1,
+                color: color.withValues(alpha: 0.15),
+              ),
+            ),
+          ],
+        ),
+      ));
+
+      for (final labour in siteLabours) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _AttendanceCard(
+            labour: labour,
+            status: attendanceByLabour[labour.id],
+            remark: data.remarkMap[labour.id] ?? '',
+            data: data,
+            siteName: name == 'Unassigned' ? '' : name,
+          ),
+        ));
+      }
+    }
+    return widgets;
   }
 
   Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, List<Labour> allDataLabours) {

@@ -153,7 +153,10 @@ class AttendanceService {
 
     attendance.supervisorId = uid;
     attendance.contractorId = contractorId;
-    attendance.siteId = uid;
+    if (attendance.siteId.isEmpty) {
+      final labour = _labourBox.get(attendance.labourId);
+      attendance.siteId = labour?.siteId ?? '';
+    }
     attendance.wageAtTime = wageAtTime > 0 ? wageAtTime : attendance.wageAtTime;
     attendance.remark = remark.isNotEmpty ? remark : attendance.remark;
     if (attendance.remark.isNotEmpty) attendance.notes = attendance.remark;
@@ -180,7 +183,7 @@ class AttendanceService {
         'labourId':      attendance.labourId,
         'contractorId':  contractorId,
         'supervisorId':  uid,
-        'siteId':        uid,
+        'siteId':        attendance.siteId.isNotEmpty ? attendance.siteId : uid,
         'supervisorRef': FirestorePaths.userRef(uid),
         'date':          attendance.date,
         'status':        attendance.status.firestoreValue,

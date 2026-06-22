@@ -24,6 +24,7 @@ class SiteDataProvider extends ChangeNotifier {
 
   // Stream-backed labour list
   StreamSubscription<List<Labour>>? _labourSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _attendanceSubscription;
   List<Labour> _labours = [];
   List<Labour> get labours => _labours;
 
@@ -105,11 +106,84 @@ class SiteDataProvider extends ChangeNotifier {
         debugPrint('❌ Labour stream error: $e');
       },
     );
+
+    _startMonthAttendanceStream(contractorId);
+  }
+
+  void _startMonthAttendanceStream(String contractorId) {
+    _attendanceSubscription?.cancel();
+
+    final now = DateTime.now();
+    final monthStart =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
+
+    _attendanceSubscription = FirebaseFirestore.instance
+        .collection('attendance')
+        .where('contractorId', isEqualTo: contractorId)
+        .where('date', isGreaterThanOrEqualTo: monthStart)
+        .snapshots()
+        .listen(
+      (snap) {
+        final firestoreRecords = snap.docs
+            .map((doc) {
+              final data = doc.data();
+              final labourId = (data['labourId'] as String?) ?? '';
+              final dateKey = (data['date'] as String?) ?? '';
+              final statusStr =
+                  (data['status'] as String?) ?? 'absent';
+              final ot =
+                  ((data['overtimeHours'] as num?) ?? 0).toDouble();
+
+              if (labourId.isEmpty || dateKey.isEmpty) return null;
+
+              AttendanceStatus status;
+              switch (statusStr) {
+                case 'present':
+                  status = AttendanceStatus.present;
+                  break;
+                case 'half':
+                case 'half_day':
+                case 'half-day':
+                  status = AttendanceStatus.halfDay;
+                  break;
+                default:
+                  status = AttendanceStatus.absent;
+              }
+
+              return AttendanceRecord(
+                id: doc.id,
+                labourId: labourId,
+                dateKey: dateKey,
+                status: status,
+                overtimeHours: ot,
+              );
+            })
+            .whereType<AttendanceRecord>()
+            .toList();
+
+        // Merge: Firestore records override Hive records for same key
+        final mergedMap = <String, AttendanceRecord>{
+          for (final r in _hiveService.getAllAttendanceRecords())
+            '${r.labourId}_${r.dateKey}': r,
+        };
+        for (final r in firestoreRecords) {
+          mergedMap['${r.labourId}_${r.dateKey}'] = r;
+        }
+
+        _attendanceRecords = mergedMap.values.toList();
+        notifyListeners();
+      },
+      onError: (e) {
+        debugPrint('❌ Attendance stream error: $e');
+      },
+    );
   }
 
   void stopLabourStream() {
     _labourSubscription?.cancel();
     _labourSubscription = null;
+    _attendanceSubscription?.cancel();
+    _attendanceSubscription = null;
   }
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────
@@ -436,7 +510,8 @@ class SiteDataProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    stopLabourStream();
+    _labourSubscription?.cancel();
+    _attendanceSubscription?.cancel();
     super.dispose();
   }
 }

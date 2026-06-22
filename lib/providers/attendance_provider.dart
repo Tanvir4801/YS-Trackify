@@ -237,6 +237,8 @@ class AttendanceProvider extends ChangeNotifier {
       wageAtTime = labour?.dailyWage ?? 0.0;
     }
 
+    final labourSiteId = _labourBox.get(labourId)?.siteId ?? '';
+
     final att = Attendance(
       id: '${labourId}_$selectedDateStr',
       labourId: labourId,
@@ -246,7 +248,7 @@ class AttendanceProvider extends ChangeNotifier {
       overtimeHours: ot,
       wageAtTime: wageAtTime,
       remark: remark.isNotEmpty ? remark : (remarkMap[labourId] ?? ''),
-      siteId: FirebaseAuth.instance.currentUser!.uid,
+      siteId: labourSiteId,
     );
 
     await _service.markAttendance(att, wageAtTime: wageAtTime, remark: att.remark);
@@ -270,6 +272,7 @@ class AttendanceProvider extends ChangeNotifier {
     final status = attendanceMap[labourId] ?? 'present';
     final wageAtTime = wageAtTimeMap[labourId] ?? 0.0;
     final remark = remarkMap[labourId] ?? '';
+    final labourSiteId = _labourBox.get(labourId)?.siteId ?? '';
 
     final att = Attendance(
       id: '${labourId}_$selectedDateStr',
@@ -280,7 +283,7 @@ class AttendanceProvider extends ChangeNotifier {
       overtimeHours: safe,
       wageAtTime: wageAtTime,
       remark: remark,
-      siteId: FirebaseAuth.instance.currentUser!.uid,
+      siteId: labourSiteId,
     );
     await _service.markAttendance(att, wageAtTime: wageAtTime, remark: remark);
 
