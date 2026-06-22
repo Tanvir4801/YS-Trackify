@@ -1,0 +1,43 @@
+
+const { doc, setDoc } = await import('firebase/firestore');
+const { db } = await import('./src/lib/firebase.js'); // adjust path if needed or just use window.db if exported
+
+await setDoc(doc(db, 'system_health', 'global'), {
+  missionHealthPercentage: 98,
+  totalRequests: 1450239,
+  monthlyUsage: 1450239,
+  estimatedCosts: 12.45
+});
+
+await setDoc(doc(db, 'infrastructure_metrics', 'firestore'), {
+  name: 'Firestore Database', status: 'GREEN', latencyMs: 24, details: '100% Uptime • Normal Load'
+});
+await setDoc(doc(db, 'infrastructure_metrics', 'auth'), {
+  name: 'Authentication', status: 'GREEN', latencyMs: 45, details: 'Normal • 0 Failed logins in last hour'
+});
+await setDoc(doc(db, 'infrastructure_metrics', 'storage'), {
+  name: 'Firebase Storage', status: 'YELLOW', latencyMs: 150, details: 'Degraded • Slower upload speeds detected in AP-SOUTH-1'
+});
+await setDoc(doc(db, 'infrastructure_metrics', 'functions'), {
+  name: 'Cloud Functions', status: 'RED', latencyMs: 5000, details: 'Failing • "generateReportPdf" returning 500 errors'
+});
+await setDoc(doc(db, 'infrastructure_metrics', 'notifications'), {
+  name: 'Notification Service', status: 'GREEN', latencyMs: 18, details: 'FCM Connected • Queue empty'
+});
+
+const services = [
+  { id: 'attendance_engine', name: 'Attendance Engine', status: 'GREEN', successRate: 99.9, failedRequests: 12 },
+  { id: 'payroll_engine', name: 'Payroll Engine', status: 'GREEN', successRate: 100, failedRequests: 0 },
+  { id: 'pdf_export', name: 'PDF Export Engine', status: 'RED', successRate: 64.2, failedRequests: 84 },
+  { id: 'qr_attendance', name: 'QR Attendance Engine', status: 'GREEN', successRate: 98.5, failedRequests: 4 },
+];
+
+for(const s of services) {
+  await setDoc(doc(db, 'service_metrics', s.id), s);
+}
+
+await setDoc(doc(db, 'live_users', 'admin_1'), {
+  userId: 'admin_1', companyId: 'Trackify_HQ', appVersion: 'React_Admin_v2', platform: 'MacIntel', networkStatus: 'ONLINE', currentScreen: 'Product Health', latencyMs: 34, lastSeen: new Date()
+});
+
+console.log("Seeding complete!");

@@ -1,0 +1,1187 @@
+I have a Flutter app called Trackify V2 and a React/Next.js 
+admin panel. Both connect to Firebase Firestore.
+
+My friend (contractor) is about to use this app with real 
+workers and real money. Fix EVERY real-time data issue so 
+nothing shows stale/wrong data.
+
+ACT AS: Senior Flutter + Firebase engineer doing a final 
+production pass before handover to a real client.
+
+=============================================================
+PROBLEM SUMMARY (what my friend reports)
+=============================================================
+
+1. Reports screen — wage totals don't update when attendance 
+   is marked. Have to restart app to see correct numbers.
+
+2. Labour cards in Labour Management screen — advance amount,
+   daily wage shown are stale. Changes made in admin panel
+   don't reflect without app restart.
+
+3. Dashboard wage snapshot (Today/Week/Month) — always shows
+   Rs 0 even after marking attendance.
+
+4. Admin panel (web) — Labours page, Attendance page, Reports
+   page don't auto-refresh when Flutter app writes data.
+   Have to manually refresh the browser.
+
+5. Labour's own view — their salary, attendance count, net 
+   payable all show wrong/outdated numbers.
+
+6. Scanner sync — "5 pending sync" badge never goes to 0 
+   even after internet is available.
+
+=============================================================
+PHASE 1 — AUDIT ALL FIRESTORE QUERIES IN FLUTTER APP
+=============================================================
+
+Search the ENTIRE Flutter codebase for these patterns:
+
+```dart
+// BAD — one time fetch, never updates
+await FirebaseFirestore.instance.collection(...).get()
+await _db.collection(...).where(...).get()
+getDocs(...)  // in service files
+```
+
+List EVERY file and line number where .get() is used to 
+populate UI data (not just for validation checks).
+
+For each one, determine:
+- Is this called once on init and result stored in a variable?
+- Does the UI rebuild when Firestore data changes?
+- If NO to either → must convert to stream
+
+=============================================================
+PHASE 2 — FIX DASHBOARD PROVIDER (real-time everything)
+=============================================================
+
+Find lib/providers/dashboard_provider.dart
+Replace the entire class with this production version:
+
+```dart
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+
+class DashboardProvider extends ChangeNotifier {
+  final _db   = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  // ── State ──────────────────────────────────────────────
+  String  contractorName   = '';
+  int     totalLabours     = 0;
+  int     presentToday     = 0;
+  int     absentToday      = 0;
+  int     halfToday        = 0;
+  double  todayWages       = 0;
+  double  weekWages        = 0;
+  double  monthWages       = 0;
+  double  totalAdvances    = 0;
+  bool    isLoading        = true;
+  String? error;
+
+  // Live attendance for today
+  Map<String, Map<String, dynamic>> _todayAttMap  = {};
+  Map<String, Map<String, dynamic>> _labourWageMap = {};
+
+  // Subscriptions
+  final List<StreamSubscription> _subs = [];
+
+  String get uid => _auth.currentUser?.uid ?? '';
+
+  // ── Initialize — call once from initState ──────────────
+  Future<void> initialize() async {
+    if (uid.isEmpty) return;
+    isLoading = true;
+    notifyListeners();
+
+    await _loadContractorName();
+    await _loadLabours();          // one-time then stream
+    _startTodayAttendanceStream(); // real-time
+    _startWeekStream();            // real-time
+    _startMonthStream();           // real-time
+    _startAdvanceStream();         // real-time
+
+    isLoading = false;
+    notifyListeners();
+  }
+
+  // ── Contractor name ─────────────────────────────────────
+  Future<void> _loadContractorName() async {
+    try {
+      final userDoc = await _db.collection('users').doc(uid).get();
+      final contractorId =
+          userDoc.data()?['contractorId'] as String? ?? uid;
+
+      DocumentSnapshot? cDoc;
+      try {
+        cDoc = await _db.collection('contractors').doc(contractorId).get();
+      } catch (_) {}
+
+      if (cDoc != null && cDoc.exists) {
+        contractorName = cDoc['name'] as String? ?? 'My Company';
+      } else {
+        contractorName = userDoc.data()?['name'] as String? ?? 'My Company';
+      }
+      notifyListeners();
+    } catch (e) {
+      contractorName = 'My Company';
+    }
+  }
+
+  // ── Labours — stream for live count and wage map ────────
+  Future<void> _loadLabours() async {
+    try {
+      // Fetch once to build wageMap immediately
+      final s1 = await _db.collection('labours')
+          .where('supervisorId', isEqualTo: uid)
+          .where('isActive', isEqualTo: true).get();
+      final s2 = await _db.collection('labours')
+          .where('contractorId', isEqualTo: uid)
+          .where('isActive', isEqualTo: true).get();
+
+      final map = <String, Map<String, dynamic>>{};
+      for (var d in [...s1.docs, ...s2.docs]) {
+        map[d.id] = d.data();
+      }
+      _labourWageMap = map;
+      totalLabours   = map.length;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('_loadLabours error: $e');
+    }
+
+    // Then subscribe for live updates
+    final sub1 = _db.collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen((snap) {
+      for (var d in snap.docs) _labourWageMap[d.id] = d.data();
+      // Remove deleted
+      final ids = snap.docs.map((d) => d.id).toSet();
+      _labourWageMap.removeWhere((k, _) => !ids.contains(k));
+      totalLabours = _labourWageMap.length;
+      _recalculateWages();
+    }, onError: (e) => debugPrint('labours stream error: $e'));
+    _subs.add(sub1);
+
+    final sub2 = _db.collection('labours')
+        .where('contractorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen((snap) {
+      for (var d in snap.docs) {
+        _labourWageMap[d.id] = d.data();
+      }
+      totalLabours = _labourWageMap.length;
+      _recalculateWages();
+    }, onError: (e) => debugPrint('labours contractorId stream error: $e'));
+    _subs.add(sub2);
+  }
+
+  // ── Today attendance stream ─────────────────────────────
+  void _startTodayAttendanceStream() {
+    final today = _dateStr(DateTime.now());
+
+    final sub = _db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isEqualTo: today)
+        .snapshots()
+        .listen((snap) {
+      _todayAttMap = {
+        for (var d in snap.docs) d.data()['labourId'] as String: d.data()
+      };
+      _updateTodayCounts();
+      _recalculateWages();
+    }, onError: (e) => debugPrint('today att stream: $e'));
+    _subs.add(sub);
+
+    // Also listen to contractorId field
+    final sub2 = _db.collection('attendance')
+        .where('contractorId', isEqualTo: uid)
+        .where('date', isEqualTo: today)
+        .snapshots()
+        .listen((snap) {
+      for (var d in snap.docs) {
+        final lid = d.data()['labourId'] as String? ?? '';
+        if (lid.isNotEmpty) _todayAttMap[lid] = d.data();
+      }
+      _updateTodayCounts();
+      _recalculateWages();
+    }, onError: (e) => debugPrint('today att contractorId stream: $e'));
+    _subs.add(sub2);
+  }
+
+  void _updateTodayCounts() {
+    presentToday = _todayAttMap.values
+        .where((a) => a['status'] == 'present').length;
+    absentToday  = _todayAttMap.values
+        .where((a) => a['status'] == 'absent').length;
+    halfToday    = _todayAttMap.values
+        .where((a) => a['status'] == 'half').length;
+    notifyListeners();
+  }
+
+  // ── Week stream ─────────────────────────────────────────
+  void _startWeekStream() {
+    final now   = DateTime.now();
+    final start = now.subtract(const Duration(days: 6));
+
+    final sub = _db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo: _dateStr(start))
+        .where('date', isLessThanOrEqualTo:    _dateStr(now))
+        .snapshots()
+        .listen((snap) {
+      double total = 0;
+      for (var d in snap.docs) {
+        total += _wageForRecord(d.data());
+      }
+      weekWages = total;
+      notifyListeners();
+    }, onError: (e) => debugPrint('week stream: $e'));
+    _subs.add(sub);
+  }
+
+  // ── Month stream ────────────────────────────────────────
+  void _startMonthStream() {
+    final now   = DateTime.now();
+    final start = DateTime(now.year, now.month, 1);
+
+    final sub = _db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo: _dateStr(start))
+        .where('date', isLessThanOrEqualTo:    _dateStr(now))
+        .snapshots()
+        .listen((snap) {
+      double total = 0;
+      for (var d in snap.docs) {
+        total += _wageForRecord(d.data());
+      }
+      monthWages = total;
+      notifyListeners();
+    }, onError: (e) => debugPrint('month stream: $e'));
+    _subs.add(sub);
+  }
+
+  // ── Advance stream ──────────────────────────────────────
+  void _startAdvanceStream() {
+    final sub = _db.collection('payments')
+        .where('supervisorId', isEqualTo: uid)
+        .where('type', isEqualTo: 'advance')
+        .snapshots()
+        .listen((snap) {
+      totalAdvances = snap.docs.fold(0.0,
+          (s, d) => s + ((d.data()['amount'] as num?)?.toDouble() ?? 0));
+      notifyListeners();
+    }, onError: (e) => debugPrint('advance stream: $e'));
+    _subs.add(sub);
+  }
+
+  // ── Wage calculation ────────────────────────────────────
+  double _wageForRecord(Map<String, dynamic> att) {
+    final labourId = att['labourId'] as String? ?? '';
+    final status   = att['status']   as String? ?? '';
+    final ot       = (att['overtimeHours'] as num?)?.toDouble() ?? 0;
+
+    // Use snapshot wage if stored, fallback to labourWageMap
+    final snapWage = (att['dailyWageSnapshot'] as num?)?.toDouble();
+    final labData  = _labourWageMap[labourId];
+    final wage = snapWage ?? 
+        (labData?['dailyWage'] as num?)?.toDouble() ?? 0;
+    final otRate = (labData?['overtimeWagePerHour'] as num?)?.toDouble() ?? 0;
+
+    double pay = 0;
+    if (status == 'present') pay = wage + (ot * otRate);
+    else if (status == 'half') pay = (wage / 2) + (ot * otRate);
+    return pay;
+  }
+
+  void _recalculateWages() {
+    double today = 0;
+    for (final att in _todayAttMap.values) {
+      today += _wageForRecord(att);
+    }
+    todayWages = today;
+    notifyListeners();
+  }
+
+  // ── Helpers ─────────────────────────────────────────────
+  String _dateStr(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2,'0')}-'
+      '${d.day.toString().padLeft(2,'0')}';
+
+  Future<void> refresh() async {
+    _subs.clear();
+    await initialize();
+  }
+
+  @override
+  void dispose() {
+    for (var s in _subs) s.cancel();
+    super.dispose();
+  }
+}
+```
+
+=============================================================
+PHASE 3 — FIX REPORTS PROVIDER (real-time salary)
+=============================================================
+
+Find the reports provider/service. Replace salary calculation
+with a StreamBuilder-based approach:
+
+```dart
+// lib/providers/reports_provider.dart
+
+class ReportsProvider extends ChangeNotifier {
+  final _db   = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  int    selectedMonth = DateTime.now().month;
+  int    selectedYear  = DateTime.now().year;
+  bool   isLoading     = false;
+  String? error;
+
+  List<LabourReport> reports     = [];
+  double totalGross              = 0;
+  double totalAdvances           = 0;
+  double totalNet                = 0;
+
+  final List<StreamSubscription> _subs = [];
+  String get uid => _auth.currentUser?.uid ?? '';
+
+  // Call when month changes or on init
+  void loadReport({int? month, int? year}) {
+    if (month != null) selectedMonth = month;
+    if (year  != null) selectedYear  = year;
+    _cancelSubs();
+    _startReportStream();
+    notifyListeners();
+  }
+
+  void _startReportStream() {
+    isLoading = true;
+    notifyListeners();
+
+    final monthStr = '$selectedYear-'
+        '${selectedMonth.toString().padLeft(2,'0')}';
+
+    // Stream labours
+    final labourSub = _db.collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen((labourSnap) async {
+      final labours = {
+        for (var d in labourSnap.docs) d.id: d.data()
+      };
+      await _buildReports(labours, monthStr);
+    }, onError: (e) {
+      error = e.toString();
+      isLoading = false;
+      notifyListeners();
+    });
+    _subs.add(labourSub);
+
+    // Also listen to attendance for this month — 
+    // when anything changes, rebuild report
+    final attSub = _db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+        .where('date', isLessThanOrEqualTo:    '$monthStr-31')
+        .snapshots()
+        .listen((_) async {
+      // Re-trigger report build when attendance changes
+      final labourSnap = await _db.collection('labours')
+          .where('supervisorId', isEqualTo: uid)
+          .where('isActive', isEqualTo: true).get();
+      final labours = {for (var d in labourSnap.docs) d.id: d.data()};
+      await _buildReports(labours, monthStr);
+    }, onError: (e) => debugPrint('att report stream: $e'));
+    _subs.add(attSub);
+
+    // Also listen to payments (advances) for this month
+    final startDate = DateTime(selectedYear, selectedMonth, 1);
+    final endDate   = DateTime(selectedYear, selectedMonth + 1, 0);
+    final paymentSub = _db.collection('payments')
+        .where('supervisorId', isEqualTo: uid)
+        .where('type', isEqualTo: 'advance')
+        .snapshots()
+        .listen((_) async {
+      final labourSnap = await _db.collection('labours')
+          .where('supervisorId', isEqualTo: uid)
+          .where('isActive', isEqualTo: true).get();
+      final labours = {for (var d in labourSnap.docs) d.id: d.data()};
+      await _buildReports(labours, monthStr);
+    }, onError: (e) => debugPrint('payment report stream: $e'));
+    _subs.add(paymentSub);
+  }
+
+  Future<void> _buildReports(
+    Map<String, Map<String, dynamic>> labours,
+    String monthStr,
+  ) async {
+    final results = <LabourReport>[];
+
+    for (final entry in labours.entries) {
+      final labourId = entry.key;
+      final labData  = entry.value;
+
+      // Attendance for this labour this month
+      final attSnap = await _db.collection('attendance')
+          .where('labourId', isEqualTo: labourId)
+          .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+          .where('date', isLessThanOrEqualTo:    '$monthStr-31')
+          .get();
+
+      int    daysPresent = 0;
+      int    daysHalf    = 0;
+      int    daysAbsent  = 0;
+      double totalOT     = 0;
+
+      for (var d in attSnap.docs) {
+        final status = d.data()['status'] as String? ?? '';
+        final ot     = (d.data()['overtimeHours'] as num?)?.toDouble() ?? 0;
+        totalOT += ot;
+        if (status == 'present')     daysPresent++;
+        else if (status == 'half')   daysHalf++;
+        else if (status == 'absent') daysAbsent++;
+      }
+
+      final totalDays = daysPresent + (daysHalf * 0.5);
+      final dailyWage = (labData['dailyWage'] as num?)?.toDouble() ?? 0;
+      final otRate    = (labData['overtimeWagePerHour'] as num?)?.toDouble() ?? 0;
+      final gross     = (totalDays * dailyWage) + (totalOT * otRate);
+
+      // Advances this month
+      final startTs = Timestamp.fromDate(
+          DateTime(int.parse(monthStr.split('-')[0]),
+                   int.parse(monthStr.split('-')[1]), 1));
+      final endTs   = Timestamp.fromDate(
+          DateTime(int.parse(monthStr.split('-')[0]),
+                   int.parse(monthStr.split('-')[1]) + 1, 0, 23, 59));
+
+      final advSnap = await _db.collection('payments')
+          .where('labourId', isEqualTo: labourId)
+          .where('type', isEqualTo: 'advance')
+          .where('date', isGreaterThanOrEqualTo: startTs)
+          .where('date', isLessThanOrEqualTo:    endTs)
+          .get();
+
+      final advances = advSnap.docs.fold(0.0,
+          (s, d) => s + ((d.data()['amount'] as num?)?.toDouble() ?? 0));
+
+      results.add(LabourReport(
+        labourId:    labourId,
+        labourName:  labData['name'] as String? ?? '',
+        phone:       labData['phone'] as String? ?? '',
+        dailyWage:   dailyWage,
+        otRate:      otRate,
+        daysPresent: daysPresent,
+        daysHalf:    daysHalf,
+        daysAbsent:  daysAbsent,
+        totalOT:     totalOT,
+        totalDays:   totalDays,
+        basePay:     totalDays * dailyWage,
+        otPay:       totalOT * otRate,
+        grossSalary: gross,
+        advances:    advances,
+        netPayable:  gross - advances,
+      ));
+    }
+
+    results.sort((a, b) => a.labourName.compareTo(b.labourName));
+    reports       = results;
+    totalGross    = results.fold(0, (s, r) => s + r.grossSalary);
+    totalAdvances = results.fold(0, (s, r) => s + r.advances);
+    totalNet      = results.fold(0, (s, r) => s + r.netPayable);
+    isLoading     = false;
+    error         = null;
+    notifyListeners();
+  }
+
+  void previousMonth() {
+    if (selectedMonth == 1) {
+      selectedMonth = 12; selectedYear--;
+    } else {
+      selectedMonth--;
+    }
+    loadReport();
+  }
+
+  void nextMonth() {
+    final now = DateTime.now();
+    if (selectedYear < now.year ||
+        (selectedYear == now.year && selectedMonth < now.month)) {
+      if (selectedMonth == 12) {
+        selectedMonth = 1; selectedYear++;
+      } else {
+        selectedMonth++;
+      }
+      loadReport();
+    }
+  }
+
+  void _cancelSubs() {
+    for (var s in _subs) s.cancel();
+    _subs.clear();
+  }
+
+  @override
+  void dispose() { _cancelSubs(); super.dispose(); }
+}
+
+// Data model
+class LabourReport {
+  const LabourReport({
+    required this.labourId,
+    required this.labourName,
+    required this.phone,
+    required this.dailyWage,
+    required this.otRate,
+    required this.daysPresent,
+    required this.daysHalf,
+    required this.daysAbsent,
+    required this.totalOT,
+    required this.totalDays,
+    required this.basePay,
+    required this.otPay,
+    required this.grossSalary,
+    required this.advances,
+    required this.netPayable,
+  });
+  final String labourId, labourName, phone;
+  final double dailyWage, otRate, totalOT, totalDays;
+  final double basePay, otPay, grossSalary, advances, netPayable;
+  final int daysPresent, daysHalf, daysAbsent;
+}
+```
+
+=============================================================
+PHASE 4 — FIX LABOUR CARDS (real-time advances + wage)
+=============================================================
+
+Find the Labour screen where labour cards show advance amount.
+The advance amount is calculated once and stored — it never updates.
+
+Fix LabourProvider to use live Firestore stream:
+
+```dart
+// lib/providers/labour_provider.dart
+
+class LabourProvider extends ChangeNotifier {
+  final _db  = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  List<Labour>         labours         = [];
+  List<Labour>         filteredLabours = [];
+  Map<String, double>  advanceMap      = {}; // labourId → advance balance
+  bool   isLoading  = false;
+  String searchQuery = '';
+  String? error;
+
+  final List<StreamSubscription> _subs = [];
+  String get uid => _auth.currentUser?.uid ?? '';
+
+  Future<void> initialize() async {
+    isLoading = true;
+    notifyListeners();
+    _startLabourStream();
+    _startAdvanceStream();
+  }
+
+  void _startLabourStream() {
+    final sub1 = _db.collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen(_handleLabourSnap,
+                onError: (e) => debugPrint('labour stream: $e'));
+    _subs.add(sub1);
+
+    final sub2 = _db.collection('labours')
+        .where('contractorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen(_handleLabourSnap,
+                onError: (e) => debugPrint('labour contractorId stream: $e'));
+    _subs.add(sub2);
+  }
+
+  final Map<String, Labour> _labourMap = {};
+
+  void _handleLabourSnap(QuerySnapshot snap) {
+    for (var d in snap.docs) {
+      _labourMap[d.id] = Labour.fromFirestore(d);
+    }
+    labours         = _labourMap.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    isLoading       = false;
+    _applySearch();
+  }
+
+  // Live advance balance per labour
+  void _startAdvanceStream() {
+    final sub = _db.collection('payments')
+        .where('supervisorId', isEqualTo: uid)
+        .where('type', isEqualTo: 'advance')
+        .snapshots()
+        .listen((snap) {
+      final newMap = <String, double>{};
+      for (var d in snap.docs) {
+        final lid    = d.data()['labourId'] as String? ?? '';
+        final amount = (d.data()['amount'] as num?)?.toDouble() ?? 0;
+        newMap[lid]  = (newMap[lid] ?? 0) + amount;
+      }
+      advanceMap = newMap;
+      notifyListeners();
+    }, onError: (e) => debugPrint('advance stream: $e'));
+    _subs.add(sub);
+  }
+
+  double advanceFor(String labourId) => advanceMap[labourId] ?? 0;
+
+  void search(String query) {
+    searchQuery = query;
+    _applySearch();
+    notifyListeners();
+  }
+
+  void _applySearch() {
+    if (searchQuery.isEmpty) {
+      filteredLabours = labours;
+    } else {
+      filteredLabours = labours.where((l) =>
+        l.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
+        l.phone.contains(searchQuery)).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> addLabour(Labour labour) async {
+    try {
+      final docRef = await _db.collection('labours').add({
+        'supervisorId':        uid,
+        'contractorId':        uid,
+        'name':                labour.name,
+        'phone':               labour.phone,
+        'dailyWage':           labour.dailyWage,
+        'overtimeWagePerHour': labour.overtimeWagePerHour,
+        'skill':               labour.skill,
+        'isActive':            true,
+        'isSynced':            true,
+        'syncedAt':            FieldValue.serverTimestamp(),
+        'createdAt':           FieldValue.serverTimestamp(),
+      });
+      await docRef.update({'id': docRef.id});
+      // Stream will auto-update the list — no manual rebuild needed
+    } catch (e) {
+      error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateLabour(Labour labour) async {
+    if (labour.firestoreId == null) return;
+    try {
+      await _db.collection('labours').doc(labour.firestoreId).update({
+        'name':                labour.name,
+        'phone':               labour.phone,
+        'dailyWage':           labour.dailyWage,
+        'overtimeWagePerHour': labour.overtimeWagePerHour,
+        'skill':               labour.skill,
+        'updatedAt':           FieldValue.serverTimestamp(),
+      });
+      // Stream auto-updates
+    } catch (e) {
+      error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteLabour(Labour labour) async {
+    if (labour.firestoreId == null) return;
+    try {
+      await _db.collection('labours')
+          .doc(labour.firestoreId)
+          .update({'isActive': false, 'deletedAt': FieldValue.serverTimestamp()});
+      _labourMap.remove(labour.id);
+      labours = _labourMap.values.toList();
+      _applySearch();
+    } catch (e) {
+      error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    for (var s in _subs) s.cancel();
+    super.dispose();
+  }
+}
+```
+
+In Labour card widget, update to use live advance:
+```dart
+// In labour list item build:
+Consumer<LabourProvider>(
+  builder: (context, provider, _) {
+    final advance = provider.advanceFor(labour.id);
+    return LabourCard(
+      labour:        labour,
+      advanceAmount: advance,  // now live from stream
+      // ... rest of card
+    );
+  },
+),
+```
+
+=============================================================
+PHASE 5 — FIX LABOUR'S OWN VIEW (real-time salary)
+=============================================================
+
+Find _LabourDashboardTab in labour_home_screen.dart.
+It uses StreamBuilder already — verify these streams are correct:
+
+```dart
+// In _LabourDashboardTab.build() — verify all 3 streams:
+
+// Stream 1: labour profile (wage, OT rate)
+final labourStream = FirebaseFirestore.instance
+    .collection('labours')
+    .doc(session.labourId)  // MUST be the Firestore doc ID, not local ID
+    .snapshots();
+
+// Stream 2: attendance (all records for this labour)
+final attendanceStream = FirebaseFirestore.instance
+    .collection('attendance')
+    .where('labourId', isEqualTo: session.labourId)
+    .snapshots();
+
+// Stream 3: payments (all payments for this labour)
+final paymentsStream = FirebaseFirestore.instance
+    .collection('payments')
+    .where('labourId', isEqualTo: session.labourId)
+    .snapshots();
+```
+
+CRITICAL CHECK — verify session.labourId is the FIRESTORE 
+document ID, not a local Hive ID. They are often different.
+
+In AuthService/labour login, after finding the labour doc:
+```dart
+// When saving labour session to SharedPreferences:
+final labourDocId = labourSnap.docs.first.id; // ← Firestore doc ID
+final labourData  = labourSnap.docs.first.data();
+
+await prefs.setString('labourId', labourDocId); // must be doc ID
+await prefs.setString('name', labourData['name'] ?? '');
+```
+
+If this is wrong, the labour's profile stream returns nothing.
+Fix it and verify the streams return data.
+
+=============================================================
+PHASE 6 — FIX ATTENDANCE PROVIDER (real-time marks)
+=============================================================
+
+Find AttendanceProvider. The attendanceMap must update
+live when another device marks attendance:
+
+```dart
+// lib/providers/attendance_provider.dart
+// In initialize() — replace one-time fetch with stream:
+
+StreamSubscription? _attSub;
+
+Future<void> initialize() async {
+  isLoading = true;
+  notifyListeners();
+
+  await _loadLabours();
+  _startAttendanceStream();
+}
+
+void _startAttendanceStream() {
+  _attSub?.cancel();
+  _attSub = FirebaseFirestore.instance
+      .collection('attendance')
+      .where('supervisorId', isEqualTo: uid)
+      .where('date', isEqualTo: selectedDateStr)
+      .snapshots()
+      .listen((snap) {
+    final newAttMap = <String, String>{};
+    final newOTMap  = <String, double>{};
+
+    for (var doc in snap.docs) {
+      final labourId = doc.data()['labourId'] as String? ?? '';
+      final status   = doc.data()['status']   as String? ?? '';
+      final ot       = (doc.data()['overtimeHours'] as num?)?.toDouble() ?? 0;
+      if (labourId.isNotEmpty) {
+        newAttMap[labourId] = status;
+        newOTMap[labourId]  = ot;
+      }
+    }
+
+    attendanceMap = newAttMap;
+    overtimeMap   = newOTMap;
+    isLoading     = false;
+    notifyListeners();
+  }, onError: (e) {
+    debugPrint('attendance stream error: $e');
+    isLoading = false;
+    notifyListeners();
+  });
+}
+
+Future<void> changeDate(DateTime newDate) async {
+  selectedDate  = newDate;
+  attendanceMap = {};
+  overtimeMap   = {};
+  notifyListeners();
+  _startAttendanceStream(); // restart stream for new date
+}
+
+@override
+void dispose() {
+  _attSub?.cancel();
+  super.dispose();
+}
+```
+
+=============================================================
+PHASE 7 — FIX SCANNER SYNC (pending never clears)
+=============================================================
+
+Find ScannerService. The sync button shows pending count
+but count never goes to 0. Fix:
+
+```dart
+// In ScannerService.syncPendingScans():
+// After successful sync, verify you are actually updating 
+// the Hive record to isSynced: true
+
+// WRONG — common mistake:
+await box.put(key, record); // record still has isSynced: false
+
+// CORRECT:
+final updatedRecord = Map<String, dynamic>.from(record);
+updatedRecord['isSynced'] = true;
+await box.put(key, updatedRecord); // NOW isSynced: true
+
+// Also fix getPendingCount():
+int getPendingCount() {
+  try {
+    final box = Hive.box('pending_attendance');
+    int count = 0;
+    for (final key in box.keys) {
+      final raw = box.get(key);
+      if (raw == null) continue;
+      final record = Map<String, dynamic>.from(raw as Map);
+      if (record['isSynced'] != true) count++;
+    }
+    return count;
+  } catch (e) {
+    debugPrint('getPendingCount error: $e');
+    return 0;
+  }
+}
+```
+
+Also verify ScannerScreen updates pending count AFTER sync:
+```dart
+// In _autoSync() in ScannerScreen:
+Future<void> _autoSync() async {
+  final synced = await _scannerService.syncPendingScans();
+  if (mounted) {
+    setState(() {
+      _pendingCount = _scannerService.getPendingCount(); // refresh count
+    });
+    if (synced > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$synced scans synced to cloud ✓')));
+    }
+  }
+}
+```
+
+=============================================================
+PHASE 8 — FIX REACT ADMIN PANEL (auto-refresh)
+=============================================================
+
+Find every getDocs() call in the React service files.
+Every page that displays live data must use onSnapshot.
+
+Fix src/services/labourService.js:
+```javascript
+import { onSnapshot, query, collection, where } from 'firebase/firestore';
+import { db } from '../firebase';
+
+// Replace getDocs with onSnapshot in the hook:
+export function useLabours(supervisorId = null) {
+  const [labours, setLabours] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
+
+  useEffect(() => {
+    const constraints = [where('isActive', '==', true)];
+    if (supervisorId) {
+      constraints.push(where('supervisorId', '==', supervisorId));
+    }
+
+    const q = query(collection(db, 'labours'), ...constraints);
+
+    const unsub = onSnapshot(q,
+      (snap) => {
+        const data = snap.docs.map(d => ({
+          id: d.id, ...d.data(),
+          joiningDate: d.data().joiningDate?.toDate?.() || null,
+        }));
+        setLabours(data);
+        setLoading(false);
+      },
+      (err) => {
+        setError(err.message);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub(); // cleanup on unmount
+  }, [supervisorId]);
+
+  return { labours, loading, error };
+}
+```
+
+Do the same for attendance and payments:
+```javascript
+// src/services/attendanceService.js
+export function useTodayAttendance() {
+  const [data, setData]       = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const q = query(
+      collection(db, 'attendance'),
+      where('date', '==', today)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      setData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    });
+
+    return () => unsub();
+  }, []);
+
+  return { data, loading };
+}
+
+// src/services/dashboardService.js
+export function useDashboardStats() {
+  const [stats, setStats] = useState({
+    totalLabours: 0, present: 0, absent: 0, half: 0, monthlyPay: 0
+  });
+
+  useEffect(() => {
+    const unsubs = [];
+
+    // Live labour count
+    unsubs.push(onSnapshot(
+      query(collection(db, 'labours'), where('isActive', '==', true)),
+      (snap) => setStats(s => ({...s, totalLabours: snap.size}))
+    ));
+
+    // Live today attendance
+    const today = new Date().toISOString().split('T')[0];
+    unsubs.push(onSnapshot(
+      query(collection(db, 'attendance'), where('date', '==', today)),
+      (snap) => {
+        let p = 0, a = 0, h = 0;
+        snap.docs.forEach(d => {
+          if (d.data().status === 'present') p++;
+          else if (d.data().status === 'absent') a++;
+          else if (d.data().status === 'half') h++;
+        });
+        setStats(s => ({...s, present: p, absent: a, half: h}));
+      }
+    ));
+
+    return () => unsubs.forEach(u => u());
+  }, []);
+
+  return stats;
+}
+```
+
+Update Dashboard page to use hooks:
+```jsx
+// app/dashboard/page.jsx (or pages/dashboard.jsx)
+'use client';
+import { useDashboardStats } from '../../services/dashboardService';
+import { useLabours }        from '../../services/labourService';
+
+export default function Dashboard() {
+  const stats   = useDashboardStats(); // live
+  const { labours } = useLabours();   // live
+
+  return (
+    // Replace all hardcoded/state values with:
+    // stats.totalLabours, stats.present, stats.absent, stats.half
+  );
+}
+```
+
+=============================================================
+PHASE 9 — WAGE SNAPSHOT ON WRITE (historical accuracy)
+=============================================================
+
+When marking attendance, SAVE the labour's current wage
+inside the attendance record so reports stay accurate
+even if admin later changes the wage:
+
+```dart
+// In AttendanceService.markAttendance():
+// Fetch current wage at time of marking
+final labourDoc = await _db.collection('labours')
+    .doc(attendance.labourId).get();
+final dailyWage = (labourDoc.data()?['dailyWage'] as num?)
+    ?.toDouble() ?? 0;
+final otRate = (labourDoc.data()?['overtimeWagePerHour'] as num?)
+    ?.toDouble() ?? 0;
+
+// Include in Firestore write:
+await _db.collection('attendance').add({
+  // ... existing fields ...
+  'dailyWageSnapshot':   dailyWage, // ← ADD THIS
+  'otRateSnapshot':      otRate,    // ← ADD THIS
+  'markedAt':            FieldValue.serverTimestamp(),
+});
+```
+
+Update _wageForRecord in DashboardProvider to use snapshot:
+```dart
+// Already done in Phase 2 — verify it uses dailyWageSnapshot first
+final snapWage = (att['dailyWageSnapshot'] as num?)?.toDouble();
+final wage = snapWage ?? currentWageFromMap;
+```
+
+=============================================================
+PHASE 10 — FINAL PRODUCTION CHECKS
+=============================================================
+
+## 10.1 — Verify all providers registered in main.dart
+```dart
+// main.dart — must have ALL providers:
+MultiProvider(
+  providers: [
+    ChangeNotifierProvider(create: (_) => DashboardProvider()),
+    ChangeNotifierProvider(create: (_) => LabourProvider()),
+    ChangeNotifierProvider(create: (_) => AttendanceProvider()),
+    ChangeNotifierProvider(create: (_) => ReportsProvider()),
+    ChangeNotifierProvider(create: (_) => SiteProvider()),
+  ],
+  child: const MyApp(),
+),
+```
+
+## 10.2 — Initialize providers when supervisor logs in
+In supervisor home screen initState:
+```dart
+@override
+void initState() {
+  super.initState();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    context.read<DashboardProvider>().initialize();
+    context.read<LabourProvider>().initialize();
+    context.read<AttendanceProvider>().initialize();
+    // ReportsProvider initialized when Reports tab opened
+  });
+}
+```
+
+## 10.3 — Dispose all providers on logout
+When supervisor logs out, call dispose-like reset:
+```dart
+await AuthService().logout();
+// Reset all providers before navigation
+if (context.mounted) {
+  context.read<DashboardProvider>().dispose();
+  context.read<LabourProvider>().dispose();
+  context.read<AttendanceProvider>().dispose();
+  Navigator.of(context).pushNamedAndRemoveUntil(
+    '/login', (_) => false);
+}
+```
+
+## 10.4 — Add internet check on all Firestore writes
+```dart
+// Wrap EVERY write with connectivity check:
+Future<bool> _hasInternet() async {
+  final result = await Connectivity().checkConnectivity();
+  return !result.contains(ConnectivityResult.none);
+}
+
+// In every service write method:
+if (!await _hasInternet()) {
+  // Save to Hive with isSynced: false
+  // Show offline message
+  return;
+}
+// Proceed with Firestore write
+```
+
+## 10.5 — Test the complete data loop
+
+Run this manual test scenario and verify PASS:
+
+Step 1: Open Flutter app (supervisor) AND admin panel (browser)
+Step 2: In Flutter app, mark Ramesh as Present at Site A
+Step 3: Admin panel attendance page must update within 3 seconds ✓
+Step 4: Admin panel dashboard "Present Today" count increments ✓
+Step 5: Flutter Dashboard wage snapshot updates immediately ✓
+Step 6: Flutter Reports for this month shows updated salary ✓
+Step 7: In admin panel, change Ramesh's daily wage from ₹500 to ₹600
+Step 8: Flutter Labour card for Ramesh shows ₹600 within 3 seconds ✓
+Step 9: Future attendance salary calculated with ₹600 ✓
+Step 10: But THIS MONTH's report still shows old salary correctly ✓
+         (because dailyWageSnapshot was saved at time of marking)
+
+If any step fails → trace the stream, find where it breaks, fix it.
+
+=============================================================
+FINAL DELIVERABLES
+=============================================================
+
+After all fixes, provide:
+
+1. Complete fixed dashboard_provider.dart
+2. Complete fixed reports_provider.dart
+3. Complete fixed labour_provider.dart
+4. Complete fixed attendance_provider.dart
+5. Complete fixed attendance_service.dart (with wage snapshot)
+6. Complete fixed scanner_service.dart (sync count fix)
+7. Complete fixed dashboardService.js (React hooks)
+8. Complete fixed labourService.js (onSnapshot hooks)
+9. Complete fixed attendanceService.js (onSnapshot hooks)
+10. Updated main.dart (all providers registered)
+
+For each file show:
+- What was broken and why
+- What was changed
+- How to verify it works
+
+DO NOT say "this should work" — trace the actual code 
+and confirm the stream subscriptions are active and 
+the UI will rebuild on data change.
+
+This is a real app going to real contractors with real 
+workers and real salary — there is no margin for 
+data showing wrong numbers.

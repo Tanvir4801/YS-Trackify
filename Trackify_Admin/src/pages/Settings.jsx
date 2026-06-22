@@ -1,0 +1,241 @@
+import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useState } from 'react';
+import { Building2, Bell, Database, RefreshCw, CheckCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { getDocs, collection, query, where, updateDoc, doc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { useScopeId } from '../store/authStore';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import LoadingSpinner from '../components/shared/LoadingSpinner';
+
+const LS_KEY = 'trackify_settings';
+
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveSettings(data) { localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+
+function Section({ icon: Icon, title, desc, children }) {
+  return (
+    <div className="rounded-2xl border border-border bg-bg-card shadow-sm overflow-hidden">
+      <div className="flex items-start gap-4 border-b border-border px-6 py-5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info/20 border border-info/30">
+          <Icon className="h-4 w-4 text-info" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-text-primary">{title}</h3>
+          {desc && <p className="mt-0.5 text-[11px] text-text-muted">{desc}</p>}
+        </div>
+      </div>
+      <div className="px-6 py-5">{children}</div>
+    </div>
+  );
+}
+
+export default function Settings() {
+  const scopeId = useScopeId();
+  const [settings, setSettings] = useState({
+    defaultWorkingHours: 8,
+    weeklyOff: 'sunday',
+    otThreshold: 8,
+    payPeriod: 'monthly',
+    currency: 'INR',
+    absenceAlertDays: 3,
+    ...loadSettings(),
+  });
+  const [unsyncedCount, setUnsyncedCount] = useState(null);
+  const [loadingSync, setLoadingSync] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!scopeId) return;
+    setLoadingSync(true);
+    const queries = [
+      getDocs(query(collection(db, 'attendance'), where('contractorId', '==', scopeId), where('isSynced', '==', false))),
+      getDocs(query(collection(db, 'labours'), where('contractorId', '==', scopeId), where('isSynced', '==', false))),
+      getDocs(query(collection(db, 'payments'), where('contractorId', '==', scopeId), where('isSynced', '==', false))),
+    ];
+    Promise.all(queries)
+      .then(([att, lab, pay]) => { setUnsyncedCount(att.size + lab.size + pay.size); })
+      .catch(console.error)
+      .finally(() => setLoadingSync(false));
+  }, [scopeId]);
+
+  const handleSave = () => {
+    saveSettings(settings);
+    toast.success('Settings saved');
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleForceSync = async () => {
+    if (!scopeId) return;
+    if (unsyncedCount === 0) { toast('No unsynced records', { icon: 'ℹ️' }); return; }
+    setSyncing(true);
+    const t = toast.loading(`Marking ${unsyncedCount} records as synced…`);
+    try {
+      const collections = ['attendance', 'labours', 'payments'];
+      await Promise.all(
+        collections.map(async (col) => {
+          const snap = await getDocs(query(collection(db, col), where('contractorId', '==', scopeId), where('isSynced', '==', false)));
+          return Promise.all(snap.docs.map((d) => updateDoc(doc(db, col, d.id), { isSynced: true })));
+        }),
+      );
+      setUnsyncedCount(0);
+      toast.dismiss(t);
+      toast.success('All records marked as synced');
+    } catch (e) {
+      console.error(e);
+      toast.dismiss(t);
+      toast.error('Failed to sync');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  void scopeId;
+
+  const fieldClass = "h-10 w-full rounded-xl border border-border-strong bg-bg-input px-3 text-sm text-text-primary shadow-sm outline-none focus:border-gold focus:ring-2 focus:ring-gold/20";
+
+  return (
+    <div className="space-y-6">
+      <Section
+        icon={Building2}
+        title="Work & Schedule Settings"
+        desc="Configure your work schedule, shifts, and payroll parameters"
+      >
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-text-primary">Pay Period</Label>
+            <select
+              value={settings.payPeriod || 'monthly'}
+              onChange={(e) => setSettings({ ...settings, payPeriod: e.target.value })}
+              className={fieldClass}
+            >
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <p className="text-[11px] text-text-muted">Frequency of salary calculations</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-text-primary">Currency</Label>
+            <select
+              value={settings.currency || 'INR'}
+              onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
+              className={fieldClass}
+            >
+              <option value="INR">INR (₹)</option>
+              <option value="USD">USD ($)</option>
+              <option value="AED">AED (د.إ)</option>
+              <option value="SAR">SAR (﷼)</option>
+            </select>
+            <p className="text-[11px] text-text-muted">Default currency for all reports</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-text-primary">Default Working Hours / day</Label>
+            <Input
+              type="number"
+              value={settings.defaultWorkingHours}
+              onChange={(e) => setSettings({ ...settings, defaultWorkingHours: Number(e.target.value) })}
+              className="h-10 rounded-xl"
+            />
+            <p className="text-[11px] text-text-muted">Standard shift length used for payroll</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-text-primary">Weekly Off</Label>
+            <select
+              value={settings.weeklyOff}
+              onChange={(e) => setSettings({ ...settings, weeklyOff: e.target.value })}
+              className={fieldClass}
+            >
+              <option value="none">No weekly off</option>
+              <option value="sunday">Sunday</option>
+              <option value="saturday">Saturday</option>
+              <option value="both">Saturday + Sunday</option>
+            </select>
+            <p className="text-[11px] text-text-muted">Days excluded from attendance calculation</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-text-primary">Overtime after (hrs)</Label>
+            <Input
+              type="number"
+              value={settings.otThreshold}
+              onChange={(e) => setSettings({ ...settings, otThreshold: Number(e.target.value) })}
+              className="h-10 rounded-xl"
+            />
+            <p className="text-[11px] text-text-muted">Hours worked beyond this are counted as OT</p>
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        icon={Bell}
+        title="Notification Settings"
+        desc="Set thresholds for automated attendance alerts"
+      >
+        <div className="max-w-xs space-y-1.5">
+          <Label className="text-xs font-semibold text-text-primary">Alert after X consecutive absences</Label>
+          <Input
+            type="number"
+            min="1"
+            value={settings.absenceAlertDays}
+            onChange={(e) => setSettings({ ...settings, absenceAlertDays: Number(e.target.value) })}
+            className="h-10 w-32 rounded-xl"
+          />
+          <p className="text-[11px] text-text-muted">Trigger a warning when a labour is absent for this many days in a row</p>
+        </div>
+      </Section>
+
+      <Section
+        icon={Database}
+        title="Data Sync"
+        desc="Records from the mobile app are queued until acknowledged by the admin panel"
+      >
+        <div className="flex flex-wrap items-center gap-5">
+          <div className="rounded-2xl border border-border-strong bg-bg-elevated px-6 py-4 text-center">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted">Unsynced Records</p>
+            <p className="mt-2 text-4xl font-bold text-text-primary">
+              {loadingSync ? <span className="text-text-muted">…</span> : unsyncedCount}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-[13px] text-text-secondary">
+              Records flagged as <code className="rounded-md bg-bg-input px-1.5 py-0.5 text-xs font-mono text-text-primary border border-border-strong">isSynced=false</code> in Firestore.
+            </p>
+            <Button
+              variant="outline"
+              onClick={handleForceSync}
+              disabled={syncing || loadingSync || unsyncedCount === 0}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing…' : 'Force Sync All'}
+            </Button>
+          </div>
+        </div>
+      </Section>
+
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSave}
+          className="gap-2 px-8 text-[13px] font-semibold text-bg-primary"
+          style={{ background: saved ? 'var(--success)' : 'var(--gold)' }}
+        >
+          {saved ? (
+            <><CheckCircle className="h-4 w-4" /> Saved!</>
+          ) : (
+            'Save Settings'
+          )}
+        </Button>
+      </div>
+
+      <p className="text-center text-[11px] text-text-muted">Developed by Tanvir Patel</p>
+    </div>
+  );
+}

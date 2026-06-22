@@ -1,0 +1,136 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "role",         "order": "ASCENDING" },
+        { "fieldPath": "name",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "labours",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "isActive",     "order": "ASCENDING" },
+        { "fieldPath": "name",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "labours",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "supervisorRef","order": "ASCENDING" },
+        { "fieldPath": "name",         "order": "ASCENDING" }
+      ]
+
+    },
+    {
+      "collectionGroup": "attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "supervisorId", "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "temp_labour_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "temp_labour_entries",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "supervisorId", "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "records",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "labourId",     "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "records",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "labourId",     "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "supervisorId", "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contractorId", "order": "ASCENDING" },
+        { "fieldPath": "status",       "order": "ASCENDING" },
+        { "fieldPath": "date",         "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive",     "order": "ASCENDING" },
+        { "fieldPath": "supervisorId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt",    "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "active",       "order": "ASCENDING" },
+        { "fieldPath": "timestamp",    "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "records",
+      "fieldPath": "labourId",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    }
+  ]
+}

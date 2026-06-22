@@ -1,0 +1,45 @@
+modules = ["nodejs-20"]
+[nix]
+channel = "stable-25_05"
+
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+VITE_FIREBASE_API_KEY = "AIzaSyDC9fZJTOi455NsbN2AQRnGz_cjZvmwedc"
+VITE_FIREBASE_AUTH_DOMAIN = "ys-construction.firebaseapp.com"
+VITE_FIREBASE_PROJECT_ID = "ys-construction"
+VITE_FIREBASE_STORAGE_BUCKET = "ys-construction.firebasestorage.app"
+VITE_FIREBASE_MESSAGING_SENDER_ID = "487752590406"
+VITE_FIREBASE_APP_ID = "1:487752590406:web:cd934161591117bc581647"

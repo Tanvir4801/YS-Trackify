@@ -1,0 +1,642 @@
+I have a Flutter app called Trackify V2 for YS Construction 
+(Labour Attendance System). Fix and improve the app with the 
+changes below. DO NOT change any existing logic or functionality.
+Only fix bugs and improve UI where mentioned.
+
+## MY FIREBASE STRUCTURE (already working)
+
+labours/{labourId}:
+{
+  id, supervisorId, contractorId, name, phone,
+  dailyWage, overtimeWagePerHour, joiningDate,
+  isActive, isSynced, syncedAt
+}
+
+users/{uid}:
+{
+  uid, phone, name, role: "supervisor"|"labour"|"admin",
+  isActive, supervisorId, createdAt
+}
+
+attendance/{id}:
+{
+  id, labourId, supervisorId, date, status,
+  overtimeHours, isSynced
+}
+
+payments/{id}:
+{
+  id, labourId, supervisorId, contractorId,
+  type, amount, date, isSynced
+}
+
+---
+
+## FIX 1 — Labour Login: Phone Number Instead of Email
+
+PROBLEM: Labour login currently uses email/password.
+FIX: Change to unique mobile number only — no password, no OTP.
+Labour just enters their 10-digit phone → app checks labours 
+collection → if phone matches → log in directly.
+
+### Update lib/services/auth_service.dart
+
+Add this method:
+```dart
+// Labour login by phone number only
+// No OTP needed — phone is the unique identifier
+Future<AuthResult> labourLoginByPhone(String phone) async {
+  try {
+    final phoneClean = phone.trim().replaceAll('+91', '');
+    
+    if (phoneClean.length != 10) {
+      return AuthResult.error('Enter valid 10 digit number');
+    }
+
+    // Step 1: Check labours collection by phone
+    final labourSnap = await _db
+        .collection('labours')
+        .where('phone', isEqualTo: phoneClean)
+        .where('isActive', isEqualTo: true)
+        .limit(1)
+        .get();
+
+    if (labourSnap.docs.isEmpty) {
+      return AuthResult.error(
+        'Mobile number not registered.\nContact your supervisor.'
+      );
+    }
+
+    final labourData = labourSnap.docs.first.data();
+    final labourId = labourSnap.docs.first.id;
+    final labourName = labourData['name'] ?? 'Labour';
+    final supervisorId = labourData['supervisorId'] ?? '';
+
+    // Step 2: Check if Firebase Auth user exists for this phone
+    // Try signing in with phone via Firebase Auth
+    await _auth.verifyPhoneNumber(
+      phoneNumber: '+91$phoneClean',
+      timeout: const Duration(seconds: 60),
+      verificationCompleted: (credential) async {
+        await _auth.signInWithCredential(credential);
+      },
+      verificationFailed: (e) {
+        debugPrint('Labour auth error: ${e.code}');
+      },
+      codeSent: (verificationId, _) {
+        // Store for OTP verification
+        _labourVerificationId = verificationId;
+      },
+      codeAutoRetrievalTimeout: (_) {},
+    );
+
+    // Step 3: Check/create users doc for this labour
+    final existingUser = await _db
+        .collection('users')
+        .where('phone', isEqualTo: phoneClean)
+        .where('role', isEqualTo: 'labour')
+        .limit(1)
+        .get();
+
+    if (existingUser.docs.isEmpty) {
+      // Create user doc for labour
+      final newRef = _db.collection('users').doc();
+      await newRef.set({
+        'uid': newRef.id,
+        'phone': phoneClean,
+        'name': labourName,
+        'role': 'labour',
+        'isActive': true,
+        'supervisorId': supervisorId,
+        'labourId': labourId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Cache labour session locally
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('role', 'labour');
+    await prefs.setString('name', labourName);
+    await prefs.setString('phone', phoneClean);
+    await prefs.setString('labourId', labourId);
+    await prefs.setString('supervisorId', supervisorId);
+    await prefs.setBool('isLoggedIn', true);
+
+    return AuthResult.success(
+      uid: labourId,
+      role: 'labour',
+      name: labourName,
+    );
+  } catch (e) {
+    debugPrint('Labour login error: $e');
+    return AuthResult.error('Login failed. Try again.');
+  }
+}
+
+String? _labourVerificationId;
+```
+
+### Update Labour Login Screen
+
+Find the labour login screen file and replace:
+- Remove Email field completely
+- Remove Password field completely  
+- Keep only one TextField: Mobile Number (10 digits)
+- Keep existing UI styling (colors, fonts, layout)
+- Login button calls authService.labourLoginByPhone(phone)
+- Show loading indicator while checking
+- Show error message if not found
+
+```dart
+// Labour login screen — simplified
+class LabourLoginScreen extends StatefulWidget {
+  const LabourLoginScreen({super.key});
+  @override
+  State<LabourLoginScreen> createState() => _LabourLoginScreenState();
+}
+
+class _LabourLoginScreenState extends State<LabourLoginScreen> {
+  final _phoneController = TextEditingController();
+  final _authService = AuthService();
+  bool _isLoading = false;
+  String? _error;
+
+  Future<void> _login() async {
+    final phone = _phoneController.text.trim();
+    if (phone.length != 10) {
+      setState(() => _error = 'Enter valid 10 digit mobile number');
+      return;
+    }
+
+    setState(() { _isLoading = true; _error = null; });
+
+    final result = await _authService.labourLoginByPhone(phone);
+
+    if (!mounted) return;
+
+    if (result.success) {
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/labour-home', (route) => false,
+      );
+    } else {
+      setState(() {
+        _error = result.errorMessage;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Keep EXACT existing UI — only change form fields
+    return Scaffold(
+      appBar: AppBar(title: const Text('Labour Mode')),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Labour Login',
+              style: TextStyle(
+                fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text('Login with your registered mobile number.',
+              style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 32),
+
+            // Only mobile number field
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              maxLength: 10,
+              decoration: InputDecoration(
+                hintText: 'Mobile Number',
+                prefixIcon: const Icon(Icons.phone_android),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                counterText: '',
+              ),
+            ),
+
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(children: [
+                  Icon(Icons.error_outline, 
+                    color: Colors.red.shade600, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_error!,
+                    style: TextStyle(color: Colors.red.shade700,
+                      fontSize: 13))),
+                ]),
+              ),
+            ],
+
+            const Spacer(),
+
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _login,
+                icon: _isLoading
+                    ? const SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.login, color: Colors.white),
+                label: Text(
+                  _isLoading ? 'Checking...' : 'Login',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+---
+
+## FIX 2 — Add Overtime Fields to Labour Model and Add Form
+
+PROBLEM: Add Labour modal only has Name, Daily Wage, Phone.
+V1 had overtime wage and extra hours tracking.
+FIX: Add overtimeWagePerHour field to model and form.
+
+### Update Labour Model
+Add to lib/models/labour_model.dart:
+```dart
+@HiveField(13) double overtimeWagePerHour = 0;
+@HiveField(14) double defaultOvertimeHours = 0;
+
+// Update toFirestore() to include:
+'overtimeWagePerHour': overtimeWagePerHour,
+'defaultOvertimeHours': defaultOvertimeHours,
+
+// Update fromFirestore() to include:
+..overtimeWagePerHour = 
+  (data['overtimeWagePerHour'] as num?)?.toDouble() ?? 0,
+..defaultOvertimeHours = 
+  (data['defaultOvertimeHours'] as num?)?.toDouble() ?? 0,
+```
+
+### Update Add Labour Modal/Dialog
+
+Find the Add Labour dialog (has Name, Daily Wage, Phone fields).
+Add two new fields AFTER Daily Wage — keep exact same styling:
+
+```dart
+// Add these controllers
+final _overtimeWageController = TextEditingController();
+final _overtimeHoursController = TextEditingController();
+
+// Add these fields in the form after Daily Wage field:
+
+const SizedBox(height: 16),
+
+// Overtime wage per hour
+TextField(
+  controller: _overtimeWageController,
+  keyboardType: TextInputType.number,
+  decoration: InputDecoration(
+    prefixIcon: const Icon(Icons.timer_outlined),
+    hintText: 'Overtime Wage / Hour (₹)',
+    // Use same InputDecoration style as other fields
+  ),
+),
+
+const SizedBox(height: 16),
+
+// Default overtime hours per day
+TextField(
+  controller: _overtimeHoursController,
+  keyboardType: TextInputType.number,
+  decoration: InputDecoration(
+    prefixIcon: const Icon(Icons.more_time),
+    hintText: 'Default Extra Hours / Day',
+    // Use same InputDecoration style as other fields
+  ),
+),
+```
+
+Update the Save button logic to include:
+```dart
+overtimeWagePerHour: double.tryParse(
+  _overtimeWageController.text) ?? 0,
+defaultOvertimeHours: double.tryParse(
+  _overtimeHoursController.text) ?? 0,
+```
+
+---
+
+## FIX 3 — Wage Snapshot Calculation Fix
+
+PROBLEM: Dashboard shows "Rs 0" for Today/Week/Month wages
+even when attendance is marked.
+
+FIX: Update DashboardProvider wage calculation:
+
+```dart
+Future<double> calculateTodayWages() async {
+  final today = _todayString();
+  final snap = await _db
+      .collection('attendance')
+      .where('supervisorId', isEqualTo: supervisorId)
+      .where('date', isEqualTo: today)
+      .get();
+
+  double total = 0;
+  for (var doc in snap.docs) {
+    final labourId = doc['labourId'] as String;
+    final status = doc['status'] as String;
+    final overtimeHours = 
+      (doc['overtimeHours'] as num?)?.toDouble() ?? 0;
+
+    // Get labour wage
+    final labourSnap = await _db
+        .collection('labours')
+        .where('id', isEqualTo: labourId)
+        .limit(1)
+        .get();
+
+    if (labourSnap.docs.isNotEmpty) {
+      final dailyWage = 
+        (labourSnap.docs.first['dailyWage'] as num).toDouble();
+      final overtimeRate = 
+        (labourSnap.docs.first['overtimeWagePerHour'] 
+          as num?)?.toDouble() ?? 0;
+
+      if (status == 'present') {
+        total += dailyWage + (overtimeHours * overtimeRate);
+      } else if (status == 'half') {
+        total += (dailyWage / 2) + (overtimeHours * overtimeRate);
+      }
+      // absent = 0
+    }
+  }
+  return total;
+}
+```
+
+---
+
+## FIX 4 — Attendance Screen: Add Overtime Hours Input
+
+When supervisor marks attendance for a labour, allow entering 
+overtime hours for that day.
+
+Find the attendance marking widget (where present/absent/half 
+is selected). Add overtime hours input:
+
+```dart
+// After status selection buttons, add:
+Row(
+  children: [
+    const Icon(Icons.more_time, size: 16, color: Colors.grey),
+    const SizedBox(width: 8),
+    const Text('OT Hours:', 
+      style: TextStyle(fontSize: 12, color: Colors.grey)),
+    const SizedBox(width: 8),
+    SizedBox(
+      width: 60,
+      child: TextField(
+        controller: _overtimeController,
+        keyboardType: const TextInputType.numberWithOptions(
+          decimal: true),
+        style: const TextStyle(fontSize: 13),
+        decoration: const InputDecoration(
+          hintText: '0',
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 8, vertical: 6),
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (val) {
+          final hours = double.tryParse(val) ?? 0;
+          // Update attendance overtime hours
+          attendanceProvider.updateOvertimeHours(
+            labourId, hours);
+        },
+      ),
+    ),
+  ],
+),
+```
+
+---
+
+## FIX 5 — Field Consistency Fix
+
+PROBLEM: Some documents use contractorId, some use supervisorId.
+Both refer to the same thing (the supervisor).
+
+FIX: When writing to Firestore always write BOTH fields:
+```dart
+// In every Firestore write for labours, attendance, payments:
+'supervisorId': supervisorId,
+'contractorId': supervisorId, // keep for backward compatibility
+```
+
+This ensures both old V1 records and new V2 records work.
+
+---
+
+## UI IMPROVEMENTS (no logic changes)
+
+### Improvement 1 — Labour Card in Labour List
+
+Current: Shows name, wage, phone, joined date
+Improve to also show overtime info if set:
+
+```dart
+// In the labour list card widget, after phone row add:
+if (labour.overtimeWagePerHour > 0)
+  Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Row(children: [
+      const Icon(Icons.timer, size: 14, color: Colors.orange),
+      const SizedBox(width: 4),
+      Text(
+        'OT: ₹${labour.overtimeWagePerHour}/hr',
+        style: const TextStyle(
+          fontSize: 12, color: Colors.orange),
+      ),
+    ]),
+  ),
+```
+
+### Improvement 2 — Add Labour FAB
+
+Current: Green FAB with "+ Add Labour"
+Improve: Add a subtle shadow and slight scale animation on press.
+Keep exact same color and position.
+
+```dart
+FloatingActionButton.extended(
+  onPressed: _showAddLabourDialog,
+  icon: const Icon(Icons.person_add_outlined),
+  label: const Text('Add Labour'),
+  elevation: 4,
+  // Keep existing backgroundColor
+)
+```
+
+### Improvement 3 — Dashboard stat cards
+
+Current: Shows numbers only
+Improve: Add a small subtitle under each number showing context.
+Keep exact same colors and layout.
+
+```dart
+// Under Total Labour number add:
+Text('active workers',
+  style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+
+// Under Today Present add:
+Text('marked today',
+  style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+
+// Under Today Absent add:
+Text('not on site',
+  style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+
+// Under Half-Day add:
+Text('half attendance',
+  style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+```
+
+### Improvement 4 — Empty state for Labour list
+
+Current: Empty screen when no labours added
+Improve: Show helpful empty state:
+
+```dart
+// When labours list is empty show:
+Center(
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.people_outline, 
+        size: 64, color: Colors.grey[300]),
+      const SizedBox(height: 16),
+      Text('No labours added yet',
+        style: TextStyle(
+          fontSize: 16, 
+          fontWeight: FontWeight.w500,
+          color: Colors.grey[600])),
+      const SizedBox(height: 8),
+      Text('Tap + Add Labour to get started',
+        style: TextStyle(
+          fontSize: 13, color: Colors.grey[400])),
+    ],
+  ),
+),
+```
+
+### Improvement 5 — Sync status indicator
+
+Add a small sync status badge in the AppBar of Labour and 
+Attendance screens:
+
+```dart
+// In AppBar actions, add before logout icon:
+StreamBuilder<ConnectivityResult>(
+  stream: Connectivity().onConnectivityChanged,
+  builder: (context, snapshot) {
+    final isOnline = snapshot.data != ConnectivityResult.none;
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Icon(
+        isOnline ? Icons.cloud_done_outlined 
+                 : Icons.cloud_off_outlined,
+        size: 20,
+        color: isOnline ? Colors.green : Colors.orange,
+      ),
+    );
+  },
+),
+```
+
+---
+
+## FIX 6 — Labour Home Screen: Show Own Attendance
+
+When labour logs in with their phone number, their home screen 
+should show their own attendance history fetched from Firebase.
+
+```dart
+// In LabourHomeScreen initState:
+Future<void> _loadMyAttendance() async {
+  final prefs = await SharedPreferences.getInstance();
+  final labourId = prefs.getString('labourId') ?? '';
+  final phone = prefs.getString('phone') ?? '';
+
+  if (labourId.isEmpty) return;
+
+  // Fetch last 30 days attendance
+  final now = DateTime.now();
+  final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+  final fromStr = 
+    '${thirtyDaysAgo.year}-${thirtyDaysAgo.month.toString().padLeft(2,'0')}-01';
+
+  final snap = await FirebaseFirestore.instance
+      .collection('attendance')
+      .where('labourId', isEqualTo: labourId)
+      .where('date', isGreaterThanOrEqualTo: fromStr)
+      .orderBy('date', descending: true)
+      .get();
+
+  setState(() {
+    myAttendance = snap.docs.map((d) => d.data()).toList();
+  });
+}
+```
+
+Show in labour home screen:
+- Total present this month
+- Total absent this month  
+- Estimated salary this month (present days × daily wage)
+- Last 7 days attendance as a row of colored dots
+  (green=present, red=absent, orange=half)
+
+---
+
+## IMPORTANT RULES
+
+1. DO NOT change any existing working Firebase logic
+2. DO NOT change routing or navigation
+3. DO NOT change color scheme or theme
+4. DO NOT change any working features
+5. Only ADD overtime fields to model and form
+6. Only CHANGE labour login from email to phone
+7. Only ADD the UI improvements listed above
+8. Keep all existing imports — only add new ones if needed
+9. Run flutter pub get after any pubspec.yaml changes
+10. Test after each fix — do not batch all fixes at once
+
+## ORDER OF CHANGES
+
+1. First fix Labour Login (FIX 1) — test it works
+2. Then add Labour model overtime fields (FIX 2)
+3. Then fix wage calculation (FIX 3)
+4. Then add overtime to attendance (FIX 4)
+5. Then fix field consistency (FIX 5)
+6. Then add labour home attendance (FIX 6)
+7. Finally add UI improvements
+
+Show complete fixed file for each change.

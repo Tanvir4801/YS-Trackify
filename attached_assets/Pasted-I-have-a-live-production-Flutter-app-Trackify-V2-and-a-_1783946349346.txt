@@ -1,0 +1,974 @@
+I have a live production Flutter app (Trackify V2) and a 
+React admin panel hosted on Vercel (connected to GitHub).
+Firebase Firestore has REAL DATA from real workers.
+
+⚠️ CRITICAL RULE: DO NOT delete, overwrite, or migrate any 
+existing Firestore data. Only ADD new fields or new documents.
+Every change must be backward compatible with existing records.
+
+=============================================================
+WHAT I SAW (the real problem)
+=============================================================
+
+Supervisor scanned 4 labours at Site A (BITTU PANCHKAKDA).
+Other 14 labours were accidentally marked Absent at Site A.
+But those 14 actually work at Site B (KISHANBHAI KANGVAI).
+
+Problem: Once marked Absent, they disappear from other sites.
+If changed to Present, wage shows at wrong site.
+There is NO way to say "this labour belongs to another site, 
+I haven't decided yet" — there is no neutral/undecided state.
+
+=============================================================
+SOLUTION: ADD "PENDING" AS A 4TH STATUS
+=============================================================
+
+Add status: "pending" to attendance records.
+
+Rules for PENDING status:
+- Means: "not yet marked at any site today"
+- Labour with PENDING status appears in ALL sites' labour list
+- Labour with PENDING status does NOT count in Present/Absent/Half
+- Labour with PENDING status does NOT add to wage calculation
+- PENDING is the DEFAULT state (no attendance record = pending)
+- Supervisor can set any marked labour BACK to Pending
+
+This way:
+- If accidentally marked Absent at Site A → set to Pending
+- Labour now reappears in Site B, C, D list
+- Supervisor marks them correctly at the right site
+- No data is deleted — just status changes
+
+=============================================================
+FIRESTORE CHANGE (SAFE - NO DATA LOSS)
+=============================================================
+
+The attendance collection already exists with records.
+Existing records have status: "present" | "absent" | "half"
+These stay EXACTLY as they are.
+
+ONLY change: when creating NEW attendance records or 
+UPDATING existing ones, allow status: "pending" as valid value.
+
+```javascript
+// Valid status values after this change:
+// "present" | "absent" | "half" | "pending"
+// Existing records are unaffected.
+```
+
+Update Firestore Security Rules to allow "pending":
+```javascript
+// In firestore.rules, find the attendance write rule.
+// No change needed — it doesn't validate status values.
+// Just make sure Flutter and React both write valid docs.
+```
+
+=============================================================
+FLUTTER APP CHANGES
+=============================================================
+
+## Change 1 — AttendanceStatus enum
+
+Find lib/models/attendance_model.dart
+Add pending to the enum:
+
+```dart
+enum AttendanceStatus {
+  present,
+  absent,
+  half,
+  pending, // ← ADD THIS
+}
+
+extension AttendanceStatusX on AttendanceStatus {
+  String get firestoreValue {
+    switch (this) {
+      case AttendanceStatus.present: return 'present';
+      case AttendanceStatus.absent:  return 'absent';
+      case AttendanceStatus.half:    return 'half';
+      case AttendanceStatus.pending: return 'pending';
+    }
+  }
+
+  static AttendanceStatus fromFirestoreValue(String value) {
+    switch (value) {
+      case 'present': return AttendanceStatus.present;
+      case 'absent':  return AttendanceStatus.absent;
+      case 'half':    return AttendanceStatus.half;
+      case 'pending': return AttendanceStatus.pending;
+      default:        return AttendanceStatus.pending; // safe default
+    }
+  }
+
+  // Factor for wage calculation
+  // pending counts as 0 — not in wage total
+  double get factor {
+    switch (this) {
+      case AttendanceStatus.present: return 1.0;
+      case AttendanceStatus.half:    return 0.5;
+      case AttendanceStatus.absent:  return 0.0;
+      case AttendanceStatus.pending: return 0.0; // excluded from wages
+    }
+  }
+
+  bool get isMarked =>
+    this == AttendanceStatus.present ||
+    this == AttendanceStatus.absent  ||
+    this == AttendanceStatus.half;
+    // pending is NOT considered "marked"
+}
+```
+
+## Change 2 — AttendanceProvider: pending logic
+
+Find lib/providers/attendance_provider.dart
+
+Update the labour list filtering logic.
+When showing labours for a specific site:
+- Show labours with NO attendance record (implicit pending)
+- Show labours with status: "pending" (explicit pending)  
+- HIDE labours with status: present/absent/half at ANY site today
+
+```dart
+// In AttendanceProvider:
+
+// Fetch ALL today's attendance across all sites
+Map<String, AttendanceStatus> allTodayMap = {};
+// Key = labourId, Value = status (from any site today)
+
+// When building labour list for a site:
+List<Labour> get availableLaboursForCurrentSite {
+  return labours.where((labour) {
+    final status = allTodayMap[labour.id];
+    // Show if: no record yet, OR explicitly set to pending
+    return status == null || 
+           status == AttendanceStatus.pending;
+  }).toList();
+}
+
+// Already-marked section shows:
+List<Labour> get markedLaboursForCurrentSite {
+  return labours.where((labour) {
+    final status = allTodayMap[labour.id];
+    return status != null && 
+           status != AttendanceStatus.pending &&
+           siteAttendanceMap[labour.id] != null;
+    // Only show in THIS site's marked section if marked at THIS site
+  }).toList();
+}
+
+// Fetch ALL today attendance (across all sites, not just current)
+Future<void> fetchAllTodayAttendance() async {
+  final uid   = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final today = selectedDateStr;
+
+  try {
+    final snap = await FirebaseFirestore.instance
+        .collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isEqualTo: today)
+        .get();
+
+    final map = <String, AttendanceStatus>{};
+    for (var doc in snap.docs) {
+      final labourId = doc.data()['labourId'] as String? ?? '';
+      final status   = AttendanceStatusX.fromFirestoreValue(
+          doc.data()['status'] as String? ?? 'pending');
+      if (labourId.isNotEmpty) {
+        // If labour has any non-pending status anywhere today
+        // mark them as "taken" so they don't show in other sites
+        if (status.isMarked) {
+          map[labourId] = status;
+        }
+      }
+    }
+    allTodayMap = map;
+    notifyListeners();
+  } catch (e) {
+    debugPrint('fetchAllTodayAttendance error: $e');
+  }
+}
+```
+
+Stream version (real-time):
+```dart
+StreamSubscription? _allTodaySub;
+
+void startAllTodayStream() {
+  final uid   = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final today = selectedDateStr;
+
+  _allTodaySub?.cancel();
+  _allTodaySub = FirebaseFirestore.instance
+      .collection('attendance')
+      .where('supervisorId', isEqualTo: uid)
+      .where('date', isEqualTo: today)
+      .snapshots()
+      .listen((snap) {
+    final map = <String, AttendanceStatus>{};
+    for (var doc in snap.docs) {
+      final lid    = doc.data()['labourId'] as String? ?? '';
+      final status = AttendanceStatusX.fromFirestoreValue(
+          doc.data()['status'] as String? ?? 'pending');
+      if (lid.isNotEmpty && status.isMarked) {
+        map[lid] = status;
+      }
+    }
+    allTodayMap = map;
+    notifyListeners();
+  });
+}
+```
+
+## Change 3 — AttendanceService: mark as pending
+
+Add method to set attendance back to pending:
+
+```dart
+// In lib/services/attendance_service.dart
+
+Future<void> markAsPending(String labourId, String date) async {
+  final uid = _requireUid();
+
+  // Find existing attendance record for this labour today
+  final existing = await _db
+      .collection('attendance')
+      .where('labourId',     isEqualTo: labourId)
+      .where('supervisorId', isEqualTo: uid)
+      .where('date',         isEqualTo: date)
+      .get();
+
+  if (existing.docs.isEmpty) {
+    // No record — already effectively pending, nothing to do
+    debugPrint('markAsPending: no record found for $labourId on $date');
+    return;
+  }
+
+  // Update ALL records for this labour today to pending
+  // (in case there are multiple from different sites)
+  final batch = _db.batch();
+  for (var doc in existing.docs) {
+    batch.update(doc.reference, {
+      'status':    'pending',
+      'updatedAt': FieldValue.serverTimestamp(),
+      'pendingAt': FieldValue.serverTimestamp(),
+      'pendingReason': 'reset_by_supervisor',
+    });
+  }
+  await batch.commit();
+
+  // Update Hive
+  final hiveKey = '${labourId}_$date';
+  final box = _attendanceBox;
+  final local = box.get(hiveKey);
+  if (local != null) {
+    local.status = AttendanceStatus.pending;
+    local.isSynced = true;
+    await box.put(hiveKey, local);
+  }
+
+  debugPrint('markAsPending: $labourId set to pending on $date');
+}
+```
+
+## Change 4 — Attendance Screen UI
+
+Find lib/screens/attendance/attendance_screen.dart
+
+Add the Pending button as a 4th option next to P/A/H:
+
+```dart
+// Replace the 3-button P/A/H row with 4 buttons P/A/H/←
+
+Row(children: [
+  Expanded(child: _statusButton(
+    label: 'P',
+    selected: status == 'present',
+    color: AppColors.present,
+    onTap: () => data.markAttendance(labour.id, 'present'),
+  )),
+  const SizedBox(width: 6),
+  Expanded(child: _statusButton(
+    label: 'A',
+    selected: status == 'absent',
+    color: AppColors.absent,
+    onTap: () => data.markAttendance(labour.id, 'absent'),
+  )),
+  const SizedBox(width: 6),
+  Expanded(child: _statusButton(
+    label: 'H',
+    selected: status == 'half',
+    color: AppColors.halfDay,
+    onTap: () => data.markAttendance(labour.id, 'half'),
+  )),
+  const SizedBox(width: 6),
+  // Pending / Undo button — only shows when labour is marked
+  if (status != null && status != 'pending')
+    Expanded(child: _statusButton(
+      label: '↩',
+      tooltip: 'Set Pending — move to another site',
+      selected: false,
+      color: const Color(0xFF6B7280),
+      onTap: () async {
+        // Show confirmation
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Set as Pending?'),
+            content: Text(
+              '${labour.name} will be removed from this site '
+              'and become available to mark at another site today.'
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF6B7280)),
+                child: const Text('Set Pending'),
+              ),
+            ],
+          ),
+        );
+        if (confirm == true) {
+          await data.markAttendance(labour.id, 'pending');
+        }
+      },
+    )),
+]),
+```
+
+Widget _statusButton with tooltip:
+```dart
+Widget _statusButton({
+  required String label,
+  required bool selected,
+  required Color color,
+  required VoidCallback onTap,
+  String? tooltip,
+}) {
+  final btn = SizedBox(
+    height: 40,
+    child: AnimatedScale(
+      scale: selected ? 1.02 : 1.0,
+      duration: const Duration(milliseconds: 140),
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: selected
+              ? color : color.withValues(alpha: 0.15),
+          foregroundColor: selected ? Colors.white : color,
+          elevation: selected ? 3 : 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
+          textStyle: const TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w800),
+        ),
+        child: Text(label),
+      ),
+    ),
+  );
+  if (tooltip != null) {
+    return Tooltip(message: tooltip, child: btn);
+  }
+  return btn;
+}
+```
+
+## Change 5 — Summary chip update
+
+The summary row (Present/Absent/Half counts) should 
+NOT count pending labours:
+
+```dart
+// In AttendanceScreen build:
+final attendanceByLabour = data.attendanceMap;
+
+final presentCount = attendanceByLabour.values
+    .where((s) => s == 'present').length;
+final absentCount = attendanceByLabour.values
+    .where((s) => s == 'absent').length;
+final halfDayCount = attendanceByLabour.values
+    .where((s) => s == 'half').length;
+final pendingCount = data.labours.length -
+    presentCount - absentCount - halfDayCount;
+// pending = total labours minus all marked statuses
+
+// Add pending chip to summary row:
+Row(children: [
+  Expanded(child: _summaryChip(
+    label: 'Present', count: presentCount, color: AppColors.present)),
+  const SizedBox(width: 6),
+  Expanded(child: _summaryChip(
+    label: 'Absent', count: absentCount, color: AppColors.absent)),
+  const SizedBox(width: 6),
+  Expanded(child: _summaryChip(
+    label: 'Half', count: halfDayCount, color: AppColors.halfDay)),
+  const SizedBox(width: 6),
+  Expanded(child: _summaryChip(
+    label: 'Pending', count: pendingCount,
+    color: const Color(0xFF6B7280))),
+]),
+```
+
+## Change 6 — AttendanceProvider.markAttendance update
+
+```dart
+Future<void> markAttendance(String labourId, String status) async {
+  // Optimistic update
+  if (status == 'pending') {
+    attendanceMap.remove(labourId);
+    allTodayMap.remove(labourId); // makes them available in other sites
+  } else {
+    attendanceMap[labourId] = status;
+    if (AttendanceStatusX.fromFirestoreValue(status).isMarked) {
+      allTodayMap[labourId] =
+          AttendanceStatusX.fromFirestoreValue(status);
+    }
+  }
+  notifyListeners();
+
+  // Call service
+  if (status == 'pending') {
+    await _service.markAsPending(labourId, selectedDateStr);
+  } else {
+    final att = Attendance(
+      id:           '${labourId}_$selectedDateStr',
+      labourId:     labourId,
+      supervisorId: FirebaseAuth.instance.currentUser!.uid,
+      date:         selectedDateStr,
+      status:       AttendanceStatusX.fromFirestoreValue(status),
+      overtimeHours: overtimeMap[labourId] ?? 0,
+    );
+    await _service.markAttendance(att);
+  }
+}
+```
+
+=============================================================
+REACT ADMIN PANEL CHANGES
+=============================================================
+
+## Change 7 — Add Pending status support in React
+
+In src/services/attendanceService.js:
+```javascript
+// Add pending to status helpers
+export const STATUS_CONFIG = {
+  present: { label: 'Present', color: '#22C55E', bg: '#F0FDF4' },
+  absent:  { label: 'Absent',  color: '#EF4444', bg: '#FEF2F2' },
+  half:    { label: 'Half',    color: '#F59E0B', bg: '#FFFBEB' },
+  pending: { label: 'Pending', color: '#6B7280', bg: '#F9FAFB' },
+};
+
+// Mark as pending (undo/reset)
+export const markAsPending = async (supervisorId, labourId, date) => {
+  try {
+    const q = query(
+      collection(db, 'attendance'),
+      where('labourId',     '==', labourId),
+      where('supervisorId', '==', supervisorId),
+      where('date',         '==', date)
+    );
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      // Already pending (no record) — nothing to do
+      return { success: true, message: 'Already pending' };
+    }
+
+    // Batch update all records to pending
+    const batch = writeBatch(db);
+    snap.docs.forEach(d => {
+      batch.update(d.ref, {
+        status:        'pending',
+        updatedAt:     serverTimestamp(),
+        pendingAt:     serverTimestamp(),
+        pendingReason: 'reset_by_admin',
+      });
+    });
+    await batch.commit();
+
+    return { success: true };
+  } catch (error) {
+    console.error('markAsPending error:', error);
+    throw error;
+  }
+};
+```
+
+## Change 8 — Attendance table in admin panel
+
+In the attendance page component, add Pending button:
+
+```jsx
+// In attendance table row actions:
+function AttendanceStatusCell({ record, onUpdate }) {
+  const [updating, setUpdating] = useState(false);
+
+  const handleStatus = async (newStatus) => {
+    setUpdating(true);
+    try {
+      if (newStatus === 'pending') {
+        await markAsPending(
+          record.supervisorId, record.labourId, record.date);
+        toast.success('Set to pending — labour available at other sites');
+      } else {
+        await updateAttendanceStatus(record.id, newStatus);
+        toast.success(`Marked ${newStatus}`);
+      }
+      onUpdate(); // refresh list
+    } catch (e) {
+      toast.error('Failed to update');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Current status badge */}
+      <span className={`px-2 py-1 rounded text-xs font-bold ${
+        record.status === 'present' ? 'bg-green-100 text-green-700' :
+        record.status === 'absent'  ? 'bg-red-100 text-red-700'    :
+        record.status === 'half'    ? 'bg-amber-100 text-amber-700' :
+        'bg-gray-100 text-gray-600'
+      }`}>
+        {record.status?.charAt(0).toUpperCase() + record.status?.slice(1)}
+      </span>
+
+      {/* Quick change buttons */}
+      {!updating && (
+        <div className="flex gap-1">
+          {['present','absent','half'].map(s => (
+            <button
+              key={s}
+              onClick={() => handleStatus(s)}
+              disabled={record.status === s}
+              className={`px-2 py-0.5 rounded text-xs font-semibold
+                border transition-all
+                ${record.status === s
+                  ? 'opacity-30 cursor-not-allowed'
+                  : 'hover:opacity-80 cursor-pointer'}
+                ${s === 'present' ? 'border-green-400 text-green-700' :
+                  s === 'absent'  ? 'border-red-400 text-red-700'    :
+                  'border-amber-400 text-amber-700'}`}
+            >
+              {s === 'present' ? 'P' : s === 'absent' ? 'A' : 'H'}
+            </button>
+          ))}
+          {/* Pending / Undo button */}
+          {record.status !== 'pending' && (
+            <button
+              onClick={() => {
+                if (window.confirm(
+                  `Set ${record.labourName || 'labour'} to PENDING?\n\n` +
+                  'This removes them from this site and makes them ' +
+                  'available to mark at another site today.'
+                )) {
+                  handleStatus('pending');
+                }
+              }}
+              className="px-2 py-0.5 rounded text-xs font-semibold 
+                border border-gray-400 text-gray-600 hover:opacity-80"
+              title="Reset to Pending — move to another site"
+            >
+              ↩
+            </button>
+          )}
+        </div>
+      )}
+      {updating && (
+        <span className="text-xs text-gray-400">Saving...</span>
+      )}
+    </div>
+  );
+}
+```
+
+## Change 9 — Pending filter in admin attendance page
+
+Add Pending to the status filter dropdown:
+
+```jsx
+// In attendance page filter bar:
+<select
+  value={statusFilter}
+  onChange={e => setStatusFilter(e.target.value)}
+  className="border rounded px-3 py-1.5 text-sm"
+>
+  <option value="">All statuses</option>
+  <option value="present">Present</option>
+  <option value="absent">Absent</option>
+  <option value="half">Half Day</option>
+  <option value="pending">Pending</option>
+</select>
+```
+
+Show pending count in summary bar:
+```jsx
+// In the summary stats row above the table:
+<div className="flex gap-4 text-sm py-2">
+  <span>Total: <b>{total}</b></span>
+  <span className="text-green-600">Present: <b>{present}</b></span>
+  <span className="text-red-500">Absent: <b>{absent}</b></span>
+  <span className="text-amber-500">Half: <b>{half}</b></span>
+  <span className="text-gray-500">Pending: <b>{pending}</b></span>
+  {/* OT and wage only for marked (non-pending) */}
+  <span>OT Hours: <b>{otHours}</b></span>
+  <span>Wage liability: <b>₹{wageLiability}</b></span>
+</div>
+```
+
+Wage liability EXCLUDES pending:
+```javascript
+// Wage calculation — pending labour excluded
+const wageLiability = filteredData
+  .filter(r => r.status !== 'pending')
+  .reduce((sum, r) => {
+    const wage = r.dailyWageSnapshot || r.dailyWage || 0;
+    if (r.status === 'present') return sum + wage;
+    if (r.status === 'half')    return sum + (wage / 2);
+    return sum; // absent and pending = 0
+  }, 0);
+```
+
+=============================================================
+FIX REAL-TIME FIREBASE DATA NOT FETCHING (UI stuck)
+=============================================================
+
+## Change 10 — Replace all getDocs with onSnapshot in React
+
+Find every page that has UI stuck/not updating.
+Search for getDocs in every service file.
+
+Pattern to fix in EVERY page component:
+
+```jsx
+// WRONG — fetches once, never updates:
+const [data, setData] = useState([]);
+useEffect(() => {
+  getDocs(collection(db, 'attendance')).then(snap => {
+    setData(snap.docs.map(d => d.data()));
+  });
+}, []);
+
+// CORRECT — live updates:
+const [data, setData] = useState([]);
+useEffect(() => {
+  const q = query(collection(db, 'attendance'),
+    where('date', '==', today));
+
+  const unsub = onSnapshot(q, snap => {
+    setData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, err => {
+    console.error('Firestore error:', err);
+  });
+
+  return () => unsub(); // ← cleanup to prevent memory leak
+}, [today]); // re-subscribe when date changes
+```
+
+Fix each page:
+
+### Dashboard page
+```jsx
+useEffect(() => {
+  const unsubs = [];
+
+  // Live labour count
+  unsubs.push(onSnapshot(
+    query(collection(db, 'labours'), where('isActive','==',true)),
+    snap => setTotalLabours(snap.size)
+  ));
+
+  // Live today attendance
+  const today = new Date().toISOString().split('T')[0];
+  unsubs.push(onSnapshot(
+    query(collection(db, 'attendance'), where('date','==',today)),
+    snap => {
+      const docs = snap.docs.map(d => d.data());
+      setPresent(docs.filter(d => d.status === 'present').length);
+      setAbsent(docs.filter(d => d.status === 'absent').length);
+      setHalf(docs.filter(d => d.status === 'half').length);
+      setPending(docs.filter(d => d.status === 'pending' ||
+        !d.status).length);
+    }
+  ));
+
+  return () => unsubs.forEach(u => u());
+}, []);
+```
+
+### Attendance page
+```jsx
+useEffect(() => {
+  if (!selectedDate) return;
+
+  const q = query(
+    collection(db, 'attendance'),
+    where('date', '==', selectedDate)
+  );
+
+  const unsub = onSnapshot(q, snap => {
+    const records = snap.docs.map(d => ({
+      id: d.id, ...d.data(),
+      date: d.data().date,
+    }));
+    setAttendanceRecords(records);
+    setLoading(false);
+  }, err => {
+    console.error(err);
+    setLoading(false);
+  });
+
+  return () => unsub();
+}, [selectedDate]); // re-run when date picker changes
+```
+
+### Labours page
+```jsx
+useEffect(() => {
+  const q = query(
+    collection(db, 'labours'),
+    where('isActive', '==', true)
+  );
+
+  const unsub = onSnapshot(q, snap => {
+    const data = snap.docs.map(d => ({
+      id: d.id, ...d.data(),
+      joiningDate: d.data().joiningDate?.toDate?.() || null,
+    }));
+    setLabours(data);
+    setLoading(false);
+  });
+
+  return () => unsub();
+}, [contractorFilter]); // re-run when contractor changes
+```
+
+=============================================================
+CONTRACTOR ACCESS IN ADMIN PANEL
+=============================================================
+
+## Change 11 — Contractor can login and see their own data
+
+Currently only admin can login to admin panel.
+Add contractor role access with restricted view.
+
+In src/context/AuthContext.jsx:
+```jsx
+// After login, fetch role from Firestore
+const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+const profile = userDoc.data();
+
+// Allow both admin AND contractor roles
+if (profile.role !== 'admin' && profile.role !== 'contractor') {
+  await signOut(auth);
+  throw new Error('Access denied. Contact administrator.');
+}
+
+// Store role and contractorId
+setUserProfile({
+  ...profile,
+  isAdmin:      profile.role === 'admin',
+  isContractor: profile.role === 'contractor',
+});
+```
+
+## Change 12 — Contractor sees ONLY their own data
+
+Create src/hooks/useContractorFilter.js:
+```javascript
+import { useAuth } from '../context/AuthContext';
+
+export function useContractorFilter() {
+  const { userProfile } = useAuth();
+
+  // Admin sees all — no filter
+  // Contractor sees only their own data
+  const contractorId = userProfile?.isContractor
+    ? userProfile.contractorId || userProfile.uid
+    : null; // null = no filter = admin sees all
+
+  // Build Firestore constraint
+  const getConstraint = (field = 'supervisorId') =>
+    contractorId ? where(field, '==', contractorId) : null;
+
+  return { contractorId, getConstraint, isContractor: userProfile?.isContractor };
+}
+```
+
+Use in every data hook:
+```javascript
+// In useLabours:
+export function useLabours() {
+  const { contractorId } = useContractorFilter();
+  const [labours, setLabours] = useState([]);
+
+  useEffect(() => {
+    const constraints = [where('isActive', '==', true)];
+    if (contractorId) {
+      constraints.push(where('supervisorId', '==', contractorId));
+    }
+
+    const unsub = onSnapshot(
+      query(collection(db, 'labours'), ...constraints),
+      snap => setLabours(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return () => unsub();
+  }, [contractorId]);
+
+  return labours;
+}
+```
+
+## Change 13 — Contractor daily site details view
+
+Add a page/section for contractor to see TODAY's summary:
+
+```jsx
+// src/pages/MySites.jsx or in dashboard for contractor role
+
+function ContractorDailyView() {
+  const { contractorId } = useContractorFilter();
+  const [sites, setSites]   = useState([]);
+  const [summary, setSummary] = useState({});
+
+  const today = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    if (!contractorId) return;
+
+    // Live sites
+    const siteSub = onSnapshot(
+      query(collection(db, 'sites'),
+        where('contractorId', '==', contractorId),
+        where('isActive', '==', true)),
+      snap => setSites(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+
+    // Live today attendance summary per site
+    const attSub = onSnapshot(
+      query(collection(db, 'attendance'),
+        where('supervisorId', '==', contractorId),
+        where('date', '==', today)),
+      snap => {
+        const bysite = {};
+        snap.docs.forEach(d => {
+          const siteId = d.data().siteId || 'no_site';
+          if (!bysite[siteId]) {
+            bysite[siteId] = { present: 0, absent: 0, half: 0,
+                               pending: 0, wage: 0 };
+          }
+          const status = d.data().status;
+          const wage   = d.data().dailyWageSnapshot || 0;
+          if (status === 'present') {
+            bysite[siteId].present++;
+            bysite[siteId].wage += wage;
+          } else if (status === 'absent') {
+            bysite[siteId].absent++;
+          } else if (status === 'half') {
+            bysite[siteId].half++;
+            bysite[siteId].wage += wage / 2;
+          } else {
+            bysite[siteId].pending++;
+          }
+        });
+        setSummary(bysite);
+      }
+    );
+
+    return () => { siteSub(); attSub(); };
+  }, [contractorId, today]);
+
+  return (
+    <div className="p-6">
+      <h2 className="text-xl font-bold mb-4">
+        Today's Sites — {new Date().toLocaleDateString('en-IN',
+          { weekday:'long', day:'numeric', month:'long' })}
+      </h2>
+      <div className="grid gap-4">
+        {sites.map(site => {
+          const s = summary[site.id] || {};
+          return (
+            <div key={site.id}
+              className="bg-white border rounded-xl p-4 shadow-sm">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-bold text-lg">{site.name}</h3>
+                  <p className="text-gray-500 text-sm">{site.location}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold
+                  ${(s.pending || 0) === 0
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-amber-100 text-amber-700'}`}>
+                  {(s.pending || 0) === 0 ? '✓ COMPLETE' : 'PENDING'}
+                </span>
+              </div>
+              <div className="flex gap-4 mt-3 text-sm">
+                <span className="text-green-600">
+                  ✓ {s.present || 0} Present
+                </span>
+                <span className="text-red-500">
+                  ✗ {s.absent || 0} Absent
+                </span>
+                <span className="text-amber-500">
+                  ½ {s.half || 0} Half
+                </span>
+                <span className="text-gray-400">
+                  ⏳ {s.pending || 0} Pending
+                </span>
+              </div>
+              <div className="mt-2 pt-2 border-t">
+                <span className="text-sm font-semibold">
+                  Today Wage: ₹{(s.wage || 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+```
+
+=============================================================
+GITHUB / VERCEL DEPLOYMENT — NO DATA LOSS
+=============================================================
+
+## Change 14 — Safe deployment checklist
+
+Before pushing to GitHub (which auto-deploys on Vercel):
+
+```bash
+# 1. Test the build locally first
+npm run build
+# If build fails, DO NOT push
+
+# 2. Check for any console errors
+npm run dev
+# Open browser, check console for errors
+
+# 3. Verify .env.local is in .gitignore
+# Firebase keys must NOT go to GitHub
+cat .gitignore | grep .env
+# Should show: .env.local or .env*
+
+# 4. Environment variables on Vercel
+# Go to: Vercel Dashboard → Your Project → Settings → Environment Variables
+# Make sure all NEXT_PUBLIC_ firebase vars are set there
+# They are separate from your local .env.local
+
+# 5. Push to GitHub
+git add .
+git commit -m "feat: add pending status, fix real-time updates, contractor access"
+git push origin main
+# Vercel auto-deploys in 1-2 minutes
+```
+
+Vercel environment variables to verify are set:

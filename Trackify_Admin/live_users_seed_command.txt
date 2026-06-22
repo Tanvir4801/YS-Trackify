@@ -1,0 +1,96 @@
+
+const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+const { db } = await import('./src/lib/firebase.js');
+
+const seedUsers = [
+  {
+    userId: 'contractor_dharmesh',
+    companyId: 'YS Construction',
+    companyName: 'YS Construction Pvt Ltd',
+    userName: 'Dharmesh Bhai',
+    role: 'contractor',
+    subscriptionPlan: 'Premium',
+    appVersion: '2.4.1',
+    platform: 'Android',
+    deviceModel: 'Samsung Galaxy M35',
+    networkStatus: 'ONLINE',
+    currentScreen: 'Attendance Dashboard',
+    latencyMs: 45,
+    loginTime: new Date(Date.now() - 45 * 60000).toISOString(),
+    sessionDurationMins: 45,
+    batteryLevel: '82%',
+    crashCount: 0,
+    firebaseConnectionStatus: 'CONNECTED',
+    statusOffset: 1000, // Online
+  },
+  {
+    userId: 'supervisor_rahul',
+    companyId: 'YS Construction',
+    companyName: 'YS Construction Pvt Ltd',
+    userName: 'Rahul (Site A)',
+    role: 'supervisor',
+    subscriptionPlan: 'Premium',
+    appVersion: '2.4.1',
+    platform: 'iOS',
+    deviceModel: 'iPhone 13 Pro',
+    networkStatus: 'ONLINE',
+    currentScreen: 'QR Scanner',
+    latencyMs: 12,
+    loginTime: new Date(Date.now() - 12 * 60000).toISOString(),
+    sessionDurationMins: 12,
+    batteryLevel: '45%',
+    crashCount: 1,
+    firebaseConnectionStatus: 'CONNECTED',
+    statusOffset: 45000, // Online
+  },
+  {
+    userId: 'admin_hq',
+    companyId: 'Trackify_Internal',
+    companyName: 'Trackify HQ',
+    userName: 'Super Admin',
+    role: 'super_admin',
+    subscriptionPlan: 'Enterprise',
+    appVersion: 'React_Admin_v2',
+    platform: 'MacIntel',
+    deviceModel: 'Desktop Web',
+    networkStatus: 'ONLINE',
+    currentScreen: 'Live Users Monitoring',
+    latencyMs: 25,
+    loginTime: new Date(Date.now() - 120 * 60000).toISOString(),
+    sessionDurationMins: 120,
+    batteryLevel: '100%',
+    crashCount: 0,
+    firebaseConnectionStatus: 'CONNECTED',
+    statusOffset: 2000, // Online
+  },
+  {
+    userId: 'contractor_amit',
+    companyId: 'ABC Infra',
+    companyName: 'ABC Infrastructure',
+    userName: 'Amit Singh',
+    role: 'contractor',
+    subscriptionPlan: 'Standard',
+    appVersion: '2.3.9',
+    platform: 'Android',
+    deviceModel: 'Redmi Note 12',
+    networkStatus: 'SLOW',
+    currentScreen: 'Payroll Reports',
+    latencyMs: 1500,
+    loginTime: new Date(Date.now() - 300 * 60000).toISOString(),
+    sessionDurationMins: 300,
+    batteryLevel: '15%',
+    crashCount: 3,
+    firebaseConnectionStatus: 'CONNECTED',
+    statusOffset: 5 * 60000, // Idle (> 2 mins)
+  },
+];
+
+let added = 0;
+for(const user of seedUsers) {
+  await setDoc(doc(db, 'live_users', user.userId), {
+    ...user,
+    lastSeen: new Date(Date.now() - user.statusOffset)
+  });
+  added++;
+}
+console.log("Seeded " + added + " enriched live users!");

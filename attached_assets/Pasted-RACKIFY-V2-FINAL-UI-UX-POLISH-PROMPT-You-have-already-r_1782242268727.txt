@@ -1,0 +1,297 @@
+RACKIFY V2 FINAL UI/UX POLISH PROMPT
+
+You have already redesigned the Trackify UI. Do NOT modify any business logic, Firestore queries, services, hooks, routes, permissions, authentication, collections, APIs, state management, or existing functionality.
+
+Only perform a final premium UI/UX polish across Super Admin, Contractor, and Supervisor dashboards.
+
+═══════════════════════════════════
+
+HEADER IMPROVEMENTS
+
+Current header still feels crowded.
+
+Remove unnecessary duplicate information.
+
+Current:
+
+* Company chip
+* Contractor chip
+* User avatar
+* Username
+* Bell icon
+* Logout button
+
+Replace with:
+
+Right Side:
+
+🔔 Notifications
+👤 Profile Dropdown
+
+Profile dropdown contains:
+
+* User name
+* Email
+* Role
+* Logout
+
+Remove separate Logout button.
+
+Remove duplicate company name displays.
+
+Create a cleaner enterprise SaaS header similar to Linear, Notion, Stripe, Deel, and Rippling.
+
+═══════════════════════════════════
+
+HERO SECTION IMPROVEMENTS
+
+Reduce hero section height by 30%.
+
+Current hero occupies too much vertical space.
+
+New structure:
+
+Good Morning 👋
+
+Welcome back, YS Constructions
+
+Wednesday, 24 June 2026
+
+Quick Actions:
+
+* Mark Attendance
+* Add Labour
+* Reports
+* Export Today
+
+Keep all existing actions functional.
+
+Use tighter spacing.
+
+═══════════════════════════════════
+
+QUICK SUMMARY CHIPS
+
+Add a compact summary strip below hero section:
+
+👷 Active Labours: X
+🏗 Active Sites: X
+👨‍💼 Supervisors: X
+💰 Monthly Payroll: ₹X
+
+Use modern rounded chips.
+
+Make them responsive.
+
+═══════════════════════════════════
+
+KPI CARD IMPROVEMENTS
+
+Current cards look good but lack context.
+
+Enhance all cards with:
+
+* Better icon alignment
+* More whitespace
+* Subtle hover animation
+* Trend indicators
+
+Examples:
+
+Active Labours
+24
+
+↑ +2 this month
+
+Present Today
+18
+
+75% workforce
+
+Absent Today
+3
+
+12% workforce
+
+Overtime Hours
+36
+
++8 from yesterday
+
+If trend data unavailable, show meaningful subtitles instead.
+
+═══════════════════════════════════
+
+CHART EMPTY STATES
+
+Current charts look broken when insufficient data exists.
+
+Instead of showing empty graphs:
+
+Display premium empty state:
+
+📊 Not enough attendance history
+
+Attendance trends will appear after several days of records.
+
+Include a subtle illustration/icon.
+
+Apply to all charts.
+
+═══════════════════════════════════
+
+PAYROLL SUMMARY CARD
+
+Current payroll card feels visually disconnected.
+
+Redesign to match KPI cards.
+
+Use:
+
+Gross Salary
+Advances
+Net Payable
+
+Inside a modern financial summary card.
+
+Improve spacing, typography, and hierarchy.
+
+Keep Payroll Calculator button.
+
+═══════════════════════════════════
+
+ROLE COLOR SYSTEM
+
+Create a consistent role identity system.
+
+Super Admin:
+Purple
+
+Contractor:
+Blue
+
+Supervisor:
+Green
+
+Apply everywhere:
+
+* User badges
+* Header role chip
+* User tables
+* Supervisor tables
+* Profile dropdown
+* Status indicators
+
+═══════════════════════════════════
+
+SIDEBAR POLISH
+
+Current sidebar is good.
+
+Improve further:
+
+* Better active state glow
+* Slight hover animation
+* Better icon alignment
+* Consistent spacing
+
+Replace footer:
+
+Remove:
+
+“Developed by Tanvir Patel”
+
+Replace with:
+
+Trackify v2.0
+Workforce Management Platform
+
+Professional production appearance.
+
+═══════════════════════════════════
+
+COMPANY BRANDING
+
+Add company avatar/logo circle.
+
+Example:
+
+🏗️ YS Constructions
+
+Use company initials if no logo exists.
+
+Maintain clean enterprise styling.
+
+═══════════════════════════════════
+
+TABLE IMPROVEMENTS
+
+Apply globally:
+
+* Sticky headers
+* Better row hover effects
+* Improved spacing
+* Better status badges
+* Better pagination
+
+For:
+
+Attendance
+Labours
+Payroll
+Payments
+Reports
+Users
+Supervisors
+Sites
+Expenses
+
+═══════════════════════════════════
+
+MICRO ANIMATIONS
+
+Add subtle professional animations:
+
+* Card hover lift
+* Sidebar hover
+* Dropdown appearance
+* Modal transitions
+* Button feedback
+
+Use Framer Motion.
+
+Keep animations minimal and enterprise-grade.
+
+═══════════════════════════════════
+
+RESPONSIVENESS
+
+Perfect support for:
+
+Desktop
+Tablet
+Mobile
+
+No horizontal scrolling.
+
+Consistent spacing on all screen sizes.
+
+═══════════════════════════════════
+
+FINAL REQUIREMENT
+
+Do NOT change any functionality.
+
+Do NOT modify:
+
+* Firestore
+* Firebase
+* APIs
+* Authentication
+* Role permissions
+* Business logic
+* Queries
+* Services
+* State management
+
+Only improve visual quality, consistency, responsiveness, usability, spacing, hierarchy, branding, and premium SaaS appearance across Super Admin, Contractor, and Supervisor dashboards using one unified design system.

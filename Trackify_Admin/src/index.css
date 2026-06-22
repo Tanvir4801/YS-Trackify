@@ -1,0 +1,132 @@
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Primary backgrounds */
+  --bg-primary:     #0A0E1A;
+  --bg-secondary:   #111827;
+  --bg-card:        #1A2235;
+  --bg-card-hover:  #1F2A40;
+  --bg-input:       #141C2E;
+  --bg-elevated:    #243044;
+
+  /* Gold accent */
+  --gold:           #F5A623;
+  --gold-rgb:       245 166 35;
+  --gold-light:     #FFD076;
+  --gold-dark:      #C47D0E;
+  --gold-bg:        rgba(245, 166, 35, 0.10);
+  --gold-border:    rgba(245, 166, 35, 0.25);
+
+  /* Semantic colors */
+  --success:        #10B981;
+  --success-rgb:    16 185 129;
+  --success-bg:     rgba(16, 185, 129, 0.10);
+  --danger:         #EF4444;
+  --danger-rgb:     239 68 68;
+  --danger-bg:      rgba(239, 68, 68, 0.10);
+  --warning:        #F59E0B;
+  --warning-rgb:    245 158 11;
+  --warning-bg:     rgba(245, 158, 11, 0.10);
+  --info:           #3B82F6;
+  --info-rgb:       59 130 246;
+  --info-bg:        rgba(59, 130, 246, 0.10);
+
+  /* Text */
+  --text-primary:   #F0F4FF;
+  --text-secondary: #94A3B8;
+  --text-muted:     #64748B;
+  --text-gold:      #F5A623;
+
+  /* Borders */
+  --border:         rgba(255, 255, 255, 0.06);
+  --border-strong:  rgba(255, 255, 255, 0.12);
+  --border-gold:    rgba(245, 166, 35, 0.30);
+
+  /* Special effects */
+  --glow-gold:      0 0 20px rgba(245, 166, 35, 0.15);
+  --glow-success:   0 0 20px rgba(16, 185, 129, 0.15);
+
+  /* Shadcn standard variables overridden to match dark theme where necessary */
+  --background: var(--bg-primary);
+  --foreground: var(--text-primary);
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-card);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--gold);
+  --primary-foreground: #0A0E1A;
+  --secondary: var(--bg-elevated);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-elevated);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--bg-elevated);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--danger);
+  --destructive-foreground: #0A0E1A;
+  --ring: var(--gold);
+  --radius: 0.5rem;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 500;
+}
+
+/* Micro Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes goldGlow {
+  0%, 100% { box-shadow: 0 0 10px rgba(245, 166, 35, 0.2); }
+  50%      { box-shadow: 0 0 25px rgba(245, 166, 35, 0.5); }
+}
+
+.stat-card { animation: fadeInUp 300ms ease both; }
+.stat-card:nth-child(2) { animation-delay: 50ms; }
+.stat-card:nth-child(3) { animation-delay: 100ms; }
+.stat-card:nth-child(4) { animation-delay: 150ms; }
+
+.save-btn.has-changes { 
+  animation: goldGlow 2s ease infinite; 
+}
+
+.live-dot { animation: pulse 1.5s ease infinite; }
+
+.site-card { transition: all 200ms ease; }
+.nav-item  { transition: all 150ms ease; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { 
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

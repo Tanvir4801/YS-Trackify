@@ -1,0 +1,333 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function callerUid() {
+      return request.auth.uid;
+    }
+
+    function callerData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'shirish@ysconstruction.com') || 
+        (callerData().role == 'super_admin') ||
+        (callerData().role == 'trackops')
+      );
+    }
+
+    function isInTenant(contractorId) {
+      // A contractor's own uid IS their contractorId — allow that shortcut
+      // so reads work even when the users doc has no contractorId field.
+      return isSignedIn() && (
+        callerUid() == contractorId ||
+        callerData().contractorId == contractorId
+      );
+    }
+
+    function isContractorAdmin(contractorId) {
+      return isInTenant(contractorId) && callerData().role == 'contractor';
+    }
+
+    function isSupervisor(contractorId) {
+      return isInTenant(contractorId) && callerData().role == 'supervisor';
+    }
+
+    function canManageTenant(contractorId) {
+      return isContractorAdmin(contractorId) || isSupervisor(contractorId);
+    }
+
+    function isOwnTenantData(contractorId) {
+      return request.resource.data.contractorId == contractorId
+          && isInTenant(contractorId);
+    }
+
+    // ── contractors/ ─────────────────────────────────────────────────────────
+
+    match /contractors/{contractorId} {
+      allow read:  if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin();
+    }
+
+    // ── users/ ───────────────────────────────────────────────────────────────
+
+    match /users/{userId} {
+      allow read: if isSuperAdmin()
+                  || request.auth.uid == userId
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && isContractorAdmin(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isContractorAdmin(resource.data.contractorId)
+                        && isInTenant(resource.data.contractorId))
+                    || (callerUid() == userId
+                        && request.resource.data.diff(resource.data)
+                           .affectedKeys().hasOnly(['name', 'phone', 'updatedAt']));
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── labours/ ─────────────────────────────────────────────────────────────
+
+    match /labours/{labourId} {
+      // Allow read for everyone so Labour Login via phone number can work
+      allow read: if true;
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && canManageTenant(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && canManageTenant(resource.data.contractorId));
+
+      allow delete: if isSuperAdmin()
+                    || isContractorAdmin(resource.data.contractorId);
+                    
+      match /notifications/{notificationId} {
+        // Labours need to read their own notifications (allow true since they don't use Auth)
+        allow read: if true;
+      }
+    }
+
+    // ── sites/ ───────────────────────────────────────────────────────────────
+    // Contractors and supervisors can manage sites within their own tenant.
+
+    match /sites/{siteId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && canManageTenant(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && canManageTenant(resource.data.contractorId));
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── attendance flat collection ────────────────────────────────────────────
+    // Supervisors write directly (no Cloud Function required).
+
+    match /attendance/{attendanceId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      // Supervisor or contractor admin can create; supervisorId must match caller
+      allow create: if isSignedIn()
+                    && request.resource.data.supervisorId == callerUid()
+                    && canManageTenant(request.resource.data.contractorId);
+
+      // Only the supervisor who created can update (e.g. overtime hours)
+      allow update: if isSignedIn()
+                    && resource.data.supervisorId == callerUid();
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── attendance nested path (multi-tenant model) ───────────────────────────
+    // attendance/{contractorId}/dates/{dateKey}/records/{labourId}
+
+    match /attendance/{contractorId}/{rest=**} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+
+      allow write: if isSignedIn()
+                   && canManageTenant(contractorId);
+    }
+
+    // ── attendanceSessions/ ───────────────────────────────────────────────────
+    // One document per site-session started by a supervisor.
+    // supervisors create/update their own session; contractor admins can read all
+    // sessions in their tenant and force-end any.
+
+    match /attendanceSessions/{sessionId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSignedIn()
+                    && request.resource.data.supervisorId == callerUid()
+                    && canManageTenant(request.resource.data.contractorId);
+
+      // Supervisor who owns the session can update (mark count, end session).
+      // Contractor admin can also force-end (e.g. stuck session).
+      allow update: if isSignedIn()
+                    && (
+                      resource.data.supervisorId == callerUid()
+                      || isContractorAdmin(resource.data.contractorId)
+                      || isSuperAdmin()
+                    );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── payments/ ────────────────────────────────────────────────────────────
+
+    match /payments/{paymentId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && isContractorAdmin(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && isContractorAdmin(resource.data.contractorId)
+                        && request.resource.data.diff(resource.data)
+                           .affectedKeys().hasOnly(['status', 'notes', 'updatedAt']));
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── temp_labour_entries/ ─────────────────────────────────────────────────
+
+    match /temp_labour_entries/{entryId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && canManageTenant(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && canManageTenant(resource.data.contractorId));
+
+      allow delete: if isSuperAdmin();
+    }
+
+
+    // ── support_tickets/ ─────────────────────────────────────────────────────
+
+    match /support_tickets/{ticketId} {
+      // Anyone can create a ticket (even Labours via SessionService)
+      allow create: if true;
+      allow read: if isSuperAdmin() || resource.data.userId == request.auth.uid;
+      allow update: if isSuperAdmin() || resource.data.userId == request.auth.uid;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── error_logs/ ──────────────────────────────────────────────────────────
+
+    match /error_logs/{logId} {
+      // Allow app to anonymously log critical crashes
+      allow create: if true;
+      allow read: if isSuperAdmin();
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // ── activity_log/ ────────────────────────────────────────────────────────
+    // Best-effort audit log. Any signed-in user can write; only super_admin reads.
+
+    match /activity_log/{logId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // ── system_status/ ───────────────────────────────────────────────────────
+    // Global system status flags (e.g. maintenance mode, billing budgets)
+
+    match /system_status/{docId} {
+      // Allow any logged in user to read so they can see if maintenance mode is on
+      // or allow admins to read billing
+      allow read: if request.auth != null || isSuperAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // ── security_events/ ─────────────────────────────────────────────────────
+    // Tracks suspicious activity like failed logins and AI recommendations
+    
+    match /security_events/{eventId} {
+      // Anyone can create an event (e.g. failing to login creates an event)
+      allow create: if true;
+      allow read, update, delete: if isSignedIn();
+    }
+    
+    // ── telemetry_events/ ────────────────────────────────────────────────────
+    match /telemetry_events/{eventId} {
+      allow create: if true;
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // ── mission_logs/ ────────────────────────────────────────────────────────
+    match /mission_logs/{logId} {
+      allow create: if true;
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // ── live_users/ ──────────────────────────────────────────────────────────
+    // Real-time presence tracking for admin dashboard
+    match /live_users/{userId} {
+      allow read: if isSuperAdmin();
+      allow write: if isSignedIn();
+    }
+
+    // ── infrastructure_metrics/ ──────────────────────────────────────────────
+    // Aggregated infra health metrics written by telemetryAggregator
+    match /infrastructure_metrics/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── service_metrics/ ─────────────────────────────────────────────────────
+    // Aggregated service health metrics
+    match /service_metrics/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── system_health/ ───────────────────────────────────────────────────────
+    // Global system health document
+    match /system_health/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── operation_logs/ ──────────────────────────────────────────────────────
+    // Logs of remote admin actions (force logout, disable company, etc.)
+    match /operation_logs/{logId} {
+      allow create: if isSuperAdmin();
+      allow read: if isSuperAdmin();
+    }
+
+    // ── trackops_broadcasts/ ─────────────────────────────────────────────────
+    // Admin broadcast notifications
+    match /trackops_broadcasts/{broadcastId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── Labs Collections ─────────────────────────────────────────────────────
+    match /lab_feature_flags/{flagId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /lab_feature_requests/{requestId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /lab_internal_notes/{noteId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /lab_beta_tests/{testId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /lab_releases/{releaseId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /lab_ab_tests/{testId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /lab_ai_models/{modelId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+  }
+}

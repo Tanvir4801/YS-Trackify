@@ -1,0 +1,520 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
+
+@HiveType(typeId: 21)
+enum AttendanceStatus {
+  @HiveField(0)
+  present,
+  @HiveField(1)
+  absent,
+  @HiveField(2)
+  half,
+  @HiveField(3)
+  pending,
+  @HiveField(4)
+  quarter,
+  @HiveField(5)
+  threeQuarter,
+}
+
+extension AttendanceStatusX on AttendanceStatus {
+  double get wageFactor {
+    switch (this) {
+      case AttendanceStatus.present:
+        return 1.0;
+      case AttendanceStatus.threeQuarter:
+        return 0.75;
+      case AttendanceStatus.half:
+        return 0.5;
+      case AttendanceStatus.quarter:
+        return 0.25;
+      case AttendanceStatus.absent:
+        return 0.0;
+      case AttendanceStatus.pending:
+        return 0.0;
+    }
+  }
+
+  /// Whether this status counts as "marked" (present/absent/half).
+  /// Pending is treated like "not yet marked" — same as no record.
+  bool get isMarked {
+    switch (this) {
+      case AttendanceStatus.present:
+      case AttendanceStatus.threeQuarter:
+      case AttendanceStatus.half:
+      case AttendanceStatus.quarter:
+      case AttendanceStatus.absent:
+        return true;
+      case AttendanceStatus.pending:
+        return false;
+    }
+  }
+
+  String get firestoreValue {
+    switch (this) {
+      case AttendanceStatus.present:
+        return 'present';
+      case AttendanceStatus.threeQuarter:
+        return 'three_quarter';
+      case AttendanceStatus.half:
+        return 'half';
+      case AttendanceStatus.quarter:
+        return 'quarter';
+      case AttendanceStatus.absent:
+        return 'absent';
+      case AttendanceStatus.pending:
+        return 'pending';
+    }
+  }
+
+  static AttendanceStatus fromFirestoreValue(String? value) {
+    switch (value) {
+      case 'present':
+        return AttendanceStatus.present;
+      case 'three_quarter':
+        return AttendanceStatus.threeQuarter;
+      case 'half':
+        return AttendanceStatus.half;
+      case 'quarter':
+        return AttendanceStatus.quarter;
+      case 'pending':
+        return AttendanceStatus.pending;
+      case 'absent':
+      default:
+        return AttendanceStatus.absent;
+    }
+  }
+}
+
+@HiveType(typeId: 22)
+class Attendance extends HiveObject {
+  Attendance({
+    required this.id,
+    required this.labourId,
+    required this.supervisorId,
+    this.contractorId = '',
+    required this.date,
+    required this.status,
+    this.overtimeHours = 0,
+    this.notes = '',
+    this.syncedAt,
+    this.isSynced = false,
+    this.firestoreId,
+    this.lastSyncedAt,
+    this.remark = '',
+    this.wageAtTime = 0,
+    this.siteId = '',
+    this.petrol = 0,
+    this.lunch = 0,
+    this.breakfast = 0,
+    this.tea = 0,
+    this.advance = 0,
+    this.shiftFactor = 0.0,
+  });
+
+  static const String boxName = 'v2_attendance';
+
+  @HiveField(0)
+  String id;
+
+  @HiveField(1)
+  String labourId;
+
+  @HiveField(2)
+  String supervisorId;
+
+  @HiveField(3)
+  String contractorId;
+
+  @HiveField(4)
+  String date;
+
+  @HiveField(5)
+  AttendanceStatus status;
+
+  @HiveField(6)
+  double overtimeHours;
+
+  @HiveField(7)
+  String notes;
+
+  @HiveField(8)
+  DateTime? syncedAt;
+
+  @HiveField(9)
+  bool isSynced;
+
+  @HiveField(10)
+  String? firestoreId;
+
+  @HiveField(11)
+  DateTime? lastSyncedAt;
+
+  @HiveField(12)
+  String remark;
+
+  @HiveField(13)
+  double wageAtTime;
+
+  @HiveField(14)
+  String siteId;
+
+  @HiveField(15)
+  double petrol;
+
+  @HiveField(16)
+  double lunch;
+
+  @HiveField(17)
+  double breakfast;
+
+  @HiveField(18)
+  double tea;
+
+  @HiveField(19)
+  double advance;
+
+  @HiveField(20)
+  double shiftFactor;
+
+  double get totalAllowance => petrol + lunch + breakfast + tea;
+  double get grandTotal => wageAtTime + totalAllowance - advance;
+
+  double get effectiveShiftFactor {
+    if (shiftFactor > 0) return shiftFactor;
+    switch (status) {
+      case AttendanceStatus.present:      return 1.0;
+      case AttendanceStatus.threeQuarter: return 0.75;
+      case AttendanceStatus.half:         return 0.5;
+      case AttendanceStatus.quarter:      return 0.25;
+      case AttendanceStatus.absent:       return 0.0;
+      case AttendanceStatus.pending:      return 0.0;
+    }
+  }
+
+  static String formatDate(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  Map<String, dynamic> toFirestore() {
+    final factor = switch (status) {
+      AttendanceStatus.present      => 1.0,
+      AttendanceStatus.threeQuarter => 0.75,
+      AttendanceStatus.half         => 0.5,
+      AttendanceStatus.quarter      => 0.25,
+      AttendanceStatus.absent       => 0.0,
+      AttendanceStatus.pending      => 0.0,
+    };
+    return {
+      'id': id,
+      'labourId': labourId,
+      'supervisorId': supervisorId,
+      'contractorId': contractorId,
+      'date': date,
+      'status': status.firestoreValue,
+      'shiftFactor': factor,
+      'shiftLabel': status.firestoreValue,
+      'overtimeHours': overtimeHours,
+      'notes': notes,
+      'remark': remark.isNotEmpty ? remark : notes,
+      'wageAtTime': wageAtTime,
+      'siteId': siteId.isNotEmpty ? siteId : supervisorId,
+      'allowances': {'petrol': petrol, 'lunch': lunch, 'breakfast': breakfast, 'tea': tea},
+      'totalAllowance': totalAllowance,
+      'advance': advance,
+      'grandTotal': grandTotal,
+      'isSynced': true,
+      'syncedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  factory Attendance.fromFirestore(DocumentSnapshot doc) {
+    final d = (doc.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final remarkVal = (d['remark'] as String?) ?? (d['notes'] as String?) ?? '';
+    final al = (d['allowances'] as Map<String, dynamic>?) ?? {};
+    final att = Attendance(
+      id: (d['id'] as String?) ?? doc.id,
+      labourId: (d['labourId'] as String?) ?? '',
+      supervisorId: (d['supervisorId'] as String?) ?? '',
+      contractorId:
+          (d['contractorId'] as String?) ?? (d['supervisorId'] as String?) ?? '',
+      date: _readDateValue(d['date']),
+      status: AttendanceStatusX.fromFirestoreValue(d['status'] as String?),
+      overtimeHours: (d['overtimeHours'] as num?)?.toDouble() ?? 0,
+      notes: remarkVal,
+      remark: remarkVal,
+      wageAtTime: (d['wageAtTime'] as num?)?.toDouble() ?? 0,
+      siteId: (d['siteId'] as String?) ?? (d['supervisorId'] as String?) ?? '',
+      petrol:    (al['petrol']    as num?)?.toDouble() ?? (d['petrol']    as num?)?.toDouble() ?? 0,
+      lunch:     (al['lunch']     as num?)?.toDouble() ?? (d['lunch']     as num?)?.toDouble() ?? 0,
+      breakfast: (al['breakfast'] as num?)?.toDouble() ?? (d['breakfast'] as num?)?.toDouble() ?? 0,
+      tea:       (al['tea']       as num?)?.toDouble() ?? (d['tea']       as num?)?.toDouble() ?? 0,
+      advance:   (d['advance']    as num?)?.toDouble() ?? 0,
+      syncedAt: _readTimestamp(d['syncedAt']),
+      isSynced: (d['isSynced'] as bool?) ?? true,
+    )
+      ..firestoreId = doc.id
+      ..isSynced = true
+      ..lastSyncedAt = _readTimestamp(d['syncedAt']);
+
+    final rawFactor = (d['shiftFactor'] as num?)?.toDouble();
+    att.shiftFactor = rawFactor ?? att.effectiveShiftFactor;
+
+    return att;
+  }
+
+  Attendance copyWith({
+    String? id,
+    String? labourId,
+    String? supervisorId,
+    String? contractorId,
+    String? date,
+    AttendanceStatus? status,
+    double? overtimeHours,
+    String? notes,
+    String? remark,
+    double? wageAtTime,
+    String? siteId,
+    double? petrol,
+    double? lunch,
+    double? breakfast,
+    double? tea,
+    double? advance,
+    DateTime? syncedAt,
+    bool? isSynced,
+    String? firestoreId,
+    DateTime? lastSyncedAt,
+  }) {
+    return Attendance(
+      id: id ?? this.id,
+      labourId: labourId ?? this.labourId,
+      supervisorId: supervisorId ?? this.supervisorId,
+      contractorId: contractorId ?? this.contractorId,
+      date: date ?? this.date,
+      status: status ?? this.status,
+      overtimeHours: overtimeHours ?? this.overtimeHours,
+      notes: notes ?? this.notes,
+      remark: remark ?? this.remark,
+      wageAtTime: wageAtTime ?? this.wageAtTime,
+      siteId: siteId ?? this.siteId,
+      petrol: petrol ?? this.petrol,
+      lunch: lunch ?? this.lunch,
+      breakfast: breakfast ?? this.breakfast,
+      tea: tea ?? this.tea,
+      advance: advance ?? this.advance,
+      syncedAt: syncedAt ?? this.syncedAt,
+      isSynced: isSynced ?? this.isSynced,
+      firestoreId: firestoreId ?? this.firestoreId,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+    );
+  }
+
+  static String _readDateValue(dynamic value) {
+    if (value is String && value.isNotEmpty) return value;
+    if (value is Timestamp) return formatDate(value.toDate());
+    if (value is DateTime) return formatDate(value);
+    return '';
+  }
+
+  static DateTime? _readTimestamp(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
+
+  static Future<Box<Attendance>> openBoxSafely() async {
+    try {
+      if (Hive.isBoxOpen(boxName)) return Hive.box<Attendance>(boxName);
+      return await Hive.openBox<Attendance>(boxName);
+    } on HiveError catch (error) {
+      debugPrint('Attendance box migration reset: $error');
+      if (Hive.isBoxOpen(boxName)) {
+        await Hive.box<Attendance>(boxName).close();
+      }
+      if (await Hive.boxExists(boxName)) {
+        await Hive.deleteBoxFromDisk(boxName);
+      }
+      return Hive.openBox<Attendance>(boxName);
+    }
+  }
+}
+
+class AttendanceStatusAdapter extends TypeAdapter<AttendanceStatus> {
+  @override
+  final int typeId = 21;
+
+  @override
+  AttendanceStatus read(BinaryReader reader) {
+    switch (reader.readByte()) {
+      case 0:
+        return AttendanceStatus.present;
+      case 1:
+        return AttendanceStatus.absent;
+      case 2:
+        return AttendanceStatus.half;
+      case 3:
+        return AttendanceStatus.pending;
+      case 4:
+        return AttendanceStatus.quarter;
+      case 5:
+        return AttendanceStatus.threeQuarter;
+      default:
+        return AttendanceStatus.absent;
+    }
+  }
+
+  @override
+  void write(BinaryWriter writer, AttendanceStatus obj) {
+    switch (obj) {
+      case AttendanceStatus.present:
+        writer.writeByte(0);
+        break;
+      case AttendanceStatus.absent:
+        writer.writeByte(1);
+        break;
+      case AttendanceStatus.half:
+        writer.writeByte(2);
+        break;
+      case AttendanceStatus.pending:
+        writer.writeByte(3);
+        break;
+      case AttendanceStatus.quarter:
+        writer.writeByte(4);
+        break;
+      case AttendanceStatus.threeQuarter:
+        writer.writeByte(5);
+        break;
+    }
+  }
+}
+
+class AttendanceAdapter extends TypeAdapter<Attendance> {
+  @override
+  final int typeId = 22;
+
+  @override
+  Attendance read(BinaryReader reader) {
+    final fieldCount = reader.readByte();
+    final fields = <int, dynamic>{};
+    for (var i = 0; i < fieldCount; i++) {
+      fields[reader.readByte()] = reader.read();
+    }
+
+    final hasContractorIdField = fields.containsKey(11);
+
+    String id, labourId, supervisorId, contractorId, date;
+    AttendanceStatus status;
+    double overtimeHours;
+    String notes;
+    DateTime? syncedAt;
+    bool isSynced;
+    String? firestoreId;
+    DateTime? lastSyncedAt;
+
+    if (!hasContractorIdField) {
+      id = fields[0] as String;
+      labourId = fields[1] as String;
+      supervisorId = fields[2] as String;
+      contractorId = '';
+      date = fields[3] as String? ?? '';
+      status = fields[4] as AttendanceStatus? ?? AttendanceStatus.absent;
+      overtimeHours = (fields[5] as num?)?.toDouble() ?? 0;
+      notes = fields[6] as String? ?? '';
+      syncedAt = fields[7] as DateTime?;
+      isSynced = fields[8] as bool? ?? false;
+      firestoreId = fields[9] as String?;
+      lastSyncedAt = fields[10] as DateTime?;
+    } else {
+      id = fields[0] as String;
+      labourId = fields[1] as String;
+      supervisorId = fields[2] as String;
+      contractorId = fields[3] as String? ?? '';
+      date = fields[4] as String? ?? '';
+      status = fields[5] as AttendanceStatus? ?? AttendanceStatus.absent;
+      overtimeHours = (fields[6] as num?)?.toDouble() ?? 0;
+      notes = fields[7] as String? ?? '';
+      syncedAt = fields[8] as DateTime?;
+      isSynced = fields[9] as bool? ?? false;
+      firestoreId = fields[10] as String?;
+      lastSyncedAt = fields[11] as DateTime?;
+    }
+
+    final remark    = fields[12] as String? ?? notes;
+    final wageAtTime = (fields[13] as num?)?.toDouble() ?? 0;
+    final siteId    = fields[14] as String? ?? supervisorId;
+    final petrol    = (fields[15] as num?)?.toDouble() ?? 0;
+    final lunch     = (fields[16] as num?)?.toDouble() ?? 0;
+    final breakfast = (fields[17] as num?)?.toDouble() ?? 0;
+    final tea       = (fields[18] as num?)?.toDouble() ?? 0;
+    final advance   = (fields[19] as num?)?.toDouble() ?? 0;
+
+    return Attendance(
+      id: id,
+      labourId: labourId,
+      supervisorId: supervisorId,
+      contractorId: contractorId,
+      date: date,
+      status: status,
+      overtimeHours: overtimeHours,
+      notes: notes,
+      remark: remark,
+      wageAtTime: wageAtTime,
+      siteId: siteId,
+      petrol: petrol,
+      lunch: lunch,
+      breakfast: breakfast,
+      tea: tea,
+      advance: advance,
+      syncedAt: syncedAt,
+      isSynced: isSynced,
+      firestoreId: firestoreId,
+      lastSyncedAt: lastSyncedAt,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, Attendance obj) {
+    writer
+      ..writeByte(20)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.labourId)
+      ..writeByte(2)
+      ..write(obj.supervisorId)
+      ..writeByte(3)
+      ..write(obj.contractorId)
+      ..writeByte(4)
+      ..write(obj.date)
+      ..writeByte(5)
+      ..write(obj.status)
+      ..writeByte(6)
+      ..write(obj.overtimeHours)
+      ..writeByte(7)
+      ..write(obj.notes)
+      ..writeByte(8)
+      ..write(obj.syncedAt)
+      ..writeByte(9)
+      ..write(obj.isSynced)
+      ..writeByte(10)
+      ..write(obj.firestoreId)
+      ..writeByte(11)
+      ..write(obj.lastSyncedAt)
+      ..writeByte(12)
+      ..write(obj.remark)
+      ..writeByte(13)
+      ..write(obj.wageAtTime)
+      ..writeByte(14)
+      ..write(obj.siteId)
+      ..writeByte(15)
+      ..write(obj.petrol)
+      ..writeByte(16)
+      ..write(obj.lunch)
+      ..writeByte(17)
+      ..write(obj.breakfast)
+      ..writeByte(18)
+      ..write(obj.tea)
+      ..writeByte(19)
+      ..write(obj.advance);
+  }
+}

@@ -1,0 +1,89 @@
+ADD: Advance Payment toggle to the daily allowance 
+bottom sheet as 5th row.
+
+CRITICAL DIFFERENCE — Advance is NOT an allowance:
+- Petrol/Lunch/Breakfast/Tea ADD to payroll total
+- Advance DEDUCTS from payroll total (it's a loan)
+- Advance was already paid in cash → deduct at payroll time
+
+FIRESTORE:
+
+attendance/{date}/records/{labourId}
+  ADD:
+  advance: number (default 0)
+
+  grandTotal calculation:
+  grandTotal = wageAtTime + totalAllowance - advance
+
+  Show clearly in reports:
+  ₹650 wage + ₹280 allowances - ₹500 advance = ₹430 net payable
+
+SEPARATE advance ledger (important for tracking):
+advances/{labourId}/entries/{entryId}
+  - date: string
+  - amount: number
+  - siteId: string
+  - givenBy: uid (supervisor)
+  - note: string (optional)
+  - linkedAttendanceDate: string
+  - type: "daily" (from attendance) | "extra" (admin gives 
+    outside attendance)
+  - recovered: boolean (default false)
+  - recoveredDate: string
+
+This ledger lets admin see:
+  Total advance given to a labour: ₹3500
+  Total recovered via payroll: ₹2000
+  Balance still owed: ₹1500
+
+FLUTTER bottom sheet:
+  Advance row behaves differently from other toggles:
+  - Show in RED color to indicate deduction not addition
+  - Label: "Advance given today"
+  - Show warning text below: "This will be deducted from payroll"
+  
+  Summary line update:
+  "Base wage:        ₹650"
+  "+ Allowances:     ₹280"  (green)
+  "- Advance:        ₹500"  (red)
+  "= Net payable:    ₹430"  (bold)
+
+  Per labour in Already Marked panel:
+  Each labour card shows running advance balance:
+  "Total advance pending: ₹1500"
+
+REACT ADMIN REPORTS:
+
+Labour-wise report — add columns:
+  Advance Given | Net Payable
+
+Labour Profile screen — add section:
+  ADVANCE LEDGER
+  [Date] [Amount Given] [Recovered] [Balance]
+  Running total at bottom: "Outstanding: ₹1500"
+
+Overall Payroll card:
+  ADD: Total Advance Deductions: ₹X
+  This reduces the final cash needed for payroll day
+
+ADMIN EXTRA ADVANCE (outside attendance):
+  On Labour Profile in React admin:
+  "Give Advance" button → amount + note → saves to 
+  advances ledger with type:"extra"
+  Not linked to any attendance date
+  Still deducted in next payroll calculation
+
+BUGS TO PREVENT:
+1. Advance field individual per labour only — 
+   do NOT apply advance to all labours like allowances.
+   Each labour gets different advance amounts.
+   Remove "Apply to All" behavior for advance toggle.
+
+2. grandTotal can never go negative — 
+   if advance > wage + allowances, show warning:
+   "Advance exceeds today's earnings — carry forward?"
+   If yes → mark excess as pending in advance ledger
+
+3. Advance ledger balance must reconcile with 
+   attendance records — run consistency check on 
+   payroll generation

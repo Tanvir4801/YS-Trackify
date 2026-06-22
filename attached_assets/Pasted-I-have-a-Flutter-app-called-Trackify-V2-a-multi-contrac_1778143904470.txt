@@ -1,0 +1,899 @@
+I have a Flutter app called Trackify V2 — a multi-contractor 
+Labour Attendance Management System (SaaS).
+
+I have TWO contractors:
+1. YS Construction (contractorId: "ys_constructions")
+2. MG Construction (contractorId: different ID)
+
+Each contractor has their own supervisor who logs in via phone OTP.
+Each supervisor has their own labours.
+
+Fix ALL issues below. Do NOT change any UI or working features.
+
+=============================================================
+MY FIREBASE STRUCTURE
+=============================================================
+
+contractors/{contractorId}
+{
+  id: string,
+  name: string,          // "YS Construction" or "MG Construction"
+  phone: string,
+  isActive: boolean,
+  createdAt: Timestamp
+}
+
+users/{uid}
+{
+  uid: string,
+  phone: string,
+  name: string,
+  role: "supervisor" | "labour" | "admin",
+  contractorId: string,  // links to contractors collection
+  supervisorId: string | null,
+  isActive: boolean,
+  createdAt: Timestamp
+}
+
+labours/{labourId}
+{
+  id: string,
+  name: string,
+  phone: string,
+  dailyWage: number,
+  overtimeWagePerHour: number,
+  supervisorId: string,   // supervisor's Firebase Auth UID
+  contractorId: string,   // contractor's ID (same as supervisorId in single supervisor setup)
+  isActive: boolean,
+  isSynced: boolean,
+  joiningDate: Timestamp,
+  syncedAt: Timestamp
+}
+
+attendance/{attendanceId}  (FLAT collection)
+{
+  id: string,
+  labourId: string,
+  supervisorId: string,
+  contractorId: string,
+  date: string,           // "YYYY-MM-DD"
+  status: "present" | "absent" | "half",
+  overtimeHours: number,
+  isSynced: boolean,
+  markedVia: "manual" | "qr_scan" | "offline_qr",
+  syncedAt: Timestamp
+}
+
+payments/{paymentId}
+{
+  id: string,
+  labourId: string,
+  supervisorId: string,
+  contractorId: string,
+  type: "salary" | "advance" | "overtime_bonus",
+  amount: number,
+  date: Timestamp,
+  isSynced: boolean
+}
+
+=============================================================
+FIX 1 — DYNAMIC CONTRACTOR NAME ON DASHBOARD
+=============================================================
+
+PROBLEM:
+Dashboard always shows hardcoded "YS Construction".
+When MG Construction supervisor logs in it still shows YS.
+
+LOCATION: Find dashboard screen — shows company name and tagline.
+
+FIX: After login, fetch contractor name from Firestore dynamically.
+
+Step 1 — In SessionService or AuthService, after login fetch:
+```dart
+Future<String> getContractorName() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return 'Trackify';
+  
+  try {
+    // Get user doc to find contractorId
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
+    
+    final contractorId = userDoc.data()?['contractorId'] as String? ?? '';
+    
+    if (contractorId.isEmpty) {
+      // Fallback: use supervisorId as contractorId
+      return await _getNameByContractorId(uid);
+    }
+    
+    return await _getNameByContractorId(contractorId);
+  } catch (e) {
+    debugPrint('getContractorName error: $e');
+    return 'My Company';
+  }
+}
+
+Future<String> _getNameByContractorId(String contractorId) async {
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('contractors')
+        .doc(contractorId)
+        .get();
+    
+    if (doc.exists) {
+      return doc.data()?['name'] as String? ?? 'My Company';
+    }
+    
+    // Try querying by id field
+    final snap = await FirebaseFirestore.instance
+        .collection('contractors')
+        .where('id', isEqualTo: contractorId)
+        .limit(1)
+        .get();
+    
+    if (snap.docs.isNotEmpty) {
+      return snap.docs.first.data()['name'] as String? ?? 'My Company';
+    }
+    
+    return 'My Company';
+  } catch (e) {
+    return 'My Company';
+  }
+}
+```
+
+Step 2 — Store in SharedPreferences after login:
+```dart
+final prefs = await SharedPreferences.getInstance();
+final name = await getContractorName();
+await prefs.setString('contractorName', name);
+```
+
+Step 3 — In DashboardProvider, load contractor name:
+```dart
+String contractorName = 'My Company';
+String contractorTagline = 'From Site to System';
+
+Future<void> loadContractorInfo() async {
+  final prefs = await SharedPreferences.getInstance();
+  // Try cached first
+  contractorName = prefs.getString('contractorName') ?? 'My Company';
+  notifyListeners();
+  
+  // Then fetch fresh from Firestore
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+  
+  try {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users').doc(uid).get();
+    final contractorId = userDoc.data()?['contractorId'] as String? ?? uid;
+    
+    final contractorDoc = await FirebaseFirestore.instance
+        .collection('contractors').doc(contractorId).get();
+    
+    if (contractorDoc.exists) {
+      contractorName = contractorDoc.data()?['name'] as String? 
+                       ?? contractorName;
+      notifyListeners();
+      await prefs.setString('contractorName', contractorName);
+    }
+  } catch (e) {
+    debugPrint('loadContractorInfo error: $e');
+  }
+}
+```
+
+Step 4 — In dashboard screen widget, replace hardcoded text:
+Find: Text('YS Construction') or similar hardcoded company name
+Replace with: Text(provider.contractorName)
+
+Also call loadContractorInfo() in dashboard initialize().
+
+=============================================================
+FIX 2 — LABOUR LIST EMPTY — MULTI-CONTRACTOR FETCH
+=============================================================
+
+PROBLEM:
+- Dashboard shows Total Labour: 2 ✅
+- Labour screen shows "No labour added yet" ❌
+- Two contractors have different supervisors
+- Each supervisor only sees their own labours
+- Query uses wrong field (supervisorId vs contractorId mismatch)
+
+FIX: Find LabourService. Replace the labour fetching method with:
+
+```dart
+Future<void> fetchAndSyncLabours() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  if (uid.isEmpty) return;
+  
+  final db = FirebaseFirestore.instance;
+  final Map<String, Labour> merged = {};
+
+  // Get contractorId from session
+  final contractorId = SessionService.instance.contractorId ?? uid;
+  
+  debugPrint('Fetching labours for uid=$uid contractorId=$contractorId');
+
+  // Query 1: by supervisorId (supervisor's own UID)
+  try {
+    final snap = await db
+        .collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .get();
+    for (var doc in snap.docs) {
+      merged[doc.id] = Labour.fromFirestore(doc);
+    }
+    debugPrint('By supervisorId: ${snap.docs.length}');
+  } catch (e) {
+    debugPrint('supervisorId query error: $e');
+  }
+
+  // Query 2: by contractorId
+  try {
+    final snap = await db
+        .collection('labours')
+        .where('contractorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .get();
+    for (var doc in snap.docs) {
+      merged[doc.id] = Labour.fromFirestore(doc);
+    }
+    debugPrint('By contractorId (uid): ${snap.docs.length}');
+  } catch (e) {
+    debugPrint('contractorId query error: $e');
+  }
+
+  // Query 3: by contractorId from session (if different from uid)
+  if (contractorId != uid) {
+    try {
+      final snap = await db
+          .collection('labours')
+          .where('contractorId', isEqualTo: contractorId)
+          .where('isActive', isEqualTo: true)
+          .get();
+      for (var doc in snap.docs) {
+        merged[doc.id] = Labour.fromFirestore(doc);
+      }
+      debugPrint('By contractorId (session): ${snap.docs.length}');
+    } catch (e) {
+      debugPrint('contractorId session query error: $e');
+    }
+  }
+
+  debugPrint('Total unique labours fetched: ${merged.length}');
+
+  // Save all to Hive
+  final box = Hive.box<Labour>(Labour.boxName);
+  for (var labour in merged.values) {
+    await box.put(labour.id, labour);
+  }
+}
+
+List<Labour> getLocalLabours() {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final contractorId = SessionService.instance.contractorId ?? uid;
+  final box = Hive.box<Labour>(Labour.boxName);
+  
+  return box.values.where((l) {
+    if (!l.isActive) return false;
+    // Match by supervisorId OR contractorId
+    return l.supervisorId == uid || 
+           l.contractorId == uid ||
+           l.contractorId == contractorId;
+  }).toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+}
+```
+
+ALSO fix addLabour to always write BOTH fields:
+```dart
+Future<void> addLabour(Labour labour) async {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final contractorId = SessionService.instance.contractorId ?? uid;
+  
+  // Save to Hive first
+  labour.supervisorId = uid;
+  labour.contractorId = contractorId;
+  labour.isSynced = false;
+  await Hive.box<Labour>(Labour.boxName).put(labour.id, labour);
+
+  // Sync to Firebase
+  try {
+    final docRef = await FirebaseFirestore.instance
+        .collection('labours')
+        .add({
+      'id':                  '',
+      'name':                labour.name,
+      'phone':               labour.phone,
+      'dailyWage':           labour.dailyWage,
+      'overtimeWagePerHour': labour.overtimeWagePerHour,
+      // CRITICAL: write BOTH fields
+      'supervisorId':        uid,
+      'contractorId':        contractorId,
+      'isActive':            true,
+      'isSynced':            true,
+      'joiningDate':         FieldValue.serverTimestamp(),
+      'syncedAt':            FieldValue.serverTimestamp(),
+    });
+    await docRef.update({'id': docRef.id});
+    
+    labour.firestoreId = docRef.id;
+    labour.isSynced = true;
+    await Hive.box<Labour>(Labour.boxName).put(labour.id, labour);
+    debugPrint('Labour added: ${labour.name} | ${docRef.id}');
+  } catch (e) {
+    debugPrint('addLabour Firebase error: $e');
+    rethrow;
+  }
+}
+```
+
+=============================================================
+FIX 3 — SCANNER SHOWING LABOUR ID INSTEAD OF NAME
+=============================================================
+
+PROBLEM:
+Scanner shows "HdEwrD7p8VKUOB7S9dUv" (labourId) instead of 
+labour name like "Ram" in the scans list.
+
+FIX: In scanner_screen.dart, after a successful scan,
+look up the labour name from Hive or Firestore:
+
+```dart
+Future<String> _getLabourName(String labourId) async {
+  // Check Hive first (fast)
+  try {
+    final box = Hive.box<Labour>(Labour.boxName);
+    final labour = box.get(labourId);
+    if (labour != null) return labour.name;
+  } catch (_) {}
+  
+  // Fallback: check Firestore
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('labours')
+        .doc(labourId)
+        .get();
+    if (doc.exists) {
+      return doc.data()?['name'] as String? ?? labourId;
+    }
+  } catch (_) {}
+  
+  return labourId; // fallback to ID if not found
+}
+```
+
+In the scans list, replace:
+```dart
+// Old — shows ID
+title: Text(scan['labourId'] ?? 'Unknown'),
+
+// New — shows name
+FutureBuilder<String>(
+  future: _getLabourName(scan['labourId'] ?? ''),
+  builder: (ctx, snap) => Text(
+    snap.data ?? scan['labourId'] ?? 'Loading...',
+    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+  ),
+),
+```
+
+=============================================================
+FIX 4 — SCANNER PENDING SYNC NOT WORKING
+=============================================================
+
+PROBLEM:
+Scanner shows "5 pending sync" but sync button does nothing.
+Scans are saved to Hive pending_attendance box but not syncing.
+
+FIND: ScannerService.syncPendingScans() method.
+
+FIX: Replace the sync logic:
+```dart
+Future<int> syncPendingScans() async {
+  final box = Hive.box('pending_attendance');
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final contractorId = SessionService.instance.contractorId ?? uid;
+  
+  if (uid.isEmpty) {
+    debugPrint('syncPendingScans: not logged in');
+    return 0;
+  }
+
+  int synced = 0;
+  final db = FirebaseFirestore.instance;
+
+  for (var key in box.keys.toList()) {
+    final rawRecord = box.get(key);
+    if (rawRecord == null) continue;
+    
+    final record = Map<String, dynamic>.from(rawRecord as Map);
+    
+    // Skip already synced
+    if (record['isSynced'] == true) continue;
+
+    final labourId = record['labourId'] as String? ?? '';
+    final date     = record['date']     as String? ?? '';
+    final status   = record['status']   as String? ?? 'present';
+
+    if (labourId.isEmpty || date.isEmpty) {
+      // Invalid record — mark as done to remove from queue
+      record['isSynced'] = true;
+      await box.put(key, record);
+      continue;
+    }
+
+    try {
+      // Check if attendance already exists for this labour+date
+      final existing = await db
+          .collection('attendance')
+          .where('labourId',     isEqualTo: labourId)
+          .where('date',         isEqualTo: date)
+          .where('supervisorId', isEqualTo: uid)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        // Already exists — just mark synced
+        record['isSynced'] = true;
+        await box.put(key, record);
+        synced++;
+        continue;
+      }
+
+      // Write to Firestore
+      final docRef = await db.collection('attendance').add({
+        'labourId':     labourId,
+        'supervisorId': uid,
+        'contractorId': contractorId,
+        'date':         date,
+        'status':       status,
+        'overtimeHours': record['overtimeHours'] ?? 0,
+        'markedVia':    'offline_qr',
+        'isSynced':     true,
+        'syncedAt':     FieldValue.serverTimestamp(),
+      });
+      await docRef.update({'id': docRef.id});
+
+      record['isSynced']    = true;
+      record['firestoreId'] = docRef.id;
+      await box.put(key, record);
+      synced++;
+      
+      debugPrint('Synced scan: $labourId → $status on $date');
+    } catch (e) {
+      debugPrint('Sync failed for $labourId: $e');
+      // Don't mark as synced — will retry next time
+    }
+  }
+
+  debugPrint('syncPendingScans complete: $synced synced');
+  return synced;
+}
+
+int getPendingCount() {
+  try {
+    final box = Hive.box('pending_attendance');
+    return box.values
+        .where((v) {
+          final m = v as Map;
+          return m['isSynced'] != true;
+        })
+        .length;
+  } catch (_) {
+    return 0;
+  }
+}
+```
+
+=============================================================
+FIX 5 — ATTENDANCE PROVIDER LOADS WRONG LABOURS
+=============================================================
+
+PROBLEM:
+Attendance screen says "Add labour first" even though labours exist.
+AttendanceProvider.labours list is empty.
+
+FIX: In AttendanceProvider.initialize(), replace labours fetch:
+```dart
+Future<void> initialize() async {
+  isLoading = true;
+  notifyListeners();
+
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  if (uid.isEmpty) {
+    error = 'Not logged in';
+    isLoading = false;
+    notifyListeners();
+    return;
+  }
+
+  // Fetch labours using both fields
+  await _fetchLabours();
+  // Then fetch attendance for selected date
+  await _service.fetchAttendanceForDate(selectedDateStr);
+  
+  // Load from Hive into attendanceMap
+  final records = _service.getAttendanceForDate(selectedDateStr);
+  attendanceMap = {for (var r in records) r.labourId: r.status.firestoreValue};
+  overtimeMap   = {for (var r in records) r.labourId: r.overtimeHours};
+
+  isLoading = false;
+  notifyListeners();
+}
+
+Future<void> _fetchLabours() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final contractorId = SessionService.instance.contractorId ?? uid;
+  final db = FirebaseFirestore.instance;
+  final Map<String, Labour> merged = {};
+
+  // Query by supervisorId
+  try {
+    final s = await db.collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .get();
+    for (var d in s.docs) merged[d.id] = Labour.fromFirestore(d);
+  } catch (e) { debugPrint('att labours supervisorId: $e'); }
+
+  // Query by contractorId
+  try {
+    final s = await db.collection('labours')
+        .where('contractorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true)
+        .get();
+    for (var d in s.docs) merged[d.id] = Labour.fromFirestore(d);
+  } catch (e) { debugPrint('att labours contractorId: $e'); }
+
+  // Query by contractorId from session
+  if (contractorId != uid) {
+    try {
+      final s = await db.collection('labours')
+          .where('contractorId', isEqualTo: contractorId)
+          .where('isActive', isEqualTo: true)
+          .get();
+      for (var d in s.docs) merged[d.id] = Labour.fromFirestore(d);
+    } catch (e) { debugPrint('att labours session: $e'); }
+  }
+
+  labours = merged.values.toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+  
+  debugPrint('AttendanceProvider labours loaded: ${labours.length}');
+}
+```
+
+=============================================================
+FIX 6 — DASHBOARD STATS REAL-TIME FROM FIREBASE
+=============================================================
+
+PROBLEM:
+Dashboard shows Today Present: 0, Absent: 0, Half: 0
+even after attendance is marked.
+Wage snapshot shows Rs 0.
+
+FIX: In DashboardProvider, replace stats calculation:
+```dart
+Future<void> loadDashboard() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final contractorId = SessionService.instance.contractorId ?? uid;
+  if (uid.isEmpty) return;
+
+  isLoading = true;
+  notifyListeners();
+
+  try {
+    final db = FirebaseFirestore.instance;
+    final today = _todayString();
+    
+    // ── Total labours (both fields) ──
+    final Map<String, dynamic> labourMap = {};
+    
+    final l1 = await db.collection('labours')
+        .where('supervisorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true).get();
+    for (var d in l1.docs) labourMap[d.id] = d.data();
+    
+    final l2 = await db.collection('labours')
+        .where('contractorId', isEqualTo: uid)
+        .where('isActive', isEqualTo: true).get();
+    for (var d in l2.docs) labourMap[d.id] = d.data();
+    
+    totalLabours = labourMap.length;
+
+    // ── Today attendance (both fields) ──
+    final Map<String, String> attMap = {};
+    
+    final a1 = await db.collection('attendance')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isEqualTo: today).get();
+    for (var d in a1.docs) {
+      attMap[d.data()['labourId']] = d.data()['status'];
+    }
+
+    final a2 = await db.collection('attendance')
+        .where('contractorId', isEqualTo: uid)
+        .where('date', isEqualTo: today).get();
+    for (var d in a2.docs) {
+      attMap[d.data()['labourId']] = d.data()['status'];
+    }
+
+    presentToday = attMap.values.where((s) => s == 'present').length;
+    absentToday  = attMap.values.where((s) => s == 'absent').length;
+    halfToday    = attMap.values.where((s) => s == 'half').length;
+
+    // ── Wage calculation ──
+    double todayWage = 0;
+    for (var entry in attMap.entries) {
+      final labData = labourMap[entry.key];
+      if (labData == null) continue;
+      final wage = (labData['dailyWage'] as num?)?.toDouble() ?? 0;
+      if (entry.value == 'present') todayWage += wage;
+      else if (entry.value == 'half') todayWage += wage / 2;
+    }
+    todayWages = todayWage;
+
+    // ── Monthly payments ──
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final paySnap = await db.collection('payments')
+        .where('supervisorId', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo: 
+               Timestamp.fromDate(startOfMonth))
+        .get();
+    monthlyPayments = paySnap.docs
+        .fold(0.0, (s, d) => s + ((d.data()['amount'] as num?)?.toDouble() ?? 0));
+
+  } catch (e) {
+    debugPrint('loadDashboard error: $e');
+    error = e.toString();
+  } finally {
+    isLoading = false;
+    notifyListeners();
+  }
+}
+
+String _todayString() {
+  final now = DateTime.now();
+  return '${now.year}-'
+      '${now.month.toString().padLeft(2,'0')}-'
+      '${now.day.toString().padLeft(2,'0')}';
+}
+```
+
+Also add real-time listener for attendance changes:
+```dart
+StreamSubscription? _attSub;
+
+void startAttendanceListener() {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  if (uid.isEmpty) return;
+  
+  _attSub?.cancel();
+  _attSub = FirebaseFirestore.instance
+      .collection('attendance')
+      .where('supervisorId', isEqualTo: uid)
+      .where('date', isEqualTo: _todayString())
+      .snapshots()
+      .listen((_) => loadDashboard());
+}
+
+@override
+void dispose() {
+  _attSub?.cancel();
+  super.dispose();
+}
+```
+
+Call startAttendanceListener() at end of loadDashboard().
+
+=============================================================
+FIX 7 — SESSION SERVICE CONTRACTOR ID
+=============================================================
+
+PROBLEM:
+SessionService.instance.contractorId is null for some users
+causing all queries to fall back to uid only.
+
+FIX: In AuthService or wherever login completes, always set 
+contractorId in SessionService:
+
+```dart
+// After successful login and fetching user doc:
+Future<void> _setupSession(String uid) async {
+  try {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users').doc(uid).get();
+    
+    final data = userDoc.data() ?? {};
+    final contractorId = data['contractorId'] as String? ?? '';
+    final role         = data['role']         as String? ?? '';
+    final name         = data['name']         as String? ?? '';
+    
+    // Set in SessionService
+    SessionService.instance.setSession(
+      uid:          uid,
+      contractorId: contractorId.isNotEmpty ? contractorId : uid,
+      role:         role,
+      name:         name,
+    );
+    
+    // Cache in SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('uid',          uid);
+    await prefs.setString('contractorId', contractorId.isNotEmpty ? contractorId : uid);
+    await prefs.setString('role',         role);
+    await prefs.setString('name',         name);
+    
+    debugPrint('Session set: uid=$uid contractorId=$contractorId role=$role');
+  } catch (e) {
+    debugPrint('_setupSession error: $e');
+    // Fallback: use uid as contractorId
+    SessionService.instance.setSession(
+      uid: uid, contractorId: uid, role: 'supervisor', name: '');
+  }
+}
+```
+
+Also update SessionService to have setSession method:
+```dart
+class SessionService {
+  static final SessionService instance = SessionService._();
+  SessionService._();
+  
+  String? uid;
+  String? contractorId;
+  String? role;
+  String? name;
+  
+  void setSession({
+    required String uid,
+    required String contractorId,
+    required String role,
+    required String name,
+  }) {
+    this.uid          = uid;
+    this.contractorId = contractorId;
+    this.role         = role;
+    this.name         = name;
+    debugPrint('SessionService updated: $uid / $contractorId / $role');
+  }
+  
+  void clear() {
+    uid          = null;
+    contractorId = null;
+    role         = null;
+    name         = null;
+  }
+  
+  bool get isLoggedIn => uid != null && uid!.isNotEmpty;
+}
+```
+
+=============================================================
+FIX 8 — MULTI-CONTRACTOR DATA ISOLATION
+=============================================================
+
+PROBLEM:
+YS supervisor might see MG labours if contractorId matches uid.
+Need strict isolation between contractors.
+
+FIX: Add this helper in a shared utils file:
+```dart
+// lib/core/utils/contractor_utils.dart
+
+class ContractorUtils {
+  
+  // Returns true if this labour belongs to current supervisor
+  static bool labourBelongsToSupervisor(
+      Labour labour, String uid, String contractorId) {
+    return labour.supervisorId == uid ||
+           labour.contractorId == uid ||
+           labour.contractorId == contractorId;
+  }
+  
+  // Filter a list of labours for current supervisor only
+  static List<Labour> filterForSupervisor(
+      List<Labour> all, String uid, String contractorId) {
+    return all.where((l) => 
+      l.isActive && labourBelongsToSupervisor(l, uid, contractorId)
+    ).toList();
+  }
+}
+```
+
+=============================================================
+ALSO FIX — Labour.fromFirestore() in labour model
+=============================================================
+
+Make sure Labour model has these fields and fromFirestore:
+```dart
+// Add to Labour HiveObject if not present:
+@HiveField(20) String contractorId = '';
+@HiveField(21) String? firestoreId;
+@HiveField(22) bool isSynced = false;
+@HiveField(23) double overtimeWagePerHour = 0;
+
+// Add factory constructor:
+factory Labour.fromFirestore(DocumentSnapshot doc) {
+  final d = doc.data() as Map<String, dynamic>;
+  final l = Labour(
+    id:           doc.id,
+    name:         d['name']  as String? ?? '',
+    phone:        d['phone'] as String? ?? '',
+    dailyWage:    (d['dailyWage'] as num?)?.toDouble() ?? 0,
+    supervisorId: d['supervisorId'] as String? ?? '',
+    isActive:     d['isActive'] as bool? ?? true,
+  );
+  l.contractorId        = d['contractorId'] as String? ?? '';
+  l.firestoreId         = doc.id;
+  l.isSynced            = true;
+  l.overtimeWagePerHour = (d['overtimeWagePerHour'] as num?)?.toDouble() ?? 0;
+  return l;
+}
+```
+
+=============================================================
+IMPLEMENTATION ORDER
+=============================================================
+
+Fix in this exact order and test after each:
+
+1. Fix SessionService.setSession() — foundation for everything
+2. Fix AuthService._setupSession() — sets contractorId correctly
+3. Fix LabourService.fetchAndSyncLabours() + addLabour()
+4. Fix AttendanceProvider._fetchLabours()
+5. Fix DashboardProvider.loadDashboard() + contractor name
+6. Fix ScannerService.syncPendingScans()
+7. Fix scanner scan list to show labour names
+8. Run app — test with BOTH contractors separately
+
+=============================================================
+VERIFICATION STEPS AFTER FIXING
+=============================================================
+
+Add this debug function and call it after login:
+```dart
+Future<void> debugSession() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  final session = SessionService.instance;
+  debugPrint('═══ SESSION DEBUG ═══');
+  debugPrint('Firebase UID:  $uid');
+  debugPrint('Session UID:   ${session.uid}');
+  debugPrint('ContractorId:  ${session.contractorId}');
+  debugPrint('Role:          ${session.role}');
+  debugPrint('Name:          ${session.name}');
+  debugPrint('═══════════════════');
+  
+  // Check labours
+  final snap1 = await FirebaseFirestore.instance
+      .collection('labours')
+      .where('supervisorId', isEqualTo: uid)
+      .get();
+  debugPrint('Labours by supervisorId: ${snap1.docs.length}');
+  
+  final snap2 = await FirebaseFirestore.instance
+      .collection('labours')
+      .where('contractorId', isEqualTo: uid)
+      .get();
+  debugPrint('Labours by contractorId: ${snap2.docs.length}');
+}
+```
+
+Expected after fix:
+- YS supervisor login → contractorName = "YS Construction"
+- MG supervisor login → contractorName = "MG Construction"  
+- Each supervisor sees ONLY their own labours
+- Attendance marks correctly and shows in dashboard
+- Scanner syncs all pending records
+- Scanner shows labour names not IDs
+
+DO NOT change any UI styling, colors, or layouts.
+Show complete fixed file for each change.
+Test after every fix before moving to next.

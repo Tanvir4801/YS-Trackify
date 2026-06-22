@@ -1,0 +1,83 @@
+## Change 15 — Firestore data is NEVER touched by deployment
+
+Confirm to the agent: Vercel deployment only updates the 
+React/Next.js website code. It does NOT touch Firestore.
+Firestore data lives independently in Firebase cloud.
+A new deployment CANNOT delete or change Firestore data.
+The only way to change data is via the app/admin panel UI.
+
+=============================================================
+SUMMARY OF ALL STATUS RULES
+=============================================================
+
+After these changes, the full status logic is:
+
+| Status  | Counts | In wage | Shows at sites | Can change to |
+|---------|--------|---------|----------------|---------------|
+| present | ✓      | Full    | Only that site | A, H, Pending |
+| absent  | ✓      | Zero    | Only that site | P, H, Pending |
+| half    | ✓      | Half    | Only that site | P, A, Pending |
+| pending | ✗      | Zero    | ALL sites      | P, A, H       |
+| (none)  | ✗      | Zero    | ALL sites      | P, A, H       |
+
+"pending" and "no record" behave identically for the labour 
+pool. The difference is "pending" has a Firestore record 
+(so admin can see it was reset), while "none" has no record.
+
+=============================================================
+IMPLEMENTATION ORDER (strict — do not skip)
+=============================================================
+
+1. Add AttendanceStatus.pending to enum (Flutter)
+2. Add markAsPending() to AttendanceService (Flutter)
+3. Add allTodayMap stream to AttendanceProvider (Flutter)
+4. Update availableLaboursForCurrentSite filter (Flutter)
+5. Add ↩ Pending button to attendance screen UI (Flutter)
+6. Update summary chips to include Pending count (Flutter)
+7. Add markAsPending() to attendanceService.js (React)
+8. Add ↩ Pending button to admin attendance table (React)
+9. Add pending to status filter dropdown (React)
+10. Fix wage calculation to exclude pending (React)
+11. Replace all getDocs with onSnapshot in React pages
+12. Add contractor role support in AuthContext (React)
+13. Add useContractorFilter hook (React)
+14. Build ContractorDailyView component (React)
+15. Test locally, then push to GitHub for Vercel deploy
+
+=============================================================
+VERIFICATION — run these exact tests after all changes
+=============================================================
+
+Test 1 — Pending basics:
+- Mark a labour Absent at Site A
+- Tap ↩ button → confirm dialog → confirm
+- Labour disappears from Site A "Already Marked" section
+- Go to Site B → labour appears in available list ✓
+
+Test 2 — No data loss:
+- Check Firebase Console → attendance collection
+- The old "absent" record still exists with status: "pending"
+- Record is NOT deleted, just updated ✓
+
+Test 3 — Wage excludes pending:
+- Labour set to Pending
+- Dashboard wage snapshot does NOT include their wage ✓
+- Reports do NOT include pending labours in salary total ✓
+
+Test 4 — Admin panel real-time:
+- Mark attendance in Flutter app
+- Admin panel attendance page updates within 3 seconds
+- WITHOUT refreshing the browser ✓
+
+Test 5 — Contractor login:
+- Create a user in Firebase Auth with email/password
+- Add to Firestore users/{uid} with role: "contractor",
+  contractorId: "their_contractor_id"
+- Login to admin panel with that email
+- Sees ONLY their own sites, labours, attendance ✓
+
+Test 6 — Vercel deploy safety:
+- Push changes to GitHub
+- Vercel deploys new version
+- Open Firebase Console → data is exactly the same ✓
+- Open deployed site → functionality works ✓

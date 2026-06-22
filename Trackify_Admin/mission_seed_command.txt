@@ -1,0 +1,26 @@
+
+const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+const { db } = await import('./src/lib/firebase.js');
+
+const seedLogs = [
+  { severity: 'CRITICAL', module: 'Errors', action: 'System OOM', companyId: 'Trackify_Internal', userId: 'SYSTEM', details: 'Out of memory during bulk PDF export.' },
+  { severity: 'SECURITY', module: 'Security', action: 'Multiple Failed Logins', companyId: 'ABC Infra', userId: 'user_1122', details: '15 failed login attempts in 2 minutes.' },
+  { severity: 'WARNING', module: 'Firebase', action: 'Storage Quota Approaching', companyId: 'Global Builders', userId: 'SYSTEM', details: 'Used 85% of monthly bandwidth allocation.' },
+  { severity: 'SUCCESS', module: 'Payroll', action: 'Payroll Calculated', companyId: 'YS Construction', userId: 'admin_rakesh', details: 'Generated payroll for 450 labours in 2.3s.' },
+  { severity: 'INFO', module: 'Attendance', action: 'Bulk Check-in', companyId: 'DLF Sites', userId: 'supervisor_raj', details: 'Checked in 25 labours via QR Scanner.' },
+  { severity: 'CRITICAL', module: 'TrackOps', action: 'Company Disabled', companyId: 'ABC Infra', userId: 'SuperAdmin_HQ', details: 'Company disabled due to unpaid subscription.' },
+  { severity: 'ERROR', module: 'Reports', action: 'PDF Generation Failed', companyId: 'Global Builders', userId: 'supervisor_amit', details: 'Missing font dependencies.' },
+  { severity: 'SUCCESS', module: 'Subscription', action: 'Plan Upgraded', companyId: 'L&T Construction', userId: 'admin_kumar', details: 'Upgraded to Premium Tier (10,000+ Labours).' },
+];
+
+let added = 0;
+for(const log of seedLogs) {
+  // Add some time variance to timestamps so they sort nicely
+  const timeOffset = Math.floor(Math.random() * 10000000);
+  await addDoc(collection(db, 'mission_logs'), {
+    ...log,
+    timestamp: new Date(Date.now() - timeOffset)
+  });
+  added++;
+}
+console.log("Seeded " + added + " mission logs!");
