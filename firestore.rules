@@ -87,6 +87,24 @@ service cloud.firestore {
                     || isContractorAdmin(resource.data.contractorId);
     }
 
+    // ── sites/ ───────────────────────────────────────────────────────────────
+    // Contractors and supervisors can manage sites within their own tenant.
+
+    match /sites/{siteId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSuperAdmin()
+                    || (isOwnTenantData(request.resource.data.contractorId)
+                        && canManageTenant(request.resource.data.contractorId));
+
+      allow update: if isSuperAdmin()
+                    || (isInTenant(resource.data.contractorId)
+                        && canManageTenant(resource.data.contractorId));
+
+      allow delete: if isSuperAdmin();
+    }
+
     // ── attendance flat collection ────────────────────────────────────────────
     // Supervisors write directly (no Cloud Function required).
 
@@ -134,5 +152,15 @@ service cloud.firestore {
 
       allow delete: if isSuperAdmin();
     }
+
+    // ── activity_log/ ────────────────────────────────────────────────────────
+    // Best-effort audit log. Any signed-in user can write; only super_admin reads.
+
+    match /activity_log/{logId} {
+      allow read:   if isSuperAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isSuperAdmin();
+    }
+
   }
 }
