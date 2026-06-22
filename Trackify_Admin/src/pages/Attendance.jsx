@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calendar, Save, CheckCheck, ClipboardList, Download, ChevronLeft, ChevronRight, Search, X, Plus, Shield, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import { Calendar, Save, CheckCheck, ClipboardList, Download, ChevronLeft, ChevronRight, Search, X, Plus, Shield, ChevronDown, ChevronUp, MessageSquare, MapPin, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../store/authStore';
 import { useLabours } from '../hooks/useLabours';
 import { useAttendanceByDate } from '../hooks/useAttendance';
 import { bulkMarkAttendance, getAttendanceRange, updateAttendanceRemark } from '../lib/services/attendance.service';
 import { addTemporaryLabour } from '../lib/services/labours.service';
+import { subscribeSites } from '../lib/services/sites.service';
 import { todayKey, toDateKey, exportCSV, formatCurrency } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -69,9 +70,18 @@ export default function Attendance() {
   const [search, setSearch] = useState('');
   const [editingOT, setEditingOT] = useState(null);
   const [editingRemark, setEditingRemark] = useState(null);
+  const [sites, setSites] = useState([]);
+  const [viewMode, setViewMode] = useState('all'); // 'all' | 'bysite'
 
   const { data: labours, isLoading: loadingLabours } = useLabours();
   const { records, isLoading: loadingRecords } = useAttendanceByDate(date);
+
+  useEffect(() => {
+    const contractorId = isSupervisor ? scopeFromStore : writeScope;
+    if (!contractorId) return;
+    const unsub = subscribeSites(contractorId, setSites);
+    return unsub;
+  }, [writeScope, scopeFromStore, isSupervisor]);
 
   useEffect(() => {
     const next = {};
@@ -375,6 +385,20 @@ export default function Attendance() {
             <Plus className="h-4 w-4" /> Temp Labour
           </Button>
           <Button variant="outline" onClick={handleExport} className="gap-1 text-xs"><Download className="h-4 w-4" /> CSV</Button>
+          {sites.length > 0 && (
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+              <button
+                onClick={() => setViewMode('all')}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >All</button>
+              <button
+                onClick={() => setViewMode('bysite')}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-slate-200 flex items-center gap-1 ${viewMode === 'bysite' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >
+                <MapPin className="h-3 w-3" /> By Site
+              </button>
+            </div>
+          )}
           <Button onClick={handleSave} disabled={saving || labours.length === 0} className="gap-2 bg-blue-600 text-white hover:bg-blue-700">
             <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save'}
           </Button>
@@ -429,6 +453,154 @@ export default function Attendance() {
         </div>
       </div>
 
+      {/* ── BY-SITE VIEW ──────────────────────────────────────────────── */}
+      {viewMode === 'bysite' && (
+        <div className="space-y-4">
+          {loadingLabours || loadingRecords ? (
+            <LoadingSpinner label="Loading attendance…" />
+          ) : (
+            <>
+              {(() => {
+                const siteMap = Object.fromEntries(sites.map((s) => [s.id, s.name]));
+                const grouped = {};
+                labours.forEach((l) => {
+                  const key = l.siteId && siteMap[l.siteId] ? l.siteId : '__unassigned__';
+                  if (!grouped[key]) grouped[key] = [];
+                  grouped[key].push(l);
+                });
+
+                const renderSiteBlock = (siteId, siteLabours) => {
+                  const siteName = siteId === '__unassigned__' ? 'Unassigned' : (siteMap[siteId] || siteId);
+                  let siteTotal = 0;
+                  let sitePresent = 0, siteAbsent = 0, siteHalf = 0;
+                  siteLabours.forEach((l) => {
+                    const row = rows[l.id] || defaultRow(l);
+                    const wage = Number(l.dailyWage) || 0;
+                    const otRate = Number(l.overtimeWagePerHour) || 0;
+                    const otH = Number(row.overtimeHours) || 0;
+                    if (row.status === 'present') { siteTotal += wage + otH * otRate; sitePresent++; }
+                    else if (row.status === 'half')  { siteTotal += wage / 2 + otH * otRate; siteHalf++; }
+                    else if (row.status === 'absent') { siteAbsent++; }
+                  });
+
+                  return (
+                    <div key={siteId} className="rounded-2xl border border-slate-200/70 bg-white/90 shadow-sm overflow-hidden">
+                      <div className={`flex items-center justify-between px-5 py-3 ${siteId === '__unassigned__' ? 'bg-slate-50 border-b border-slate-200' : 'bg-blue-50 border-b border-blue-100'}`}>
+                        <div className="flex items-center gap-2">
+                          {siteId === '__unassigned__'
+                            ? <Building2 className="h-4 w-4 text-slate-400" />
+                            : <MapPin className="h-4 w-4 text-blue-600" />}
+                          <span className={`font-semibold text-sm ${siteId === '__unassigned__' ? 'text-slate-500' : 'text-blue-800'}`}>{siteName}</span>
+                          <span className="ml-1 rounded-full bg-white/80 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">{siteLabours.length} labours</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="text-green-700 font-medium">P: {sitePresent}</span>
+                          <span className="text-red-600 font-medium">A: {siteAbsent}</span>
+                          <span className="text-amber-600 font-medium">H: {siteHalf}</span>
+                          <span className="font-bold text-slate-800">Net: {formatCurrency(siteTotal)}</span>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                            <tr>
+                              <th className="px-4 py-2">Labour</th>
+                              <th className="px-4 py-2">Daily Wage</th>
+                              <th className="px-4 py-2">Status</th>
+                              <th className="px-4 py-2 text-right">OT Hrs</th>
+                              <th className="px-4 py-2">Remark</th>
+                              <th className="px-4 py-2 text-right font-semibold text-slate-600">Net Pay</th>
+                              <th className="px-4 py-2 text-center">Saved</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {siteLabours.map((l) => {
+                              const row = rows[l.id] || defaultRow(l);
+                              const wage = Number(l.dailyWage) || 0;
+                              const otRate = Number(l.overtimeWagePerHour) || 0;
+                              const otH = Number(row.overtimeHours) || 0;
+                              let net = 0;
+                              if (row.status === 'present') net = wage + otH * otRate;
+                              else if (row.status === 'half') net = wage / 2 + otH * otRate;
+                              const isSaved = !!row.recordId;
+                              return (
+                                <tr key={l.id} className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50/60">
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">{initials(l.name)}</div>
+                                      <div>
+                                        <div className="font-medium text-slate-900">{l.name}</div>
+                                        {l.skill && <div className="text-xs text-slate-400">{l.skill}</div>}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-600">{formatCurrency(wage)}</td>
+                                  <td className="px-4 py-3">
+                                    <button onClick={() => clickStatus(l.id)} className="inline-block cursor-pointer hover:scale-105 active:scale-95">
+                                      <StatusBadge status={row.status} />
+                                    </button>
+                                    <select value={row.status} onChange={(e) => updateRow(l.id, { status: e.target.value })} className="ml-2 h-7 rounded border border-slate-200 bg-white px-1.5 text-xs outline-none focus:border-blue-400">
+                                      {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                    </select>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    {editingOT === l.id ? (
+                                      <Input type="number" min="0" step="0.5" value={row.overtimeHours} onChange={(e) => updateRow(l.id, { overtimeHours: e.target.value })} onBlur={() => setEditingOT(null)} autoFocus className="h-7 w-16 text-right" />
+                                    ) : (
+                                      <button onClick={() => setEditingOT(l.id)} className="text-slate-700 hover:underline">{row.overtimeHours}</button>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {editingRemark === l.id ? (
+                                      <Input type="text" value={row.remark || ''} onChange={(e) => updateRow(l.id, { remark: e.target.value })} onBlur={() => handleRemarkSave(l.id)} autoFocus className="h-7 w-32 text-xs" />
+                                    ) : (
+                                      <button onClick={() => setEditingRemark(l.id)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700">
+                                        <MessageSquare className="h-3 w-3" />
+                                        <span className="max-w-24 truncate">{row.remark || '—'}</span>
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right font-bold text-slate-900">{formatCurrency(net)}</td>
+                                  <td className="px-4 py-3 text-center">
+                                    {isSaved ? <span className="text-xs font-semibold text-green-600">✓ Saved</span> : <span className="text-xs text-slate-300">—</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-slate-200 bg-slate-50">
+                              <td colSpan={5} className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Site Total</td>
+                              <td className="px-4 py-2 text-right text-sm font-bold text-blue-700">{formatCurrency(siteTotal)}</td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                };
+
+                const orderedSites = sites.filter((s) => grouped[s.id]);
+                const hasUnassigned = !!grouped['__unassigned__'];
+
+                return (
+                  <>
+                    {orderedSites.map((s) => renderSiteBlock(s.id, grouped[s.id]))}
+                    {hasUnassigned && renderSiteBlock('__unassigned__', grouped['__unassigned__'])}
+                    {labours.length === 0 && (
+                      <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-10 text-center text-slate-400 shadow-sm">No labours found.</div>
+                    )}
+                  </>
+                );
+              })()}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── ALL-LABOURS VIEW ──────────────────────────────────────────── */}
+      {viewMode === 'all' && (
       <div className="rounded-2xl border border-slate-200/70 bg-white/90 shadow-sm">
         {loadingLabours || loadingRecords ? (
           <LoadingSpinner label="Loading attendance…" />
@@ -556,6 +728,7 @@ export default function Attendance() {
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

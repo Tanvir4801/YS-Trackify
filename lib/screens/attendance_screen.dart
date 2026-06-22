@@ -418,43 +418,67 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, List<Labour> allDataLabours) {
-    // Compute how many labours are still pending per site
     final pendingBySite = <String, int>{};
+    final totalBySite   = <String, int>{};
     for (final site in sites) {
+      totalBySite[site.id]   = allDataLabours.where((l) => l.siteId == site.id).length;
       pendingBySite[site.id] = allDataLabours
           .where((l) => l.siteId == site.id && !attendanceByLabour.containsKey(l.id))
           .length;
     }
     final totalPending = allDataLabours.where((l) => !attendanceByLabour.containsKey(l.id)).length;
+    final totalAll     = allDataLabours.length;
 
-    return Container(
-      height: 44,
-      margin: const EdgeInsets.fromLTRB(0, 0, 0, 6),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          _SiteChip(
-            label: 'All Sites',
-            selected: _selectedSiteId == null,
-            icon: Icons.location_city_rounded,
-            pendingCount: totalPending,
-            onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+          child: Row(
+            children: [
+              const Icon(Icons.apartment_rounded, size: 13, color: AppColors.textTertiary),
+              const SizedBox(width: 5),
+              const Text('Sites', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textTertiary, letterSpacing: 0.5)),
+              const SizedBox(width: 6),
+              Container(height: 1, width: 40, color: AppColors.borderLight),
+              const Spacer(),
+              if (_selectedSiteId != null)
+                GestureDetector(
+                  onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
+                  child: const Text('Show All', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                ),
+            ],
           ),
-          ...sites.map((site) => Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: _SiteChip(
-              label: site.name,
-              selected: _selectedSiteId == site.id,
-              pendingCount: pendingBySite[site.id] ?? 0,
-              onTap: () {
-                HapticUtils.light();
-                setState(() => _selectedSiteId = site.id);
-              },
-            ),
-          )),
-        ],
-      ),
+        ),
+        SizedBox(
+          height: 112,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            children: [
+              _SiteCard(
+                label: 'All Sites',
+                icon: Icons.grid_view_rounded,
+                pending: totalPending,
+                total: totalAll,
+                selected: _selectedSiteId == null,
+                onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
+              ),
+              ...sites.map((site) => Padding(
+                padding: const EdgeInsets.only(left: 10),
+                child: _SiteCard(
+                  label: site.name,
+                  icon: Icons.location_on_rounded,
+                  pending: pendingBySite[site.id] ?? 0,
+                  total: totalBySite[site.id] ?? 0,
+                  selected: _selectedSiteId == site.id,
+                  onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = site.id); },
+                ),
+              )),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -679,71 +703,123 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 }
 
-class _SiteChip extends StatelessWidget {
-  const _SiteChip({
+class _SiteCard extends StatelessWidget {
+  const _SiteCard({
     required this.label,
+    required this.icon,
+    required this.pending,
+    required this.total,
     required this.selected,
     required this.onTap,
-    this.icon,
-    this.pendingCount = 0,
   });
   final String label;
+  final IconData icon;
+  final int pending;
+  final int total;
   final bool selected;
   final VoidCallback onTap;
-  final IconData? icon;
-  final int pendingCount;
 
   @override
   Widget build(BuildContext context) {
+    final isDone = total > 0 && pending == 0;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        width: 130,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary : AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected
+                ? AppColors.primary
+                : isDone
+                    ? AppColors.present.withValues(alpha: 0.5)
+                    : AppColors.border,
+            width: selected ? 2 : 1,
+          ),
           boxShadow: selected
-              ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 2))]
-              : [],
+              ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.28), blurRadius: 10, offset: const Offset(0, 4))]
+              : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 1))],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[
-              Icon(icon, size: 13, color: selected ? Colors.white : AppColors.textSecondary),
-              const SizedBox(width: 4),
-            ],
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 14, color: selected ? Colors.white : AppColors.primary),
+                ),
+                const Spacer(),
+                if (isDone)
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : AppColors.present.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.check_rounded, size: 10, color: selected ? Colors.white : AppColors.present),
+                  )
+                else if (pending > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.22)
+                          : AppColors.absent.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$pending',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: selected ? Colors.white : AppColors.absent,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : AppColors.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              total == 0
+                  ? 'No labours'
+                  : isDone
+                      ? 'All marked ✓'
+                      : '$pending of $total pending',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isDone ? FontWeight.w600 : FontWeight.w400,
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.75)
+                    : isDone
+                        ? AppColors.present
+                        : AppColors.textTertiary,
               ),
             ),
-            // Pending count badge — shows how many labours still need marking
-            if (pendingCount > 0) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? Colors.white.withValues(alpha: 0.3)
-                      : AppColors.primary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$pendingCount',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
