@@ -159,11 +159,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         final pendingList = filteredLabours.where((l) => !attendanceByLabour.containsKey(l.id)).toList();
         final markedList  = filteredLabours.where((l) => attendanceByLabour.containsKey(l.id)).toList();
 
-        final presentCount = attendanceByLabour.values.where((s) => s == 'present').length;
-        final absentCount  = attendanceByLabour.values.where((s) => s == 'absent').length;
-        final halfDayCount = attendanceByLabour.values.where((s) => s == 'half').length;
+        // Stats are scoped to whichever labours are currently visible (all or one site)
+        final siteLabourIds = allLabours.map((l) => l.id).toSet();
+        final presentCount = attendanceByLabour.entries.where((e) => siteLabourIds.contains(e.key) && e.value == 'present').length;
+        final absentCount  = attendanceByLabour.entries.where((e) => siteLabourIds.contains(e.key) && e.value == 'absent').length;
+        final halfDayCount = attendanceByLabour.entries.where((e) => siteLabourIds.contains(e.key) && e.value == 'half').length;
         final totalMarked  = presentCount + absentCount + halfDayCount;
-        final totalLabours = data.labours.length;
+        final totalLabours = allLabours.length;
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -174,7 +176,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
               // ── SITES SELECTOR ──────────────────────────────────────────
               if (sites.isNotEmpty)
-                _buildSiteSelector(sites),
+                _buildSiteSelector(sites, attendanceByLabour, data.labours),
 
               _buildSearchBar(),
               _buildSummaryRow(presentCount, absentCount, halfDayCount),
@@ -295,7 +297,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  Widget _buildSiteSelector(List<SiteModel> sites) {
+  Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, List<Labour> allDataLabours) {
+    // Compute how many labours are still pending per site
+    final pendingBySite = <String, int>{};
+    for (final site in sites) {
+      pendingBySite[site.id] = allDataLabours
+          .where((l) => l.siteId == site.id && !attendanceByLabour.containsKey(l.id))
+          .length;
+    }
+    final totalPending = allDataLabours.where((l) => !attendanceByLabour.containsKey(l.id)).length;
+
     return Container(
       height: 44,
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 6),
@@ -307,6 +318,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             label: 'All Sites',
             selected: _selectedSiteId == null,
             icon: Icons.location_city_rounded,
+            pendingCount: totalPending,
             onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
           ),
           ...sites.map((site) => Padding(
@@ -314,6 +326,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             child: _SiteChip(
               label: site.name,
               selected: _selectedSiteId == site.id,
+              pendingCount: pendingBySite[site.id] ?? 0,
               onTap: () {
                 HapticUtils.light();
                 setState(() => _selectedSiteId = site.id);
@@ -547,11 +560,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 }
 
 class _SiteChip extends StatelessWidget {
-  const _SiteChip({required this.label, required this.selected, required this.onTap, this.icon});
+  const _SiteChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+    this.pendingCount = 0,
+  });
   final String label;
   final bool selected;
   final VoidCallback onTap;
   final IconData? icon;
+  final int pendingCount;
 
   @override
   Widget build(BuildContext context) {
@@ -564,7 +584,9 @@ class _SiteChip extends StatelessWidget {
           color: selected ? AppColors.primary : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: selected ? AppColors.primary : AppColors.border),
-          boxShadow: selected ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 2))] : [],
+          boxShadow: selected
+              ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 2))]
+              : [],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -581,6 +603,27 @@ class _SiteChip extends StatelessWidget {
                 color: selected ? Colors.white : AppColors.textSecondary,
               ),
             ),
+            // Pending count badge — shows how many labours still need marking
+            if (pendingCount > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : AppColors.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$pendingCount',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
