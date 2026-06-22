@@ -2,3 +2,4 @@
 - [Admin panel esbuild](admin-panel-esbuild.md) — lucide-react ESM bundle missing; fix: alias to CJS in vite.config.js + optimizeDeps.include; run vite via `node node_modules/vite/dist/node/cli.js`.
 - [Hive box names](hive-box-names.md) — v2_labours (typeId=20), v2_attendance (typeId=22), v2_payments (typeId=23/24); old boxes labour_box/attendance_box/payment_box kept open for backward compat.
 - [Attendance dual-write](attendance-dual-write.md) — All attendance writes go to flat `attendance/{autoId}` AND nested `attendance/{contractorId}/dates/{dateKey}/records/{labourId}` simultaneously.
+- [Allowances feature](allowances-feature.md) — Allowance fields HiveField 15-19 on Attendance; SiteModel HiveField 7-10; applyAllowances batch-writes both flat+nested paths; siteAllowances audit collection; advance is individual only (no Apply-to-All).

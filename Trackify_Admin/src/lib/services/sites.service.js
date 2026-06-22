@@ -16,6 +16,7 @@ const SITES_COLLECTION = 'sites';
 
 function snapToSite(snap) {
   const d = snap.data() || {};
+  const da = d.defaultAllowances || {};
   return {
     id: snap.id,
     name: d.name || '',
@@ -23,6 +24,12 @@ function snapToSite(snap) {
     contractorId: d.contractorId || '',
     isActive: d.isActive !== false,
     createdAt: d.createdAt?.toDate?.() || null,
+    defaultAllowances: {
+      petrol:    Number(da.petrol    ?? 0),
+      lunch:     Number(da.lunch     ?? 0),
+      breakfast: Number(da.breakfast ?? 0),
+      tea:       Number(da.tea       ?? 0),
+    },
   };
 }
 
@@ -31,7 +38,6 @@ const sortByName = (arr) => arr.sort((a, b) => a.name.localeCompare(b.name));
 export async function getSites(contractorId) {
   if (!contractorId) return [];
   try {
-    // No orderBy — avoids composite-index requirement; sort client-side
     const q = query(
       collection(db, SITES_COLLECTION),
       where('contractorId', '==', contractorId),
@@ -47,7 +53,6 @@ export async function getSites(contractorId) {
 
 export function subscribeSites(contractorId, callback) {
   if (!contractorId) { callback([]); return () => {}; }
-  // No orderBy — avoids composite-index requirement; sort client-side
   const q = query(
     collection(db, SITES_COLLECTION),
     where('contractorId', '==', contractorId),
@@ -60,16 +65,23 @@ export function subscribeSites(contractorId, callback) {
   );
 }
 
-export async function addSite(contractorId, name, description = '') {
+export async function addSite(contractorId, name, description = '', defaultAllowances = {}) {
+  const da = {
+    petrol:    Number(defaultAllowances.petrol    ?? 0),
+    lunch:     Number(defaultAllowances.lunch     ?? 0),
+    breakfast: Number(defaultAllowances.breakfast ?? 0),
+    tea:       Number(defaultAllowances.tea       ?? 0),
+  };
   const docRef = await addDoc(collection(db, SITES_COLLECTION), {
     contractorId,
     name: name.trim(),
     description: description.trim(),
     isActive: true,
     createdAt: serverTimestamp(),
+    defaultAllowances: da,
   });
   await updateDoc(docRef, { id: docRef.id });
-  return { id: docRef.id, name: name.trim(), description: description.trim(), contractorId, isActive: true };
+  return { id: docRef.id, name: name.trim(), description: description.trim(), contractorId, isActive: true, defaultAllowances: da };
 }
 
 export async function updateSite(siteId, patch) {

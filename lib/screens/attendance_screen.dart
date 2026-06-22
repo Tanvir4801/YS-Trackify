@@ -394,6 +394,31 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     ),
                   ),
                   GestureDetector(
+                    onTap: () {
+                      HapticUtils.light();
+                      _showAllowanceSheet(
+                        context.read<AttendanceProvider>(),
+                        context.read<SitesProvider>().sites,
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.monetization_on_rounded, size: 13, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text('Allowances', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
                     onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
                     child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textTertiary),
                   ),
@@ -402,6 +427,48 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  void _showAllowanceSheet(AttendanceProvider data, List<SiteModel> sites) {
+    if (_selectedSiteId == null) return;
+    SiteModel? site;
+    try { site = sites.firstWhere((s) => s.id == _selectedSiteId); } catch (_) {}
+    final presentCount = data.attendanceMap.entries
+        .where((e) => e.value == 'present' && (data.siteMap[e.key] ?? '') == _selectedSiteId)
+        .length;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _AllowanceBottomSheet(
+        siteId: _selectedSiteId!,
+        siteName: site?.name ?? _selectedSiteId!,
+        defaultPetrol:    site?.defaultPetrol    ?? 0,
+        defaultLunch:     site?.defaultLunch      ?? 0,
+        defaultBreakfast: site?.defaultBreakfast  ?? 0,
+        defaultTea:       site?.defaultTea        ?? 0,
+        presentCount: presentCount,
+        onApply: (petrol, lunch, breakfast, tea) async {
+          final count = await data.applyAllowances(
+            siteId: _selectedSiteId!,
+            petrol: petrol,
+            lunch: lunch,
+            breakfast: breakfast,
+            tea: tea,
+          );
+          if (ctx.mounted) {
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Allowances applied to $count present labours ✓'),
+                backgroundColor: Colors.green.shade700,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+      ),
     );
   }
 
@@ -1175,6 +1242,290 @@ class _OvertimeFieldState extends State<_OvertimeField> {
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.halfDay)),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AllowanceBottomSheet — site-wide daily allowance setter
+// ─────────────────────────────────────────────────────────────────────────────
+
+typedef _OnApply = Future<void> Function(double petrol, double lunch, double breakfast, double tea);
+
+class _AllowanceBottomSheet extends StatefulWidget {
+  const _AllowanceBottomSheet({
+    required this.siteId,
+    required this.siteName,
+    required this.defaultPetrol,
+    required this.defaultLunch,
+    required this.defaultBreakfast,
+    required this.defaultTea,
+    required this.presentCount,
+    required this.onApply,
+  });
+
+  final String siteId;
+  final String siteName;
+  final double defaultPetrol;
+  final double defaultLunch;
+  final double defaultBreakfast;
+  final double defaultTea;
+  final int presentCount;
+  final _OnApply onApply;
+
+  @override
+  State<_AllowanceBottomSheet> createState() => _AllowanceBottomSheetState();
+}
+
+class _AllowanceBottomSheetState extends State<_AllowanceBottomSheet> {
+  late bool _petrolOn, _lunchOn, _breakfastOn, _teaOn;
+  late TextEditingController _petrolCtrl, _lunchCtrl, _breakfastCtrl, _teaCtrl;
+  bool _applying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _petrolOn    = widget.defaultPetrol    > 0;
+    _lunchOn     = widget.defaultLunch     > 0;
+    _breakfastOn = widget.defaultBreakfast > 0;
+    _teaOn       = widget.defaultTea       > 0;
+    _petrolCtrl    = TextEditingController(text: widget.defaultPetrol    > 0 ? widget.defaultPetrol.toStringAsFixed(0)    : '');
+    _lunchCtrl     = TextEditingController(text: widget.defaultLunch     > 0 ? widget.defaultLunch.toStringAsFixed(0)     : '');
+    _breakfastCtrl = TextEditingController(text: widget.defaultBreakfast > 0 ? widget.defaultBreakfast.toStringAsFixed(0) : '');
+    _teaCtrl       = TextEditingController(text: widget.defaultTea       > 0 ? widget.defaultTea.toStringAsFixed(0)       : '');
+  }
+
+  @override
+  void dispose() {
+    _petrolCtrl.dispose();
+    _lunchCtrl.dispose();
+    _breakfastCtrl.dispose();
+    _teaCtrl.dispose();
+    super.dispose();
+  }
+
+  double _val(TextEditingController c) => double.tryParse(c.text.trim()) ?? 0;
+
+  double get _total =>
+      (_petrolOn ? _val(_petrolCtrl) : 0) +
+      (_lunchOn  ? _val(_lunchCtrl)  : 0) +
+      (_breakfastOn ? _val(_breakfastCtrl) : 0) +
+      (_teaOn    ? _val(_teaCtrl)    : 0);
+
+  Widget _allowanceRow({
+    required String emoji,
+    required String label,
+    required bool enabled,
+    required ValueChanged<bool> onToggle,
+    required TextEditingController ctrl,
+  }) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      opacity: enabled ? 1.0 : 0.45,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Switch.adaptive(
+              value: enabled,
+              onChanged: onToggle,
+              activeColor: AppColors.primary,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            const SizedBox(width: 6),
+            Text(emoji, style: const TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: enabled ? AppColors.textPrimary : AppColors.textSecondary)),
+            ),
+            SizedBox(
+              width: 90,
+              child: TextField(
+                controller: ctrl,
+                enabled: enabled,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.right,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  prefixText: '₹ ',
+                  hintText: '0',
+                  filled: true,
+                  fillColor: enabled ? Colors.white : Colors.grey.shade100,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.4))),
+                  disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
+                ),
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = _total;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Handle
+                Center(
+                  child: Container(
+                    width: 36, height: 4,
+                    decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Title
+                Row(
+                  children: [
+                    const Icon(Icons.monetization_on_rounded, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Daily Allowances', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                          Text('${widget.siteName} · ${widget.presentCount} present today', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Divider(),
+                const SizedBox(height: 4),
+
+                // Allowance rows
+                _allowanceRow(
+                  emoji: '🚗', label: 'Petrol',
+                  enabled: _petrolOn, onToggle: (v) => setState(() { _petrolOn = v; }),
+                  ctrl: _petrolCtrl,
+                ),
+                _allowanceRow(
+                  emoji: '🍽', label: 'Lunch',
+                  enabled: _lunchOn, onToggle: (v) => setState(() { _lunchOn = v; }),
+                  ctrl: _lunchCtrl,
+                ),
+                _allowanceRow(
+                  emoji: '🍳', label: 'Breakfast',
+                  enabled: _breakfastOn, onToggle: (v) => setState(() { _breakfastOn = v; }),
+                  ctrl: _breakfastCtrl,
+                ),
+                _allowanceRow(
+                  emoji: '☕', label: 'Tea',
+                  enabled: _teaOn, onToggle: (v) => setState(() { _teaOn = v; }),
+                  ctrl: _teaCtrl,
+                ),
+
+                // Advance note
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.shade100),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 14, color: Colors.red.shade400),
+                      const SizedBox(width: 6),
+                      const Expanded(
+                        child: Text(
+                          'Advance payments are individual — set per labour via their attendance card.',
+                          style: TextStyle(fontSize: 11, color: Color(0xFFB71C1C)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Summary
+                if (total > 0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total per labour · ${widget.presentCount} labours', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        Text('₹${total.toStringAsFixed(0)}  ×  ${widget.presentCount} = ₹${(total * widget.presentCount).toStringAsFixed(0)}',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 14),
+
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _applying ? null : () => Navigator.pop(context),
+                        child: const Text('Skip for today', style: TextStyle(color: AppColors.textSecondary)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: _applying
+                            ? null
+                            : () async {
+                                setState(() => _applying = true);
+                                await widget.onApply(
+                                  _petrolOn    ? _val(_petrolCtrl)    : 0,
+                                  _lunchOn     ? _val(_lunchCtrl)     : 0,
+                                  _breakfastOn ? _val(_breakfastCtrl) : 0,
+                                  _teaOn       ? _val(_teaCtrl)       : 0,
+                                );
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: _applying
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : Text(
+                                widget.presentCount > 0
+                                    ? 'Apply to ${widget.presentCount} Labour${widget.presentCount == 1 ? '' : 's'}'
+                                    : 'Apply to All',
+                                style: const TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

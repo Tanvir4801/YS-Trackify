@@ -57,6 +57,7 @@ export default function Sites() {
   const [editingId, setEditingId] = useState(null);
   const [formName, setFormName] = useState('');
   const [formDesc, setFormDesc] = useState('');
+  const [formAllowances, setFormAllowances] = useState({ petrol: 0, lunch: 0, breakfast: 0, tea: 0 });
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
@@ -118,20 +119,33 @@ export default function Sites() {
     return { present, absent, half, unmarked };
   }, [detailLabours, attendanceMap]);
 
-  const openAdd = () => { setEditingId(null); setFormName(''); setFormDesc(''); setShowForm(true); };
-  const openEdit = (site) => { setEditingId(site.id); setFormName(site.name); setFormDesc(site.description || ''); setShowForm(true); };
-  const closeForm = () => { setShowForm(false); setEditingId(null); setFormName(''); setFormDesc(''); };
+  const EMPTY_DA = { petrol: 0, lunch: 0, breakfast: 0, tea: 0 };
+  const openAdd = () => { setEditingId(null); setFormName(''); setFormDesc(''); setFormAllowances(EMPTY_DA); setShowForm(true); };
+  const openEdit = (site) => {
+    setEditingId(site.id);
+    setFormName(site.name);
+    setFormDesc(site.description || '');
+    setFormAllowances(site.defaultAllowances ?? EMPTY_DA);
+    setShowForm(true);
+  };
+  const closeForm = () => { setShowForm(false); setEditingId(null); setFormName(''); setFormDesc(''); setFormAllowances(EMPTY_DA); };
 
   const handleSave = async () => {
     if (!formName.trim()) return toast.error('Enter a site name');
     if (!scopeId) return toast.error('No contractor scope');
     setSaving(true);
+    const da = {
+      petrol:    Number(formAllowances.petrol    || 0),
+      lunch:     Number(formAllowances.lunch     || 0),
+      breakfast: Number(formAllowances.breakfast || 0),
+      tea:       Number(formAllowances.tea       || 0),
+    };
     try {
       if (editingId) {
-        await updateSite(editingId, { name: formName.trim(), description: formDesc.trim() });
+        await updateSite(editingId, { name: formName.trim(), description: formDesc.trim(), defaultAllowances: da });
         toast.success('Site updated');
       } else {
-        await addSite(scopeId, formName.trim(), formDesc.trim());
+        await addSite(scopeId, formName.trim(), formDesc.trim(), da);
         toast.success('Site added');
       }
       closeForm();
@@ -189,6 +203,38 @@ export default function Sites() {
               <Input value={formDesc} onChange={(e) => setFormDesc(e.target.value)}
                 placeholder="Location details, notes…" className="mt-1 h-10" />
             </div>
+          </div>
+          {/* Default Allowances */}
+          <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+            <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+              <span>🪙</span> Default Daily Allowances (auto-filled in Flutter app)
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { key: 'petrol', label: '🚗 Petrol', placeholder: '200' },
+                { key: 'lunch', label: '🍽 Lunch', placeholder: '0' },
+                { key: 'breakfast', label: '🍳 Breakfast', placeholder: '0' },
+                { key: 'tea', label: '☕ Tea', placeholder: '0' },
+              ].map(({ key, label, placeholder }) => (
+                <div key={key}>
+                  <Label className="text-xs text-slate-600">{label}</Label>
+                  <div className="relative mt-1">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">₹</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={formAllowances[key] || ''}
+                      onChange={(e) => setFormAllowances((prev) => ({ ...prev, [key]: e.target.value }))}
+                      placeholder={placeholder}
+                      className="h-9 pl-6 text-sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-amber-700">
+              These pre-fill the allowance sheet in the Flutter app — supervisor can still override per day.
+            </p>
           </div>
           <div className="mt-4 flex gap-2">
             <Button onClick={closeForm} variant="outline" className="gap-1"><X className="h-4 w-4" /> Cancel</Button>

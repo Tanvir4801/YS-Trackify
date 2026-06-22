@@ -1,0 +1,164 @@
+ADD FEATURE: Daily Allowances per Site per Day
+
+CONTEXT:
+Supervisors sometimes give labours extra cash for travel 
+(petrol), lunch, breakfast, tea when site is far away.
+These are daily extras on top of base wage.
+They apply to ALL present labours at a site on that day.
+
+═══════════════════════════════════════════════════
+FIRESTORE CHANGES
+═══════════════════════════════════════════════════
+
+Update attendance/{date}/records/{labourId} document:
+ADD these fields:
+  allowances: {
+    petrol: number (default 0),
+    lunch: number (default 0),
+    breakfast: number (default 0),
+    tea: number (default 0)
+  }
+  totalAllowance: number (default 0)
+  grandTotal: number = wageAtTime + totalAllowance
+
+Create new collection: siteAllowances/{date}_{siteId}
+  - date: string
+  - siteId: string
+  - siteName: string
+  - setBy: uid
+  - setAt: timestamp
+  - allowances: {
+      petrol: number,
+      lunch: number,
+      breakfast: number,
+      tea: number
+    }
+  - appliedToCount: number (how many labours got this)
+
+This collection stores what was set site-wide so admin 
+can audit it separately.
+
+═══════════════════════════════════════════════════
+FLUTTER CHANGES
+═══════════════════════════════════════════════════
+
+STEP 1 — After supervisor finishes marking attendance 
+for a site, show a bottom sheet automatically titled
+"Allowances for [Site Name] — Today"
+
+UI inside bottom sheet:
+  Header: "These will apply to all X present labours"
+
+  Row for each allowance type:
+  [Toggle] [Icon] [Label]        [₹ Amount TextField]
+  [ ON  ]  🚗    Petrol charges      [    200    ]
+  [ OFF ]  🍽    Lunch               [     0     ]
+  [ OFF ]  🍳    Breakfast           [     0     ]
+  [ OFF ]  ☕    Tea                 [     0     ]
+
+  Summary line: "Total extra per labour: ₹200"
+  Summary line: "Total payout extra: ₹2000 (10 labours)"
+
+  Buttons: [Skip for today]   [Apply to All]
+
+STEP 2 — On "Apply to All":
+  - Read all attendance records for this site+date 
+    where status == "present"
+  - Batch update each record with the allowance values
+  - Set totalAllowance and grandTotal on each record
+  - Write one doc to siteAllowances/ collection
+  - Show success snackbar: "Allowances added for 10 labours"
+
+STEP 3 — Individual override (optional, advanced):
+  In the "Already Marked Today" expanded panel,
+  each labour row has a small edit icon.
+  Tapping it opens a dialog to override that specific
+  labour's allowances differently from the site default.
+  E.g. one labour came by own vehicle → petrol = 0
+
+STEP 4 — Show allowances on Labour Profile screen:
+  In the activity timeline each entry shows:
+  ₹650 wage  +  ₹200 petrol  +  ₹80 lunch  =  ₹930 total
+  Show breakdown only if any allowance > 0
+
+═══════════════════════════════════════════════════
+REACT ADMIN CHANGES
+═══════════════════════════════════════════════════
+
+REPORTS — Site-wise tab:
+  ADD columns to table:
+  | Date | Present | Base Wage | Petrol | Lunch | 
+    Breakfast | Tea | Total Allowance | Grand Total |
+
+  Footer totals for each column separately.
+
+REPORTS — Labour-wise tab:
+  Each row shows:
+  Base ₹650 + Allowances ₹280 = Total ₹930
+  Expandable row to see allowance breakdown
+
+REPORTS — Overall Payroll:
+  ADD summary cards:
+  [Total Base Wages] [Total Allowances] [Grand Total]
+  
+  Allowance breakdown card:
+  Petrol total: ₹X
+  Lunch total: ₹X  
+  Breakfast total: ₹X
+  Tea total: ₹X
+
+EXCEL EXPORT:
+  Add columns: Petrol | Lunch | Breakfast | Tea | 
+  Total Allowance | Grand Total
+  Never merge wage + allowance into one column.
+  Keep them separate so admin can audit each type.
+
+ADMIN CAN ALSO:
+  - Edit allowances for any past date (with audit log)
+  - Set default allowance templates per site
+    e.g. "Site A always gets ₹200 petrol by default"
+  - These defaults auto-fill the Flutter bottom sheet
+    but supervisor can still override
+
+═══════════════════════════════════════════════════
+ALLOWANCE TEMPLATES (Admin Web — Sites page)
+═══════════════════════════════════════════════════
+
+On the Sites page, each site has an "Allowances" section:
+  Default petrol: ₹ [input]
+  Default lunch:  ₹ [input]  
+  Default breakfast: ₹ [input]
+  Default tea:    ₹ [input]
+
+These are saved on the site document:
+sites/{siteId}
+  ADD: defaultAllowances: {
+    petrol: 200,
+    lunch: 0,
+    breakfast: 0,
+    tea: 0
+  }
+
+Flutter reads these defaults when opening the 
+allowance bottom sheet — pre-fills the amounts.
+Supervisor just toggles ON/OFF and adjusts if needed.
+
+═══════════════════════════════════════════════════
+BUGS TO PREVENT
+═══════════════════════════════════════════════════
+
+1. If supervisor taps "Skip for today" — all allowance 
+   fields stay 0, do not null. Null breaks sum calculations.
+
+2. grandTotal must always = wageAtTime + totalAllowance
+   Recalculate on every allowance edit, never trust 
+   stale cached value.
+
+3. If no labours are present at a site, do not show 
+   the allowance bottom sheet at all.
+
+4. Allowance edits after midnight should require 
+   admin PIN / flag as late edit in audit log.
+
+5. Excel export: format all currency columns as 
+   numbers not strings so Excel SUM formula works.

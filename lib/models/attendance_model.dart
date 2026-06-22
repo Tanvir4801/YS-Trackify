@@ -66,6 +66,11 @@ class Attendance extends HiveObject {
     this.remark = '',
     this.wageAtTime = 0,
     this.siteId = '',
+    this.petrol = 0,
+    this.lunch = 0,
+    this.breakfast = 0,
+    this.tea = 0,
+    this.advance = 0,
   });
 
   static const String boxName = 'v2_attendance';
@@ -115,6 +120,24 @@ class Attendance extends HiveObject {
   @HiveField(14)
   String siteId;
 
+  @HiveField(15)
+  double petrol;
+
+  @HiveField(16)
+  double lunch;
+
+  @HiveField(17)
+  double breakfast;
+
+  @HiveField(18)
+  double tea;
+
+  @HiveField(19)
+  double advance;
+
+  double get totalAllowance => petrol + lunch + breakfast + tea;
+  double get grandTotal => wageAtTime + totalAllowance - advance;
+
   static String formatDate(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
@@ -130,6 +153,10 @@ class Attendance extends HiveObject {
         'remark': remark.isNotEmpty ? remark : notes,
         'wageAtTime': wageAtTime,
         'siteId': siteId.isNotEmpty ? siteId : supervisorId,
+        'allowances': {'petrol': petrol, 'lunch': lunch, 'breakfast': breakfast, 'tea': tea},
+        'totalAllowance': totalAllowance,
+        'advance': advance,
+        'grandTotal': grandTotal,
         'isSynced': true,
         'syncedAt': FieldValue.serverTimestamp(),
       };
@@ -137,6 +164,7 @@ class Attendance extends HiveObject {
   factory Attendance.fromFirestore(DocumentSnapshot doc) {
     final d = (doc.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
     final remarkVal = (d['remark'] as String?) ?? (d['notes'] as String?) ?? '';
+    final al = (d['allowances'] as Map<String, dynamic>?) ?? {};
     return Attendance(
       id: (d['id'] as String?) ?? doc.id,
       labourId: (d['labourId'] as String?) ?? '',
@@ -150,6 +178,11 @@ class Attendance extends HiveObject {
       remark: remarkVal,
       wageAtTime: (d['wageAtTime'] as num?)?.toDouble() ?? 0,
       siteId: (d['siteId'] as String?) ?? (d['supervisorId'] as String?) ?? '',
+      petrol:    (al['petrol']    as num?)?.toDouble() ?? (d['petrol']    as num?)?.toDouble() ?? 0,
+      lunch:     (al['lunch']     as num?)?.toDouble() ?? (d['lunch']     as num?)?.toDouble() ?? 0,
+      breakfast: (al['breakfast'] as num?)?.toDouble() ?? (d['breakfast'] as num?)?.toDouble() ?? 0,
+      tea:       (al['tea']       as num?)?.toDouble() ?? (d['tea']       as num?)?.toDouble() ?? 0,
+      advance:   (d['advance']    as num?)?.toDouble() ?? 0,
       syncedAt: _readTimestamp(d['syncedAt']),
       isSynced: (d['isSynced'] as bool?) ?? true,
     )
@@ -170,6 +203,11 @@ class Attendance extends HiveObject {
     String? remark,
     double? wageAtTime,
     String? siteId,
+    double? petrol,
+    double? lunch,
+    double? breakfast,
+    double? tea,
+    double? advance,
     DateTime? syncedAt,
     bool? isSynced,
     String? firestoreId,
@@ -187,6 +225,11 @@ class Attendance extends HiveObject {
       remark: remark ?? this.remark,
       wageAtTime: wageAtTime ?? this.wageAtTime,
       siteId: siteId ?? this.siteId,
+      petrol: petrol ?? this.petrol,
+      lunch: lunch ?? this.lunch,
+      breakfast: breakfast ?? this.breakfast,
+      tea: tea ?? this.tea,
+      advance: advance ?? this.advance,
       syncedAt: syncedAt ?? this.syncedAt,
       isSynced: isSynced ?? this.isSynced,
       firestoreId: firestoreId ?? this.firestoreId,
@@ -309,9 +352,14 @@ class AttendanceAdapter extends TypeAdapter<Attendance> {
       lastSyncedAt = fields[11] as DateTime?;
     }
 
-    final remark = fields[12] as String? ?? notes;
+    final remark    = fields[12] as String? ?? notes;
     final wageAtTime = (fields[13] as num?)?.toDouble() ?? 0;
-    final siteId = fields[14] as String? ?? supervisorId;
+    final siteId    = fields[14] as String? ?? supervisorId;
+    final petrol    = (fields[15] as num?)?.toDouble() ?? 0;
+    final lunch     = (fields[16] as num?)?.toDouble() ?? 0;
+    final breakfast = (fields[17] as num?)?.toDouble() ?? 0;
+    final tea       = (fields[18] as num?)?.toDouble() ?? 0;
+    final advance   = (fields[19] as num?)?.toDouble() ?? 0;
 
     return Attendance(
       id: id,
@@ -325,6 +373,11 @@ class AttendanceAdapter extends TypeAdapter<Attendance> {
       remark: remark,
       wageAtTime: wageAtTime,
       siteId: siteId,
+      petrol: petrol,
+      lunch: lunch,
+      breakfast: breakfast,
+      tea: tea,
+      advance: advance,
       syncedAt: syncedAt,
       isSynced: isSynced,
       firestoreId: firestoreId,
@@ -335,7 +388,7 @@ class AttendanceAdapter extends TypeAdapter<Attendance> {
   @override
   void write(BinaryWriter writer, Attendance obj) {
     writer
-      ..writeByte(15)
+      ..writeByte(20)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -365,6 +418,16 @@ class AttendanceAdapter extends TypeAdapter<Attendance> {
       ..writeByte(13)
       ..write(obj.wageAtTime)
       ..writeByte(14)
-      ..write(obj.siteId);
+      ..write(obj.siteId)
+      ..writeByte(15)
+      ..write(obj.petrol)
+      ..writeByte(16)
+      ..write(obj.lunch)
+      ..writeByte(17)
+      ..write(obj.breakfast)
+      ..writeByte(18)
+      ..write(obj.tea)
+      ..writeByte(19)
+      ..write(obj.advance);
   }
 }

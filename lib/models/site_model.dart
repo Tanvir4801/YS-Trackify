@@ -11,6 +11,10 @@ class SiteModel extends HiveObject {
     this.isActive = true,
     this.createdAt,
     this.firestoreId,
+    this.defaultPetrol = 0,
+    this.defaultLunch = 0,
+    this.defaultBreakfast = 0,
+    this.defaultTea = 0,
   });
 
   static const String boxName = 'v2_sites';
@@ -36,6 +40,18 @@ class SiteModel extends HiveObject {
   @HiveField(6)
   String? firestoreId;
 
+  @HiveField(7)
+  double defaultPetrol;
+
+  @HiveField(8)
+  double defaultLunch;
+
+  @HiveField(9)
+  double defaultBreakfast;
+
+  @HiveField(10)
+  double defaultTea;
+
   Map<String, dynamic> toFirestore() => {
         'id': id,
         'name': name,
@@ -43,10 +59,17 @@ class SiteModel extends HiveObject {
         'description': description,
         'isActive': isActive,
         'createdAt': FieldValue.serverTimestamp(),
+        'defaultAllowances': {
+          'petrol': defaultPetrol,
+          'lunch': defaultLunch,
+          'breakfast': defaultBreakfast,
+          'tea': defaultTea,
+        },
       };
 
   factory SiteModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    final da = (d['defaultAllowances'] as Map<String, dynamic>?) ?? {};
     return SiteModel(
       id: (d['id'] as String?) ?? doc.id,
       name: (d['name'] as String?) ?? '',
@@ -55,6 +78,10 @@ class SiteModel extends HiveObject {
       isActive: (d['isActive'] as bool?) ?? true,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
       firestoreId: doc.id,
+      defaultPetrol:    (da['petrol']    as num?)?.toDouble() ?? 0,
+      defaultLunch:     (da['lunch']     as num?)?.toDouble() ?? 0,
+      defaultBreakfast: (da['breakfast'] as num?)?.toDouble() ?? 0,
+      defaultTea:       (da['tea']       as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -64,6 +91,10 @@ class SiteModel extends HiveObject {
     String? contractorId,
     String? description,
     bool? isActive,
+    double? defaultPetrol,
+    double? defaultLunch,
+    double? defaultBreakfast,
+    double? defaultTea,
   }) =>
       SiteModel(
         id: id ?? this.id,
@@ -73,6 +104,10 @@ class SiteModel extends HiveObject {
         isActive: isActive ?? this.isActive,
         createdAt: createdAt,
         firestoreId: firestoreId,
+        defaultPetrol:    defaultPetrol    ?? this.defaultPetrol,
+        defaultLunch:     defaultLunch     ?? this.defaultLunch,
+        defaultBreakfast: defaultBreakfast ?? this.defaultBreakfast,
+        defaultTea:       defaultTea       ?? this.defaultTea,
       );
 }
 
@@ -95,13 +130,17 @@ class SiteModelAdapter extends TypeAdapter<SiteModel> {
       isActive: fields[4] as bool? ?? true,
       createdAt: fields[5] as DateTime?,
       firestoreId: fields[6] as String?,
+      defaultPetrol:    (fields[7]  as num?)?.toDouble() ?? 0,
+      defaultLunch:     (fields[8]  as num?)?.toDouble() ?? 0,
+      defaultBreakfast: (fields[9]  as num?)?.toDouble() ?? 0,
+      defaultTea:       (fields[10] as num?)?.toDouble() ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, SiteModel obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -115,6 +154,14 @@ class SiteModelAdapter extends TypeAdapter<SiteModel> {
       ..writeByte(5)
       ..write(obj.createdAt)
       ..writeByte(6)
-      ..write(obj.firestoreId);
+      ..write(obj.firestoreId)
+      ..writeByte(7)
+      ..write(obj.defaultPetrol)
+      ..writeByte(8)
+      ..write(obj.defaultLunch)
+      ..writeByte(9)
+      ..write(obj.defaultBreakfast)
+      ..writeByte(10)
+      ..write(obj.defaultTea);
   }
 }

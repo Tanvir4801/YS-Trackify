@@ -28,6 +28,11 @@ class AttendanceProvider extends ChangeNotifier {
   Map<String, String> remarkMap = <String, String>{};
   Map<String, double> wageAtTimeMap = <String, double>{};
   Map<String, String> siteMap = <String, String>{};
+  Map<String, double> allowancePetrolMap    = <String, double>{};
+  Map<String, double> allowanceLunchMap     = <String, double>{};
+  Map<String, double> allowanceBreakfastMap = <String, double>{};
+  Map<String, double> allowanceTeaMap       = <String, double>{};
+  Map<String, double> advanceMap            = <String, double>{};
 
   bool isLoading = false;
   String? error;
@@ -200,7 +205,12 @@ class AttendanceProvider extends ChangeNotifier {
     overtimeMap   = {for (final a in records) if (a.overtimeHours > 0) a.labourId: a.overtimeHours};
     remarkMap     = {for (final a in records) if (a.remark.isNotEmpty) a.labourId: a.remark};
     wageAtTimeMap = {for (final a in records) if (a.wageAtTime > 0) a.labourId: a.wageAtTime};
-    siteMap       = {for (final a in records) if (a.siteId.isNotEmpty) a.labourId: a.siteId};
+    siteMap              = {for (final a in records) if (a.siteId.isNotEmpty) a.labourId: a.siteId};
+    allowancePetrolMap    = {for (final a in records) if (a.petrol > 0)    a.labourId: a.petrol};
+    allowanceLunchMap     = {for (final a in records) if (a.lunch > 0)     a.labourId: a.lunch};
+    allowanceBreakfastMap = {for (final a in records) if (a.breakfast > 0) a.labourId: a.breakfast};
+    allowanceTeaMap       = {for (final a in records) if (a.tea > 0)       a.labourId: a.tea};
+    advanceMap            = {for (final a in records) if (a.advance > 0)   a.labourId: a.advance};
 
     notifyListeners();
   }
@@ -323,6 +333,36 @@ class AttendanceProvider extends ChangeNotifier {
     tempLabours.add(labour);
     notifyListeners();
     await markAttendance(labour.id, 'present', wageAtTimeOverride: dailyWage);
+  }
+
+  Future<int> applyAllowances({
+    required String siteId,
+    required double petrol,
+    required double lunch,
+    required double breakfast,
+    required double tea,
+  }) async {
+    final count = await _service.applyAllowances(
+      siteId: siteId,
+      date: selectedDateStr,
+      petrol: petrol,
+      lunch: lunch,
+      breakfast: breakfast,
+      tea: tea,
+    );
+    _loadLocalAttendance();
+    return count;
+  }
+
+  Future<void> setAdvance(String labourId, double amount) async {
+    advanceMap[labourId] = amount;
+    notifyListeners();
+    await _service.setAdvance(
+      labourId: labourId,
+      date: selectedDateStr,
+      amount: amount,
+    );
+    _loadLocalAttendance();
   }
 
   Future<void> cycleStatus(String labourId) async {

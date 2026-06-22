@@ -403,6 +403,112 @@ class AttendanceService {
             snap.docs.map((d) => {...d.data(), 'docId': d.id}).toList());
   }
 
+  // ── applyAllowances ─────────────────────────────────────────
+  /// Apply petrol/lunch/breakfast/tea to all PRESENT labours at siteId on date.
+  /// Also writes a siteAllowances audit doc.
+  Future<int> applyAllowances({
+    required String siteId,
+    required String date,
+    required double petrol,
+    required double lunch,
+    required double breakfast,
+    required double tea,
+  }) async {
+    final uid          = _requireUid();
+    final contractorId = _contractorScope(uid);
+    final totalAllowance = petrol + lunch + breakfast + tea;
+
+    final records = _attendanceBox.values
+        .where((a) =>
+            a.date == date &&
+            a.siteId == siteId &&
+            a.status == AttendanceStatus.present)
+        .toList();
+
+    if (records.isEmpty) return 0;
+
+    final batch = _db.batch();
+    for (final att in records) {
+      att.petrol    = petrol;
+      att.lunch     = lunch;
+      att.breakfast = breakfast;
+      att.tea       = tea;
+      await _attendanceBox.put(att.id, att);
+
+      final payload = {
+        'allowances': {'petrol': petrol, 'lunch': lunch, 'breakfast': breakfast, 'tea': tea},
+        'totalAllowance': totalAllowance,
+        'grandTotal': att.wageAtTime + totalAllowance - att.advance,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      try {
+        batch.update(_db.collection('attendance').doc(att.id), payload);
+      } catch (_) {}
+
+      try {
+        final nestedRef = FirestorePaths.attendanceRecordRef(contractorId, date, att.labourId);
+        batch.update(nestedRef, payload);
+      } catch (_) {}
+    }
+    await batch.commit();
+
+    // Write audit doc
+    await _db.collection('siteAllowances').doc('${date}_$siteId').set({
+      'date':            date,
+      'siteId':          siteId,
+      'contractorId':    contractorId,
+      'setBy':           uid,
+      'setAt':           FieldValue.serverTimestamp(),
+      'allowances':      {'petrol': petrol, 'lunch': lunch, 'breakfast': breakfast, 'tea': tea},
+      'totalAllowance':  totalAllowance,
+      'appliedToCount':  records.length,
+    }, SetOptions(merge: true));
+
+    return records.length;
+  }
+
+  // ── setAdvance ───────────────────────────────────────────────
+  Future<void> setAdvance({
+    required String labourId,
+    required String date,
+    required double amount,
+  }) async {
+    final uid          = _requireUid();
+    final contractorId = _contractorScope(uid);
+    final id = '${labourId}_$date';
+
+    final att = _attendanceBox.get(id);
+    if (att != null) {
+      att.advance = amount;
+      await _attendanceBox.put(id, att);
+    }
+
+    final payload = {
+      'advance':    amount,
+      'grandTotal': (att?.wageAtTime ?? 0) + (att?.totalAllowance ?? 0) - amount,
+      'updatedAt':  FieldValue.serverTimestamp(),
+    };
+    try { await _db.collection('attendance').doc(id).update(payload); } catch (_) {}
+    try {
+      await FirestorePaths.attendanceRecordRef(contractorId, date, labourId).update(payload);
+    } catch (_) {}
+
+    // Write to advance ledger
+    try {
+      await _db.collection('advances').doc(labourId).collection('entries').add({
+        'date':                 date,
+        'amount':               amount,
+        'siteId':               att?.siteId ?? '',
+        'givenBy':              uid,
+        'contractorId':         contractorId,
+        'linkedAttendanceDate': date,
+        'type':                 'daily',
+        'recovered':            false,
+        'createdAt':            FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
   String cycleStatus(String current) {
     switch (current) {
       case 'present':

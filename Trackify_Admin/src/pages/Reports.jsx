@@ -179,13 +179,20 @@ export default function Reports() {
             return s;
           }, 0);
           const otHours = recs.reduce((s, r) => s + (Number(r.overtimeHours) || 0), 0);
+          const totalAllowance = recs.reduce((s, r) => {
+            const al = r.allowances || {};
+            return s + (Number(al.petrol) || 0) + (Number(al.lunch) || 0) + (Number(al.breakfast) || 0) + (Number(al.tea) || 0);
+          }, 0);
+          const totalAdvance = recs.reduce((s, r) => s + (Number(r.advance) || 0), 0);
           const uniqueLabours = [...new Set(recs.map((r) => r.labourId))];
           return {
             siteId: site,
             siteName: `Site: ${site.slice(0, 8)}…`,
             present, half, absent,
             totalRecords: recs.length, uniqueLabours: uniqueLabours.length,
-            totalWage, otHours, records: recs,
+            totalWage, otHours, totalAllowance, totalAdvance,
+            grandTotal: totalWage + totalAllowance - totalAdvance,
+            records: recs,
           };
         });
         setReport(rows.sort((a, b) => b.totalWage - a.totalWage));
@@ -197,6 +204,9 @@ export default function Reports() {
             const labour = labourMap.get(r.labourId);
             const wageAtTime = Number(r.wageAtTime) || Number(labour?.dailyWage) || 0;
             const earned = r.status === 'present' ? wageAtTime : r.status === 'half' ? wageAtTime * 0.5 : 0;
+            const al = r.allowances || {};
+            const totalAllowance = (Number(al.petrol) || 0) + (Number(al.lunch) || 0) + (Number(al.breakfast) || 0) + (Number(al.tea) || 0);
+            const advance = Number(r.advance) || 0;
             return {
               date: r.date,
               labourId: r.labourId,
@@ -207,6 +217,10 @@ export default function Reports() {
               wageAtTime,
               siteId: r.siteId || r.supervisorId || '—',
               earned,
+              allowances: al,
+              totalAllowance,
+              advance,
+              grandTotal: earned + totalAllowance - advance,
             };
           })
           .sort((a, b) => b.date.localeCompare(a.date));
@@ -261,9 +275,9 @@ export default function Reports() {
     if (activeTab === 'monthly') return report.reduce((acc, r) => ({ gross: acc.gross + r.gross, adv: acc.adv + r.advances, net: acc.net + r.net, ot: acc.ot + r.otHours }), { gross: 0, adv: 0, net: 0, ot: 0 });
     if (activeTab === 'overtime') return report.reduce((acc, r) => ({ ot: acc.ot + r.otHours, cost: acc.cost + r.otCost }), { ot: 0, cost: 0 });
     if (activeTab === 'payment') return report.reduce((acc, p) => ({ total: acc.total + (p.amount || 0) }), { total: 0 });
-    if (activeTab === 'sitewise') return report.reduce((acc, r) => ({ wage: acc.wage + r.totalWage, ot: acc.ot + r.otHours, records: acc.records + r.totalRecords }), { wage: 0, ot: 0, records: 0 });
+    if (activeTab === 'sitewise') return report.reduce((acc, r) => ({ wage: acc.wage + r.totalWage, ot: acc.ot + r.otHours, records: acc.records + r.totalRecords, totalAllowance: acc.totalAllowance + (r.totalAllowance || 0), grandTotal: acc.grandTotal + (r.grandTotal || 0) }), { wage: 0, ot: 0, records: 0, totalAllowance: 0, grandTotal: 0 });
     if (activeTab === 'overall') return report.reduce((acc, r) => ({ gross: acc.gross + r.gross, adv: acc.adv + r.advances, net: acc.net + r.net }), { gross: 0, adv: 0, net: 0 });
-    if (activeTab === 'labourwise') return report.reduce((acc, r) => ({ earned: acc.earned + r.earned, ot: acc.ot + r.overtimeHours }), { earned: 0, ot: 0 });
+    if (activeTab === 'labourwise') return report.reduce((acc, r) => ({ earned: acc.earned + r.earned, ot: acc.ot + r.overtimeHours, totalAllowance: acc.totalAllowance + (r.totalAllowance || 0), grandTotal: acc.grandTotal + (r.grandTotal || 0) }), { earned: 0, ot: 0, totalAllowance: 0, grandTotal: 0 });
     return {};
   }, [report, activeTab]);
 
@@ -290,10 +304,10 @@ export default function Reports() {
       rows = report.map((r) => ({ Name: r.name, Present: r.present, Half: r.half, Absent: r.absent, 'Attendance %': `${r.rate}%`, 'Total Days': r.totalDays }));
     } else if (activeTab === 'sitewise') {
       filename = `SiteWise_${monthName}_${year}.csv`;
-      rows = report.map((r) => ({ Site: r.siteId, Present: r.present, Half: r.half, Absent: r.absent, 'Unique Labours': r.uniqueLabours, 'Total Wage': Math.round(r.totalWage), 'OT Hours': r.otHours }));
+      rows = report.map((r) => ({ Site: r.siteId, Present: r.present, Half: r.half, Absent: r.absent, 'Unique Labours': r.uniqueLabours, 'Total Wage': Math.round(r.totalWage), 'OT Hours': r.otHours, 'Total Allowance': Math.round(r.totalAllowance || 0), 'Total Advance': Math.round(r.totalAdvance || 0), 'Grand Total': Math.round(r.grandTotal || 0) }));
     } else if (activeTab === 'labourwise') {
       filename = `LabourWise_${fromDate}_to_${toDate}.csv`;
-      rows = report.map((r) => ({ Date: r.date, Labour: r.labourName, Status: r.status, 'OT Hours': r.overtimeHours, Remark: r.remark, 'Wage At Time': r.wageAtTime, Site: r.siteId, Earned: Math.round(r.earned) }));
+      rows = report.map((r) => ({ Date: r.date, Labour: r.labourName, Status: r.status, 'OT Hours': r.overtimeHours, Remark: r.remark, 'Wage At Time': r.wageAtTime, Site: r.siteId, Earned: Math.round(r.earned), 'Petrol': Math.round(r.allowances?.petrol || 0), 'Lunch': Math.round(r.allowances?.lunch || 0), 'Breakfast': Math.round(r.allowances?.breakfast || 0), 'Tea': Math.round(r.allowances?.tea || 0), 'Total Allowance': Math.round(r.totalAllowance || 0), 'Advance': Math.round(r.advance || 0), 'Grand Total': Math.round(r.grandTotal || 0) }));
     } else if (activeTab === 'overall') {
       filename = `Overall_${monthName}_${year}.csv`;
       rows = report.map((r) => ({ Name: r.name, Type: r.type, Present: r.present, Half: r.half, 'OT Hours': r.otHours, Gross: Math.round(r.gross), Advances: Math.round(r.advances), Net: Math.round(r.net) }));
@@ -620,8 +634,10 @@ export default function Reports() {
                     <th className="px-4 py-3 text-right">Present</th>
                     <th className="px-4 py-3 text-right">Half</th>
                     <th className="px-4 py-3 text-right">Absent</th>
-                    <th className="px-4 py-3 text-right">OT Hours</th>
+                    <th className="px-4 py-3 text-right">OT Hrs</th>
                     <th className="px-4 py-3 text-right">Total Wage</th>
+                    <th className="px-4 py-3 text-right">Allowances</th>
+                    <th className="px-4 py-3 text-right">Grand Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -642,10 +658,12 @@ export default function Reports() {
                         <td className="px-4 py-3 text-right text-red-600">{r.absent}</td>
                         <td className="px-4 py-3 text-right text-slate-700">{r.otHours}</td>
                         <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(r.totalWage)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-amber-700">{r.totalAllowance > 0 ? formatCurrency(r.totalAllowance) : '—'}</td>
+                        <td className="px-4 py-3 text-right font-bold text-blue-700">{formatCurrency(r.grandTotal || r.totalWage)}</td>
                       </tr>
                       {expandedSite === r.siteId && (
                         <tr>
-                          <td colSpan={7} className="bg-slate-50 px-4 py-2">
+                          <td colSpan={9} className="bg-slate-50 px-4 py-2">
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="text-slate-500">
@@ -653,21 +671,29 @@ export default function Reports() {
                                   <th className="py-1 text-right">Date</th>
                                   <th className="py-1 text-right">Status</th>
                                   <th className="py-1 text-right">Wage @Mark</th>
+                                  <th className="py-1 text-right">Allowances</th>
+                                  <th className="py-1 text-right">Advance</th>
                                   <th className="py-1 text-right">Remark</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {r.records.slice(0, 20).map((rec, idx) => (
-                                  <tr key={idx} className="border-t border-slate-100">
-                                    <td className="py-1 text-slate-700">{labourMap.get(rec.labourId)?.name || rec.labourId}</td>
-                                    <td className="py-1 text-right text-slate-600">{rec.date}</td>
-                                    <td className="py-1 text-right"><StatusBadge status={rec.status} /></td>
-                                    <td className="py-1 text-right text-blue-600">{formatCurrency(rec.wageAtTime || 0)}</td>
-                                    <td className="py-1 text-right text-slate-500 italic">{rec.remark || '—'}</td>
-                                  </tr>
-                                ))}
+                                {r.records.slice(0, 20).map((rec, idx) => {
+                                  const al = rec.allowances || {};
+                                  const recAllowance = (Number(al.petrol)||0)+(Number(al.lunch)||0)+(Number(al.breakfast)||0)+(Number(al.tea)||0);
+                                  return (
+                                    <tr key={idx} className="border-t border-slate-100">
+                                      <td className="py-1 text-slate-700">{labourMap.get(rec.labourId)?.name || rec.labourId}</td>
+                                      <td className="py-1 text-right text-slate-600">{rec.date}</td>
+                                      <td className="py-1 text-right"><StatusBadge status={rec.status} /></td>
+                                      <td className="py-1 text-right text-blue-600">{formatCurrency(rec.wageAtTime || 0)}</td>
+                                      <td className="py-1 text-right text-amber-600">{recAllowance > 0 ? formatCurrency(recAllowance) : '—'}</td>
+                                      <td className="py-1 text-right text-red-500">{rec.advance > 0 ? `-${formatCurrency(rec.advance)}` : '—'}</td>
+                                      <td className="py-1 text-right text-slate-500 italic">{rec.remark || '—'}</td>
+                                    </tr>
+                                  );
+                                })}
                                 {r.records.length > 20 && (
-                                  <tr><td colSpan={5} className="py-1 text-center text-slate-400">+{r.records.length - 20} more records</td></tr>
+                                  <tr><td colSpan={7} className="py-1 text-center text-slate-400">+{r.records.length - 20} more records</td></tr>
                                 )}
                               </tbody>
                             </table>
@@ -682,6 +708,8 @@ export default function Reports() {
                     <td className="px-4 py-3" colSpan={5}>Totals</td>
                     <td className="px-4 py-3 text-right">{totals.ot}</td>
                     <td className="px-4 py-3 text-right text-blue-700">{formatCurrency(totals.wage)}</td>
+                    <td className="px-4 py-3 text-right text-amber-700">{formatCurrency(totals.totalAllowance || 0)}</td>
+                    <td className="px-4 py-3 text-right text-blue-900">{formatCurrency(totals.grandTotal || totals.wage)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -695,10 +723,12 @@ export default function Reports() {
                     <th className="px-4 py-3">Labour</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">OT Hrs</th>
-                    <th className="px-4 py-3">Remark</th>
                     <th className="px-4 py-3 text-right">Wage @Mark</th>
                     <th className="px-4 py-3">Site</th>
                     <th className="px-4 py-3 text-right">Earned</th>
+                    <th className="px-4 py-3 text-right">Allowances</th>
+                    <th className="px-4 py-3 text-right">Advance</th>
+                    <th className="px-4 py-3 text-right">Grand Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -708,18 +738,29 @@ export default function Reports() {
                       <td className="px-4 py-3 font-medium text-slate-900">{r.labourName}</td>
                       <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                       <td className="px-4 py-3 text-right text-slate-700">{r.overtimeHours || '—'}</td>
-                      <td className="px-4 py-3 text-slate-500 italic text-xs">{r.remark || '—'}</td>
                       <td className="px-4 py-3 text-right text-blue-700 font-medium">{formatCurrency(r.wageAtTime)}</td>
                       <td className="px-4 py-3 text-xs text-slate-500">{r.siteId?.slice(0, 10) || '—'}</td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(r.earned)}</td>
+                      <td className="px-4 py-3 text-right text-amber-700">
+                        {r.totalAllowance > 0 ? (
+                          <span title={`Petrol: ₹${r.allowances?.petrol||0} · Lunch: ₹${r.allowances?.lunch||0} · Breakfast: ₹${r.allowances?.breakfast||0} · Tea: ₹${r.allowances?.tea||0}`}>
+                            +{formatCurrency(r.totalAllowance)}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-red-600">{r.advance > 0 ? `-${formatCurrency(r.advance)}` : '—'}</td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-700">{r.totalAllowance > 0 || r.advance > 0 ? formatCurrency(r.grandTotal) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-900">
-                    <td className="px-4 py-3" colSpan={6}>Totals</td>
+                    <td className="px-4 py-3" colSpan={5}>Totals</td>
                     <td className="px-4 py-3 text-right">{totals.ot} OT hrs</td>
                     <td className="px-4 py-3 text-right text-green-700">{formatCurrency(totals.earned)}</td>
+                    <td className="px-4 py-3 text-right text-amber-700">{formatCurrency(totals.totalAllowance || 0)}</td>
+                    <td className="px-4 py-3" />
+                    <td className="px-4 py-3 text-right text-blue-700">{formatCurrency(totals.grandTotal || totals.earned)}</td>
                   </tr>
                 </tfoot>
               </table>
