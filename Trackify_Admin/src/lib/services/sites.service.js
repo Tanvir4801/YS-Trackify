@@ -8,7 +8,6 @@ import {
   onSnapshot,
   query,
   where,
-  orderBy,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -27,17 +26,19 @@ function snapToSite(snap) {
   };
 }
 
+const sortByName = (arr) => arr.sort((a, b) => a.name.localeCompare(b.name));
+
 export async function getSites(contractorId) {
   if (!contractorId) return [];
   try {
+    // No orderBy — avoids composite-index requirement; sort client-side
     const q = query(
       collection(db, SITES_COLLECTION),
       where('contractorId', '==', contractorId),
       where('isActive', '==', true),
-      orderBy('name'),
     );
     const snap = await getDocs(q);
-    return snap.docs.map(snapToSite);
+    return sortByName(snap.docs.map(snapToSite));
   } catch (e) {
     console.error('getSites error:', e);
     return [];
@@ -46,16 +47,17 @@ export async function getSites(contractorId) {
 
 export function subscribeSites(contractorId, callback) {
   if (!contractorId) { callback([]); return () => {}; }
+  // No orderBy — avoids composite-index requirement; sort client-side
   const q = query(
     collection(db, SITES_COLLECTION),
     where('contractorId', '==', contractorId),
     where('isActive', '==', true),
-    orderBy('name'),
   );
-  return onSnapshot(q, (snap) => callback(snap.docs.map(snapToSite)), (e) => {
-    console.error('subscribeSites error:', e);
-    callback([]);
-  });
+  return onSnapshot(
+    q,
+    (snap) => callback(sortByName(snap.docs.map(snapToSite))),
+    (e) => { console.error('subscribeSites error:', e); callback([]); },
+  );
 }
 
 export async function addSite(contractorId, name, description = '') {

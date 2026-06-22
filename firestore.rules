@@ -21,7 +21,12 @@ service cloud.firestore {
     }
 
     function isInTenant(contractorId) {
-      return isSignedIn() && callerData().contractorId == contractorId;
+      // A contractor's own uid IS their contractorId — allow that shortcut
+      // so reads work even when the users doc has no contractorId field.
+      return isSignedIn() && (
+        callerUid() == contractorId ||
+        callerData().contractorId == contractorId
+      );
     }
 
     function isContractorAdmin(contractorId) {
