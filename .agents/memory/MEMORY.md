@@ -1,4 +1,4 @@
 - [Flutter-web build](flutter-web-build.md) — `flutter build web --release --no-pub` succeeds after `flutter pub get`; full build with package download times out at 120s.
-- [Admin panel esbuild](admin-panel-esbuild.md) — Replit environment has EPIPE esbuild issue; vite package exists but `.bin/vite` symlink missing; use `node node_modules/vite/bin/vite.js` as workaround (still fails due to EPIPE in this env).
+- [Admin panel esbuild](admin-panel-esbuild.md) — lucide-react ESM bundle missing; fix: alias to CJS in vite.config.js + optimizeDeps.include; run vite via `node node_modules/vite/dist/node/cli.js`.
 - [Hive box names](hive-box-names.md) — v2_labours (typeId=20), v2_attendance (typeId=22), v2_payments (typeId=23/24); old boxes labour_box/attendance_box/payment_box kept open for backward compat.
 - [Attendance dual-write](attendance-dual-write.md) — All attendance writes go to flat `attendance/{autoId}` AND nested `attendance/{contractorId}/dates/{dateKey}/records/{labourId}` simultaneously.
