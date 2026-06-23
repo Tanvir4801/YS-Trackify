@@ -1,0 +1,200 @@
+FIX: Allowances are PER LABOUR not per site.
+REMOVE "Apply to All" button completely.
+
+CORRECT ALLOWANCE SCREEN DESIGN:
+
+Route: shown after End Session tapped, 
+before summary screen.
+
+SCREEN: AllowancesScreen
+Props: sessionId, siteId, date
+
+DATA LOAD:
+Fetch all attendance records for this session
+where status == "present"
+Show each labour as individual card
+
+═══════════════════════════════════════
+FIRESTORE — NO CHANGE TO STRUCTURE
+Each attendance record already has:
+  allowances: { petrol, lunch, breakfast, tea }
+  advance: number
+  totalAllowance: number
+  grandTotal: wageAtTime + totalAllowance - advance
+
+Just saving per-labour not per-site bulk.
+═══════════════════════════════════════
+
+FLUTTER UI:
+
+Top tab bar: [By Labour] [By Type]
+
+── BY LABOUR TAB ──
+
+ListView of present labours.
+Each labour = collapsed card by default.
+
+Collapsed card shows:
+  [Avatar] [Name]    [total added: ₹X or "Nothing added"]
+  tap anywhere to expand
+
+Expanded card shows inline:
+  5 rows, one per allowance type:
+
+  Row structure:
+  [Switch] [Icon] [Label]    [TextField ₹amount]
+  
+  Switch OFF → TextField disabled + greyed
+  Switch ON  → TextField enabled, keyboard opens
+  
+  Row 1: 🚗 Petrol charges
+  Row 2: 🍽 Lunch  
+  Row 3: 🍳 Breakfast
+  Row 4: ☕ Tea
+  Row 5: 💵 Advance given
+         small text below: "Will be deducted from pay"
+         TextField text color: red
+
+  Live calculation inside expanded card:
+  "Base wage:      ₹650"
+  "+ Allowances:   ₹280"   ← green color
+  "- Advance:      ₹500"   ← red color  
+  "= Net payable:  ₹430"   ← bold
+
+  [Done ✓] button collapses card and saves to Firestore
+
+QUICK COPY FEATURE:
+Inside expanded card, small link text:
+"Copy to other labours →"
+Tapping opens multi-select bottom sheet:
+  Shows all OTHER present labours with checkboxes
+  [Select All] toggle at top
+  [Copy Values] button
+  → Pastes exact same allowance values to selected
+  → They remain individually editable after
+
+YESTERDAY SUGGESTION:
+When card expands, check if this labour had 
+allowances yesterday:
+If yes → show suggestion chip at top of card:
+"Same as yesterday? Petrol ₹200 + Lunch ₹80" [Apply]
+One tap applies → supervisor can still edit after
+
+── BY TYPE TAB ──
+
+Shows one section per allowance type.
+Only show section if at least one labour has it.
+
+Each section header:
+🚗 Petrol  (X labours)  Total: ₹X
+
+Under each section:
+List of labours who have this allowance set:
+[Name]    [₹amount]    [Edit icon]  [Remove icon]
+
+At bottom of each section:
+[+ Add labour to petrol list]
+→ opens labour picker → select → enter amount
+
+💵 Advance section:
+Shows amounts in RED with minus sign
+[Name]   [-₹500]   [Edit]  [Remove]
+
+── STICKY BOTTOM BAR ──
+Always visible on both tabs:
+
+┌────────────────────────────────┐
+│ Allowances:  +₹3,200  (green) │
+│ Advances:    -₹800    (red)   │
+│ Net extra:   +₹2,400  (bold)  │
+│                                │
+│      [Save & Continue →]       │
+└────────────────────────────────┘
+
+On "Save & Continue":
+  Batch write all changed records to Firestore
+  Recalculate grandTotal for each labour
+  Navigate to Session Summary screen
+
+SKIP OPTION:
+Top right: "Skip →" text button
+If tapped: "Skip allowances for all labours?" 
+[Yes skip] [No go back]
+All allowance fields stay 0, not null.
+
+═══════════════════════════════════════
+REACT ADMIN — ATTENDANCE DETAIL VIEW
+═══════════════════════════════════════
+
+When admin clicks any attendance record:
+Show full breakdown:
+
+Labour: Ramesh Kumar
+Date: 22 Jun 2026
+Site: Site A
+─────────────────────────
+Base wage:       ₹650
+Petrol:          ₹200
+Lunch:           ₹80
+Breakfast:       ₹0
+Tea:             ₹0
+Total allowance: ₹280
+─────────────────────────
+Advance given:  -₹500
+─────────────────────────
+Net payable:     ₹430
+─────────────────────────
+Remark: "tile fixing 2nd floor"
+Marked at: 09:23 AM
+Marked by: [Supervisor name]
+
+Admin can edit any field with audit log entry.
+
+═══════════════════════════════════════
+REPORTS UPDATE
+═══════════════════════════════════════
+
+Labour-wise report table columns:
+Date | Site | Wage | Petrol | Lunch | 
+Breakfast | Tea | Allowance Total | 
+Advance | Net Payable | Remark
+
+Site-wise summary:
+Per day row shows:
+  Total wage | Total allowances breakdown | 
+  Total advances | Net payable
+
+Payroll export Excel:
+One row per labour per day
+Separate column for EACH allowance type
+Never merge into one "allowances" column
+Admin must see petrol vs lunch separately
+
+═══════════════════════════════════════
+BUGS TO PREVENT
+═══════════════════════════════════════
+
+1. NEVER apply one labour's allowance to another
+   automatically without supervisor confirmation
+
+2. Switch OFF must set value to 0 not null
+   null breaks all sum calculations
+
+3. grandTotal = wageAtTime + petrol + lunch + 
+   breakfast + tea - advance
+   Recalculate every time any field changes
+
+4. If advance > (wageAtTime + allowances):
+   Show inline warning in red:
+   "Advance exceeds today's earnings by ₹X
+    Remaining ₹X will show as pending balance"
+   Still allow saving — carry forward to advance ledger
+
+5. Copy to others must MERGE not overwrite:
+   If target labour already has petrol ₹100 set
+   and copy sends ₹200 → ask:
+   "Replace ₹100 with ₹200?" [Replace] [Keep]
+
+6. Batch Firestore write — use WriteBatch
+   All records save together or none save
+   Prevent partial saves on network failure
