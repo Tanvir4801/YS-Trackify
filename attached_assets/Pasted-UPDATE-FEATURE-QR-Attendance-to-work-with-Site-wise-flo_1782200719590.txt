@@ -1,0 +1,269 @@
+UPDATE FEATURE: QR Attendance to work with Site-wise flow
+
+CONTEXT:
+App already has QR scanning. Now labours are marked 
+site-wise. QR must know WHICH site to mark attendance at.
+Solution: Supervisor starts a "site session" first, 
+then all scans during that session belong to that site.
+
+═══════════════════════════════════════════════════
+SESSION MODEL — NEW
+═══════════════════════════════════════════════════
+
+Create Firestore collection: attendanceSessions/{sessionId}
+  - sessionId: auto
+  - supervisorId: uid
+  - supervisorName: string
+  - siteId: string
+  - siteName: string
+  - date: string (YYYY-MM-DD local timezone)
+  - startedAt: timestamp
+  - endedAt: timestamp | null
+  - status: "active" | "completed" | "abandoned"
+  - markedCount: number (increments on each scan)
+  - totalPresent: number
+  - allowancesApplied: boolean (default false)
+
+RULE: Only ONE active session per supervisor at a time.
+RULE: Only ONE active session per site per day.
+If supervisor tries to start session for a site that 
+already has a completed session today → show warning:
+"Site A attendance already completed today. 
+ Open to add more or view details?"
+
+═══════════════════════════════════════════════════
+FLUTTER — HOME SCREEN UPDATE
+═══════════════════════════════════════════════════
+
+Site cards on home screen:
+Each card shows:
+  - Site name (bold)
+  - "X marked today" count
+  - Status badge:
+    PENDING (amber) — no session started
+    IN PROGRESS (blue) — active session exists  
+    COMPLETE (green) — session ended
+    
+Tap card behavior:
+  If PENDING → show "Start Session" dialog
+  If IN PROGRESS (same supervisor) → resume session
+  If IN PROGRESS (different supervisor) → show 
+    "Session active by [name] — view only"
+  If COMPLETE → open summary / view only
+
+═══════════════════════════════════════════════════
+FLUTTER — QR SCAN SCREEN
+═══════════════════════════════════════════════════
+
+Route: /attendance/scan/:sessionId
+
+TOP BAR:
+  🟢 [Site Name] — Session Active
+  [X marked] [End Session button]
+
+BODY — Two tabs:
+  Tab 1: QR Scanner
+  Tab 2: Manual List
+
+QR SCANNER TAB:
+  - Use mobile_scanner package (already in project 
+    or add it)
+  - Camera fills most of screen
+  - Scan overlay: square bracket corners (not full box)
+  - On successful scan:
+    1. Vibrate once
+    2. Parse QR JSON → extract labourId
+    3. Validate: type == "labour_qr" AND 
+       appId == current firebase project
+    4. Check if already marked today (any site):
+       YES → flash RED → show "Already marked at [site]"
+       NO → flash GREEN → mark attendance
+    5. Write attendance record with current sessionId+siteId
+    6. Show bottom notification card (3 sec):
+       "[Labour Name] ✓ marked at [Site]"
+       Buttons: [Add Remark ✏] [Undo ↩]
+    7. Camera immediately ready for next scan
+    8. Increment session.markedCount
+
+  DUPLICATE SCAN HANDLING:
+  If same QR scanned twice in same session:
+  Flash AMBER → "Already marked in this session"
+  Do NOT write duplicate record
+  
+  INVALID QR HANDLING:
+  If QR is not a labour QR (wrong format/app):
+  Flash RED → "Invalid QR code"
+  Brief vibration pattern (different from success)
+
+MANUAL LIST TAB:
+  Shows all labours NOT yet marked today
+  Search bar at top
+  Each row: [Avatar] [Name] [Mark Present button]
+  This is fallback when QR is damaged/missing
+
+═══════════════════════════════════════════════════
+FLUTTER — REMARK DIALOG
+═══════════════════════════════════════════════════
+
+When supervisor taps "Add Remark" on notification card:
+Small bottom sheet with:
+  Labour name header
+  TextField: "What work did [name] do?"
+  Hint: "e.g. shuttering work, tile fixing 2nd floor"
+  [Cancel] [Save Remark]
+
+Remark saved to attendance record immediately.
+If 3 sec timer expires before remark added:
+  Remark can still be added from "Already Marked" panel
+
+═══════════════════════════════════════════════════
+FLUTTER — END SESSION FLOW
+═══════════════════════════════════════════════════
+
+Supervisor taps "End Session":
+
+STEP 1 — Absent confirmation:
+  "X labours not marked yet. Mark them as absent?"
+  Shows list of unmarked labours
+  [Mark All Absent] [Skip — Leave Unmarked] [Cancel]
+
+STEP 2 — Allowances bottom sheet:
+  (existing allowance feature)
+  Petrol / Lunch / Breakfast / Tea toggles
+  Advance (individual per labour from list)
+  Apply to all present labours in this session
+
+STEP 3 — Session summary screen:
+  Site: [name]
+  Date: [today]
+  Supervisor: [name]
+  ─────────────────
+  Present:     12
+  Absent:       8  
+  Temporary:    2
+  ─────────────────
+  Base wages:   ₹7,800
+  Allowances:   ₹2,400
+  Advances:    -₹1,000
+  Net total:    ₹9,200
+  ─────────────────
+  [Share as Image 📤] [Done ✓]
+
+STEP 4 — Update session:
+  Set status: "completed"
+  Set endedAt: now
+  Set totalPresent, allowancesApplied: true
+
+═══════════════════════════════════════════════════
+QR CODE GENERATION — REACT ADMIN
+═══════════════════════════════════════════════════
+
+On Labours page in React admin:
+Each labour row has [QR] button
+
+Clicking [QR] opens modal with:
+  - Generated QR code image (use qrcode npm package)
+  - QR contains JSON:
+    {
+      "labourId": "abc123",
+      "name": "Ramesh Kumar", 
+      "type": "labour_qr",
+      "appId": "FIREBASE_PROJECT_ID"
+    }
+  - [Download QR] button → downloads PNG
+  - [Print ID Card] button → opens print view with:
+      Labour photo placeholder (circle)
+      Name (large)
+      QR code
+      Company name
+      Formatted for credit-card size printing
+
+BULK QR:
+  Select multiple labours (checkbox) →
+  [Download All QR] → ZIP file with 
+  individual PNG per labour named:
+  "RameshKumar_QR.png"
+
+═══════════════════════════════════════════════════
+SAFETY NET — UPDATED FOR QR FLOW  
+═══════════════════════════════════════════════════
+
+"Already Marked Today" panel shows:
+  - Labour name
+  - Marked at: [Site name]
+  - Marked by: [Supervisor name]
+  - Time: [HH:MM]
+  - Remark (if any) — tap to edit
+  - Allowances breakdown
+  - [Reassign Site] button (if session not ended)
+
+Reassign site flow:
+  Dialog: "Move [name] to which site?"
+  Site dropdown → [Confirm]
+  Updates attendance record siteId
+  Writes reassignment log:
+  reassignmentLogs/{logId}
+    - labourId, labourName
+    - fromSite, toSite  
+    - date, changedBy, changedAt, reason
+
+═══════════════════════════════════════════════════
+REACT ADMIN — ATTENDANCE PAGE UPDATE
+═══════════════════════════════════════════════════
+
+Site cards now show:
+  - Session status (Pending/Active/Complete)
+  - Active supervisor name if session in progress
+  - "Started at HH:MM" timestamp
+  - Present count / Total count
+
+Clicking site card:
+  Shows attendance table for that site today
+  Each row: Name | Marked at | Marked by | 
+  Wage | Allowances | Advance | Net | Remark
+
+Admin can:
+  - Edit any record (with audit log)
+  - Force-end an abandoned active session
+  - Manually add attendance if supervisor forgot
+
+═══════════════════════════════════════════════════
+BUGS TO PREVENT
+═══════════════════════════════════════════════════
+
+1. QR scan must be debounced — 1 second cooldown 
+   between scans to prevent double-scanning same code
+
+2. Session must be tied to LOCAL date not UTC —
+   same rule as attendance date field
+
+3. If app crashes mid-session — session stays "active"
+   On next open → detect orphaned active session →
+   "Resume your session for Site A?" dialog
+
+4. QR camera must release properly on screen dispose
+   to prevent camera staying open in background
+
+5. Offline scan support:
+   If no internet → queue scans locally →
+   sync when connection restored →
+   show "X scans pending sync" indicator
+
+6. Two supervisors cannot have active sessions 
+   for the SAME site simultaneously →
+   Second supervisor sees lock message
+
+═══════════════════════════════════════════════════
+IMPLEMENTATION ORDER
+═══════════════════════════════════════════════════
+
+Step 1: Create attendanceSessions collection + model
+Step 2: Update home screen site cards with session status
+Step 3: Build Start Session dialog flow  
+Step 4: Update QR scan screen to use active session
+Step 5: Build End Session flow (absent + allowances + summary)
+Step 6: Add QR generation + Print ID card in React admin
+Step 7: Add bulk QR download
+Step 8: Update React admin attendance page
+Step 9: Add reassignment log collection
+Step 10: Implement offline scan queue
