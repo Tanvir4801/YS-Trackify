@@ -1,0 +1,520 @@
+Use this prompt with Cursor AI, Replit Agent, Claude Code, Lovable, Bolt, or GitHub Copilot.
+
+TRACKIFY V2 UI/UX REDESIGN PROMPT
+
+Goal:
+Redesign the entire Trackify Admin Web Panel into a modern SaaS workforce management platform while preserving 100% existing functionality, Firestore logic, authentication flows, APIs, services, hooks, routing, database structure, and business logic.
+
+IMPORTANT:
+
+* Do NOT change any functionality.
+* Do NOT modify Firestore queries.
+* Do NOT modify collections.
+* Do NOT modify services.
+* Do NOT modify authentication.
+* Do NOT modify permissions.
+* Do NOT modify role logic.
+* Do NOT remove existing features.
+* Only improve UI, UX, responsiveness, visual hierarchy, accessibility, spacing, animations, consistency, typography, and component design.
+
+────────────────────────────
+
+DESIGN SYSTEM
+
+Style:
+Modern premium SaaS dashboard similar to:
+
+* Linear
+* Stripe Dashboard
+* Notion
+* Ramp
+* Deel
+* Rippling
+* Monday.com
+
+Theme:
+Construction Workforce Management
+
+Color Palette:
+
+Primary:
+#2563EB
+
+Primary Hover:
+#1D4ED8
+
+Success:
+#22C55E
+
+Warning:
+#F59E0B
+
+Danger:
+#EF4444
+
+Dark Sidebar:
+#0B1020
+
+Sidebar Hover:
+#111827
+
+Background:
+#F8FAFC
+
+Card:
+#FFFFFF
+
+Border:
+#E2E8F0
+
+Text Primary:
+#0F172A
+
+Text Secondary:
+#64748B
+
+Radius:
+16px
+
+Shadow:
+Soft modern shadows only
+
+No glassmorphism.
+No excessive gradients.
+No flashy effects.
+
+Professional enterprise appearance.
+
+────────────────────────────
+
+GLOBAL LAYOUT
+
+Create a unified design system used across:
+
+* Super Admin
+* Contractor
+* Supervisor
+
+All roles must use the same visual language.
+
+Only permissions and available modules should change.
+
+UI should feel like one premium platform.
+
+────────────────────────────
+
+SIDEBAR REDESIGN
+
+Current sidebar is functional but outdated.
+
+Improve:
+
+Header:
+
+TRACKIFY
+Workforce Management Platform
+
+Role badge:
+
+Super Admin
+Contractor
+Supervisor
+
+Group menu items:
+
+WORKFORCE
+
+* Dashboard
+* Attendance
+* Labours
+* Payroll
+* Payments
+
+OPERATIONS
+
+* Sites
+* Expenses
+
+ANALYTICS
+
+* Reports
+
+ADMINISTRATION
+
+* Supervisors
+* Users
+* Settings
+
+Add:
+
+* active indicator
+* subtle hover animation
+* modern icons
+* collapsed state
+* smooth transitions
+
+Footer:
+
+Profile card with:
+
+* Avatar
+* Name
+* Email
+* Role
+
+────────────────────────────
+
+REMOVE GLOBAL SEARCH
+
+Remove top search box.
+
+Reason:
+Application does not contain enough searchable content.
+
+It wastes premium header space.
+
+────────────────────────────
+
+TOP HEADER REDESIGN
+
+Replace current header.
+
+Structure:
+
+Left:
+
+Page Title
+Page Description
+
+Example:
+
+Dashboard
+Manage workforce activities and attendance.
+
+Right:
+
+Notification Button
+Role Badge
+Profile Dropdown
+Logout
+
+Use modern compact action buttons.
+
+────────────────────────────
+
+DASHBOARD REDESIGN
+
+Create premium dashboard experience.
+
+Add Hero Section:
+
+Good Morning / Good Afternoon / Good Evening
+
+Welcome back, YS Constructions
+
+Today:
+23 June 2026
+
+Below:
+
+Quick Actions:
+
+* Add Labour
+    ✓ Mark Attendance
+    📄 Generate Report
+    💰 Payroll Calculator
+
+────────────────────────────
+
+STAT CARDS
+
+Redesign all KPI cards.
+
+Current cards are too plain.
+
+Each card should contain:
+
+Icon
+Label
+Primary Value
+Mini subtitle
+
+Examples:
+
+Active Labours
+24 Workers
+
+Present Today
+18 Workers
+
+Absent Today
+3 Workers
+
+Monthly Payroll
+₹1,24,500
+
+Supervisors
+4 Active
+
+Overtime Hours
+36 Hours
+
+Use consistent card sizes.
+
+────────────────────────────
+
+CHARTS
+
+Improve charts significantly.
+
+If insufficient data:
+
+Display:
+
+“No data available yet”
+
+instead of broken or empty charts.
+
+Add:
+
+* smooth tooltips
+* legends
+* responsive sizing
+* proper loading states
+
+────────────────────────────
+
+TABLE REDESIGN
+
+Apply globally.
+
+All tables should include:
+
+Sticky header
+Hover state
+Better spacing
+Row selection state
+Modern pagination
+Empty state
+Loading state
+
+Improve:
+
+Attendance Table
+Labour Table
+Payroll Table
+Reports Table
+Users Table
+Sites Table
+Expenses Table
+
+────────────────────────────
+
+REPORTS PAGE
+
+Transform into premium analytics page.
+
+Add:
+
+Report type cards
+
+Monthly Salary
+Attendance
+Overtime
+Payments
+Productivity
+Site Wise
+Labour Wise
+Overall
+
+Use dashboard analytics style.
+
+Improve filters:
+
+Date range picker
+Labour selector
+Export buttons
+
+Show report summary cards above tables.
+
+────────────────────────────
+
+ATTENDANCE PAGE
+
+Create modern attendance workspace.
+
+Add:
+
+Date Header
+Attendance Summary
+Present Count
+Absent Count
+Half Day Count
+
+Improve attendance status badges:
+
+Present = Green
+Absent = Red
+Half Day = Amber
+
+Make attendance marking faster.
+
+────────────────────────────
+
+LABOURS PAGE
+
+Redesign labour cards and table.
+
+Each labour should show:
+
+Avatar
+Name
+Phone
+Daily Wage
+Supervisor
+Status
+
+Add quick actions:
+
+Edit
+Attendance History
+Payroll History
+
+────────────────────────────
+
+PAYROLL PAGE
+
+Create finance dashboard appearance.
+
+Show:
+
+Gross Salary
+Advances
+Net Payable
+Overtime
+
+Use financial card design.
+
+────────────────────────────
+
+SITES PAGE
+
+Use project management style.
+
+Each site card should show:
+
+Site Name
+Supervisor
+Labours Assigned
+Attendance Today
+Status
+
+────────────────────────────
+
+USERS PAGE
+
+Replace current basic table.
+
+Add:
+
+User Avatar
+Role Badge
+Status Badge
+
+Role colors:
+
+Super Admin = Purple
+Contractor = Blue
+Supervisor = Green
+
+────────────────────────────
+
+SETTINGS PAGE
+
+Redesign completely.
+
+Use settings sections:
+
+Company Settings
+Attendance Settings
+Payroll Settings
+Notifications
+Data Sync
+
+Add explanatory descriptions.
+
+Add save success animations.
+
+────────────────────────────
+
+EMPTY STATES
+
+Create premium empty states.
+
+Examples:
+
+No Labours Added
+No Attendance Recorded
+No Reports Generated
+No Sites Created
+
+Include:
+Icon
+Title
+Description
+Action Button
+
+────────────────────────────
+
+LOADING STATES
+
+Replace spinners with skeleton loaders.
+
+Apply everywhere.
+
+────────────────────────────
+
+RESPONSIVENESS
+
+Desktop:
+Full dashboard layout.
+
+Tablet:
+Adaptive grid.
+
+Mobile:
+Fully responsive.
+
+No horizontal scrolling.
+
+────────────────────────────
+
+ANIMATIONS
+
+Use subtle Framer Motion animations.
+
+Page transitions.
+Card hover effects.
+Sidebar collapse.
+Modal appearance.
+
+Animations must remain professional.
+
+────────────────────────────
+
+ACCESSIBILITY
+
+Proper contrast.
+Keyboard navigation.
+Focus states.
+Screen reader support.
+
+────────────────────────────
+
+FINAL REQUIREMENT
+
+Maintain every existing feature, Firestore integration, API call, route, permission, role, collection, query, service, hook, and business logic exactly as-is.
+
+Only upgrade visual design, component architecture, layout consistency, responsiveness, usability, and premium SaaS appearance across Super Admin, Contractor, and Supervisor dashboards using a shared design system.
+
+This will give Trackify a much more professional, enterprise-grade feel while keeping all of your existing Firebase and workforce-management logic intact.
