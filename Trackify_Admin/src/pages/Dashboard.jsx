@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
   Users, UserCheck, UserX, Wallet, TrendingUp, Activity,
   AlertTriangle, RefreshCw, Plus, HardHat, FileText, Download,
-  Clock, ArrowRight,
+  Clock, ArrowRight, Building2, BarChart2,
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
@@ -37,48 +38,69 @@ function MarkedViaBadge({ via }) {
   );
 }
 
-function StatCard({ label, value, sub, icon: Icon, color = 'blue' }) {
+function StatCard({ label, value, sub, icon: Icon, color = 'blue', trend }) {
   const colors = {
-    blue:   { bg: '#EFF6FF', icon: '#2563EB', bar: '#2563EB' },
-    green:  { bg: '#F0FDF4', icon: '#16A34A', bar: '#22C55E' },
-    red:    { bg: '#FEF2F2', icon: '#DC2626', bar: '#EF4444' },
-    amber:  { bg: '#FFFBEB', icon: '#D97706', bar: '#F59E0B' },
-    purple: { bg: '#FAF5FF', icon: '#7C3AED', bar: '#7C3AED' },
-    slate:  { bg: '#F8FAFC', icon: '#475569', bar: '#64748B' },
-    indigo: { bg: '#EEF2FF', icon: '#4338CA', bar: '#4338CA' },
+    blue:   { bg: '#EFF6FF', icon: '#2563EB' },
+    green:  { bg: '#F0FDF4', icon: '#16A34A' },
+    red:    { bg: '#FEF2F2', icon: '#DC2626' },
+    amber:  { bg: '#FFFBEB', icon: '#D97706' },
+    purple: { bg: '#FAF5FF', icon: '#7C3AED' },
+    slate:  { bg: '#F8FAFC', icon: '#475569' },
+    indigo: { bg: '#EEF2FF', icon: '#4338CA' },
   };
   const c = colors[color] || colors.blue;
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+    <motion.div
+      whileHover={{ y: -2, boxShadow: '0 8px 25px rgba(0,0,0,0.08)' }}
+      transition={{ duration: 0.15 }}
+      className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm cursor-default"
+    >
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
           <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
-          {sub && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
+          {trend && (
+            <p className="mt-0.5 text-xs font-medium" style={{ color: trend.startsWith('↑') ? '#16A34A' : trend.startsWith('↓') ? '#DC2626' : '#94A3B8' }}>
+              {trend}
+            </p>
+          )}
+          {sub && !trend && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
         </div>
         <div className="ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ background: c.bg }}>
           <Icon className="h-5 w-5" style={{ color: c.icon }} />
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function QuickAction({ icon: Icon, label, desc, color, onClick }) {
   return (
-    <button
+    <motion.button
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md group w-full"
+      className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-sm transition hover:border-blue-200 hover:shadow-md group w-full"
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: color + '15' }}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: color + '18' }}>
         <Icon className="h-4 w-4" style={{ color }} />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-slate-900">{label}</p>
-        <p className="text-xs text-slate-500">{desc}</p>
+        <p className="text-xs text-slate-400">{desc}</p>
       </div>
       <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-blue-500 transition shrink-0" />
-    </button>
+    </motion.button>
+  );
+}
+
+function SummaryChip({ icon, label, value, color }) {
+  return (
+    <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-2 shadow-sm">
+      <span className="text-sm">{icon}</span>
+      <span className="text-xs text-slate-500 font-medium">{label}:</span>
+      <span className="text-xs font-bold" style={{ color }}>{value}</span>
+    </div>
   );
 }
 
@@ -98,6 +120,16 @@ function getGreeting() {
   if (h < 17) return 'Good Afternoon';
   return 'Good Evening';
 }
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+};
+
+const containerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } },
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -213,35 +245,43 @@ export default function Dashboard() {
 
   const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const displayName = activeContractorName || name || 'your workspace';
+  const presentPct = labours.length ? Math.round((todayCounts.present / labours.length) * 100) : 0;
+  const absentPct  = labours.length ? Math.round((todayCounts.absent  / labours.length) * 100) : 0;
 
   return (
-    <div className="space-y-6">
-      {/* Hero greeting */}
-      <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-slate-500">{getGreeting()} 👋</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">Welcome back, {displayName}</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Today is <span className="font-semibold text-slate-700">{dateStr}</span>
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate('/attendance')} className="gap-2 text-sm">
-              <Activity className="h-4 w-4" /> Mark Attendance
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate('/labours')} className="gap-2 text-sm">
-              <Plus className="h-4 w-4" /> Add Labour
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate('/reports')} className="gap-2 text-sm">
-              <FileText className="h-4 w-4" /> Reports
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleExportToday} className="gap-2 text-sm">
-              <Download className="h-4 w-4" /> Export Today
-            </Button>
+    <div className="space-y-5">
+
+      {/* Compact hero */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden"
+      >
+        <div className="px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-400">{getGreeting()} 👋</p>
+              <h2 className="text-xl font-bold text-slate-900 mt-0.5">Welcome back, {displayName}</h2>
+              <p className="text-xs text-slate-400 mt-0.5">{dateStr}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <QuickAction icon={Activity}  label="Mark Attendance" desc="Record today's attendance" color="#2563EB" onClick={() => navigate('/attendance')} />
+              <QuickAction icon={Plus}      label="Add Labour"      desc="Register new labour"       color="#16A34A" onClick={() => navigate('/labours')} />
+              <QuickAction icon={FileText}  label="Reports"         desc="View analytics"            color="#7C3AED" onClick={() => navigate('/reports')} />
+              <QuickAction icon={Download}  label="Export Today"    desc="Download attendance CSV"   color="#D97706" onClick={handleExportToday} />
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* Quick summary chips */}
+        <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-2.5 flex flex-wrap gap-2">
+          <SummaryChip icon="👷" label="Active Labours"  value={labours.length}             color="#2563EB" />
+          <SummaryChip icon="🏗️" label="Active Sites"    value="—"                          color="#D97706" />
+          <SummaryChip icon="👨‍💼" label="Supervisors"     value={supervisors.length}         color="#7C3AED" />
+          <SummaryChip icon="💰" label="Monthly Payroll" value={formatCurrency(payrollSummary.total)} color="#16A34A" />
+        </div>
+      </motion.div>
 
       {alerts.filter((a) => !dismissed.has(a.id)).map((a) => (
         <AlertBanner
@@ -255,33 +295,51 @@ export default function Dashboard() {
       ))}
 
       {/* KPI cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Active Labours"   value={labours.length}           icon={HardHat}   color="blue" />
-        <StatCard label="Present Today"    value={todayCounts.present}      sub={labours.length ? `${Math.round((todayCounts.present / labours.length) * 100)}% of workforce` : ''} icon={UserCheck} color="green" />
-        <StatCard label="Absent Today"     value={todayCounts.absent}       sub={labours.length ? `${Math.round((todayCounts.absent / labours.length) * 100)}% of workforce` : ''} icon={UserX}    color="red" />
-        <StatCard label="Half Day Today"   value={todayCounts.half}         icon={Activity}  color="amber" />
-        <StatCard label="Month Payroll"    value={formatCurrency(payrollSummary.total)}   sub="this month total" icon={Wallet}    color="purple" />
-        <StatCard label="Pending Advances" value={formatCurrency(payrollSummary.advances)} sub="total advances"   icon={TrendingUp} color="amber" />
-        <StatCard label="Supervisors"      value={supervisors.length}       icon={Users}     color="slate" />
-        <StatCard label="OT Hours Today"   value={todayCounts.totalOT}      sub="total overtime" icon={RefreshCw} color="indigo" />
-      </div>
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        {[
+          { label: 'Active Labours',   value: labours.length,               icon: HardHat,    color: 'blue',   trend: labours.length > 0 ? `${labours.length} registered` : 'No labours yet' },
+          { label: 'Present Today',    value: todayCounts.present,           icon: UserCheck,  color: 'green',  trend: `${presentPct}% workforce` },
+          { label: 'Absent Today',     value: todayCounts.absent,            icon: UserX,      color: 'red',    trend: `${absentPct}% workforce` },
+          { label: 'Half Day Today',   value: todayCounts.half,              icon: Activity,   color: 'amber',  sub: 'half-day records' },
+          { label: 'Month Payroll',    value: formatCurrency(payrollSummary.total),    icon: Wallet,     color: 'purple', sub: 'this month total' },
+          { label: 'Pending Advances', value: formatCurrency(payrollSummary.advances), icon: TrendingUp, color: 'amber',  sub: 'total advances given' },
+          { label: 'Supervisors',      value: supervisors.length,            icon: Users,      color: 'slate',  sub: 'active supervisors' },
+          { label: 'OT Hours Today',   value: todayCounts.totalOT,          icon: Clock,      color: 'indigo', sub: 'total overtime hrs' },
+        ].map((card) => (
+          <motion.div key={card.label} variants={cardVariants}>
+            <StatCard {...card} />
+          </motion.div>
+        ))}
+      </motion.div>
 
       {/* Chart + Payroll */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3">
         <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900">14-Day Attendance Trend</h3>
-            <span className="text-xs text-slate-400">Last 2 weeks</span>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">14-Day Attendance Trend</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Last 2 weeks overview</p>
+            </div>
+            <span className="text-xs text-slate-400 hidden sm:block">Last 2 weeks</span>
           </div>
           {loadingTrend ? (
-            <div className="flex h-48 items-center justify-center">
+            <div className="flex h-52 items-center justify-center">
               <LoadingSpinner label="Loading trend…" />
             </div>
           ) : trend14.every((d) => d.present === 0 && d.absent === 0 && d.half === 0) ? (
-            <div className="flex h-48 flex-col items-center justify-center gap-2 text-center">
-              <Activity className="h-10 w-10 text-slate-200" />
-              <p className="text-sm font-semibold text-slate-400">No data available yet</p>
-              <p className="text-xs text-slate-300">Attendance data will appear here once records are saved</p>
+            <div className="flex h-52 flex-col items-center justify-center gap-3 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+                <BarChart2 className="h-7 w-7 text-slate-300" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-500">Not enough attendance history</p>
+                <p className="text-xs text-slate-400 mt-1">Attendance trends will appear after several days of records.</p>
+              </div>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
@@ -304,19 +362,21 @@ export default function Dashboard() {
 
         <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900">Payroll Summary</h3>
-            <span className="text-xs text-slate-400">This month</span>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Payroll Summary</h3>
+              <p className="text-xs text-slate-400 mt-0.5">This month</p>
+            </div>
           </div>
           {loadingPay ? (
             <LoadingSpinner label="Loading…" />
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {[
-                { label: 'Gross',      value: payrollSummary.total,   color: '#0F172A' },
-                { label: 'Advances',   value: payrollSummary.advances, color: '#D97706' },
-                { label: 'Net Payable', value: payrollSummary.total - payrollSummary.advances, color: '#16A34A' },
+                { label: 'Gross Salary', value: payrollSummary.total, color: '#0F172A', bg: '#F8FAFC', bar: null },
+                { label: 'Advances',     value: payrollSummary.advances, color: '#D97706', bg: '#FFFBEB', bar: null },
+                { label: 'Salary Paid',  value: payrollSummary.salary,   color: '#16A34A', bg: '#F0FDF4', bar: null },
               ].map((row) => (
-                <div key={row.label} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                <div key={row.label} className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: row.bg }}>
                   <span className="text-sm text-slate-500 font-medium">{row.label}</span>
                   <span className="text-sm font-bold" style={{ color: row.color }}>{formatCurrency(row.value)}</span>
                 </div>
@@ -324,21 +384,22 @@ export default function Dashboard() {
 
               {payrollSummary.total > 0 && (
                 <div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-slate-400">Advance ratio</span>
+                    <span className="text-xs font-semibold text-amber-600">{Math.round((payrollSummary.advances / payrollSummary.total) * 100)}%</span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                     <div
                       className="h-full rounded-full transition-all"
                       style={{ width: `${Math.min(100, (payrollSummary.advances / payrollSummary.total) * 100).toFixed(0)}%`, background: '#F59E0B' }}
                     />
                   </div>
-                  <p className="mt-1 text-center text-xs text-slate-400">
-                    {Math.round((payrollSummary.advances / payrollSummary.total) * 100)}% advance vs gross
-                  </p>
                 </div>
               )}
 
               <Button
                 onClick={() => navigate('/payroll')}
-                className="w-full gap-2 text-white text-sm"
+                className="w-full gap-2 text-white text-sm mt-1"
                 style={{ background: '#2563EB' }}
                 size="sm"
               >
@@ -351,7 +412,7 @@ export default function Dashboard() {
 
       {/* Live attendance feed */}
       <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <div className="flex items-center gap-3">
             <h3 className="text-base font-bold text-slate-900">Today's Live Attendance Feed</h3>
             <span className="flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
@@ -366,9 +427,14 @@ export default function Dashboard() {
           <div className="py-10"><LoadingSpinner label="Loading feed…" /></div>
         ) : attendanceToday.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-            <Clock className="h-10 w-10 text-slate-200" />
-            <p className="text-sm font-semibold text-slate-400">No attendance recorded today yet</p>
-            <Button size="sm" onClick={() => navigate('/attendance')} style={{ background: '#2563EB' }} className="text-white gap-2">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+              <Clock className="h-7 w-7 text-slate-300" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-500">No attendance recorded today yet</p>
+              <p className="text-xs text-slate-400 mt-1">Start marking attendance to see the live feed here.</p>
+            </div>
+            <Button size="sm" onClick={() => navigate('/attendance')} style={{ background: '#2563EB' }} className="text-white gap-2 mt-1">
               <Plus className="h-4 w-4" /> Mark Attendance
             </Button>
           </div>
