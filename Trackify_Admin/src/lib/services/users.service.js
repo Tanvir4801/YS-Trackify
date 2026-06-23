@@ -74,57 +74,20 @@ export async function getUsers(scopeId, options = {}) {
 // GET SUPERVISORS — fixed map call
 // ─────────────────────────────────────────────
 export async function getSupervisors(scopeId) {
-  console.log('getSupervisors called with scopeId:', scopeId); // debug
-
-  const constraints = [
-    where('role', '==', 'supervisor'),
-    where('isActive', '==', true),
-  ];
-
-  if (scopeId) {
-    constraints.push(where('contractorId', '==', scopeId));
-  }
-
-  constraints.push(orderBy('name'));
+  // Use minimal constraints to avoid composite-index requirement.
+  // Filter isActive and sort client-side.
+  const constraints = [where('role', '==', 'supervisor')];
+  if (scopeId) constraints.push(where('contractorId', '==', scopeId));
 
   try {
-    const snap = await getDocs(
-      query(collection(db, 'users'), ...constraints),
-    );
-
-    console.log('supervisors found:', snap.size); // debug
-
-    // FIX: was snap.docs.map(snapToDoc) — that passes the function
-    // as a callback correctly BUT snap.docs.map is not a function
-    // because of the markdown link corruption in the original file
-    // Correct form:
-    const result = snap.docs.map((d) => snapToDoc(d));
-    console.log('supervisors result:', result); // debug
+    const snap = await getDocs(query(collection(db, 'users'), ...constraints));
+    const result = snap.docs.map((d) => snapToDoc(d))
+      .filter((u) => u.isActive !== false)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return result;
-
   } catch (error) {
     console.error('getSupervisors error:', error);
-
-    // If composite index missing — retry without orderBy
-    if (error.code === 'failed-precondition') {
-      console.warn('Index missing — retrying without orderBy');
-      const constraints2 = [
-        where('role', '==', 'supervisor'),
-        where('isActive', '==', true),
-      ];
-      if (scopeId) constraints2.push(where('contractorId', '==', scopeId));
-
-      const snap2 = await getDocs(
-        query(collection(db, 'users'), ...constraints2),
-      );
-
-      const result2 = snap2.docs.map((d) => snapToDoc(d));
-      // Sort client-side since no orderBy
-      return result2.sort((a, b) =>
-        (a.name || '').localeCompare(b.name || ''),
-      );
-    }
-
+    if (error.code === 'permission-denied') return [];
     throw error;
   }
 }

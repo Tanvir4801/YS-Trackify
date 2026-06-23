@@ -24,26 +24,37 @@ export default function Supervisors() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!scopeId) {
+      setSupervisors([]);
+      setLabours([]);
+      setAttendanceToday([]);
+      setMonthPayments([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-    const safeGet = (fn) => fn.catch((e) => { console.warn('Supervisor page sub-query failed:', e?.message); return []; });
+
+    const safe = (p) => p.catch((e) => {
+      console.warn('Supervisor sub-query failed:', e?.code, e?.message);
+      return [];
+    });
+
     Promise.all([
-      safeGet(getUsers(scopeId, { role: 'supervisor' })),
-      safeGet(getLabours(scopeId, { activeOnly: true })),
-      safeGet(getAttendanceByDate(scopeId, today)),
-      safeGet(getPayments(scopeId, { startDate: monthStart, endDate: today })),
+      safe(getUsers(scopeId, { role: 'supervisor' })),
+      safe(getLabours(scopeId, { activeOnly: true })),
+      safe(getAttendanceByDate(scopeId, today)),
+      safe(getPayments(scopeId, { startDate: monthStart, endDate: today })),
     ])
       .then(([sups, labs, att, pays]) => {
-        setSupervisors(sups);
-        setLabours(labs);
-        setAttendanceToday(att);
-        setMonthPayments(pays);
+        setSupervisors(Array.isArray(sups) ? sups : []);
+        setLabours(Array.isArray(labs) ? labs : []);
+        setAttendanceToday(Array.isArray(att) ? att : []);
+        setMonthPayments(Array.isArray(pays) ? pays : []);
       })
-      .catch((e) => {
-        console.error('SUPERVISOR PAGE ERROR:', e);
-        toast.error(e?.message || 'Failed to load supervisors');
-      })
+      .catch((e) => console.error('SUPERVISOR PAGE ERROR:', e))
       .finally(() => setLoading(false));
-  }, [scopeId, today]);
+  }, [scopeId]);
 
   const rows = useMemo(() => {
     return supervisors.map((s) => {

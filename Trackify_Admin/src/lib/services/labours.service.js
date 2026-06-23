@@ -42,9 +42,11 @@ function buildQueries(contractorId, options = {}) {
     return [query(collection(db, 'labours'), ...activeConstraint)];
   }
 
+  // ⚠️ Only query by contractorId — querying by supervisorId returns docs with
+  // different contractorId values which causes Firestore permission-denied on
+  // the rule `isInTenant(resource.data.contractorId)`.
   return [
     query(collection(db, 'labours'), ...activeConstraint, where('contractorId', '==', contractorId)),
-    query(collection(db, 'labours'), ...activeConstraint, where('supervisorId', '==', contractorId)),
   ];
 }
 

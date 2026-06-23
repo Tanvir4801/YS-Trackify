@@ -4,6 +4,7 @@ import {
   addDoc,
   updateDoc,
   getDocs,
+  onSnapshot,
   query,
   where,
   orderBy,
@@ -56,61 +57,36 @@ function applyClientFilters(items, options = {}) {
   });
 }
 
-async function runScopedPaymentsQuery(scopeField, scopeId, constraints, options) {
-  try {
-    const snap = await getDocs(
-      query(collection(db, 'payments'), where(scopeField, '==', scopeId), ...constraints),
-    );
-    return snap.docs.map(snapToDoc);
-  } catch (error) {
-    if (error?.code !== 'failed-precondition') throw error;
 
-    // Fallback for missing composite indexes: fetch scoped docs and filter/sort locally.
-    const fallbackSnap = await getDocs(
-      query(collection(db, 'payments'), where(scopeField, '==', scopeId)),
-    );
-    const filtered = applyClientFilters(fallbackSnap.docs.map(snapToDoc), options);
-    return filtered.sort((a, b) => {
-      const ta = a.date?.getTime?.() || 0;
-      const tb = b.date?.getTime?.() || 0;
-      return tb - ta;
-    });
+export async function getPayments(scopeId, options = {}) {
+  // ⚠️ Only query by contractorId — supervisorId queries return docs with
+  // different contractorId values which causes permission-denied.
+  try {
+    const constraints = scopeId
+      ? [where('contractorId', '==', scopeId)]
+      : [];
+    const snap = await getDocs(query(collection(db, 'payments'), ...constraints));
+    const rows = applyClientFilters(snap.docs.map(snapToDoc), options);
+    return rows.sort((a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0));
+  } catch (error) {
+    if (error?.code === 'permission-denied') return [];
+    throw error;
   }
 }
 
-export async function getPayments(scopeId, options = {}) {
-  const constraints = buildBaseConstraints(options);
-  constraints.push(orderBy('date', 'desc'));
+export function subscribePayments(scopeId, callback, options = {}) {
+  const constraints = scopeId
+    ? [where('contractorId', '==', scopeId)]
+    : [];
+  const q = query(collection(db, 'payments'), ...constraints);
 
-  if (!scopeId) {
-    try {
-      const snap = await getDocs(query(collection(db, 'payments'), ...constraints));
-      return snap.docs.map(snapToDoc);
-    } catch (error) {
-      if (error?.code !== 'failed-precondition') throw error;
-
-      const fallbackSnap = await getDocs(collection(db, 'payments'));
-      const filtered = applyClientFilters(fallbackSnap.docs.map(snapToDoc), options);
-      return filtered.sort((a, b) => {
-        const ta = a.date?.getTime?.() || 0;
-        const tb = b.date?.getTime?.() || 0;
-        return tb - ta;
-      });
-    }
-  }
-
-  const [supervisorRows, contractorRows] = await Promise.all([
-    runScopedPaymentsQuery('supervisorId', scopeId, constraints, options),
-    runScopedPaymentsQuery('contractorId', scopeId, constraints, options),
-  ]);
-
-  const map = new Map();
-  supervisorRows.forEach((row) => map.set(row.id, row));
-  contractorRows.forEach((row) => map.set(row.id, row));
-  return Array.from(map.values()).sort((a, b) => {
-    const ta = a.date?.getTime?.() || 0;
-    const tb = b.date?.getTime?.() || 0;
-    return tb - ta;
+  return onSnapshot(q, (snap) => {
+    const rows = applyClientFilters(snap.docs.map(snapToDoc), options);
+    rows.sort((a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0));
+    callback(rows);
+  }, (err) => {
+    console.error('❌ subscribePayments error:', err);
+    callback([]);
   });
 }
 
