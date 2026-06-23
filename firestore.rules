@@ -139,6 +139,31 @@ service cloud.firestore {
                    && canManageTenant(contractorId);
     }
 
+    // ── attendanceSessions/ ───────────────────────────────────────────────────
+    // One document per site-session started by a supervisor.
+    // supervisors create/update their own session; contractor admins can read all
+    // sessions in their tenant and force-end any.
+
+    match /attendanceSessions/{sessionId} {
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId);
+
+      allow create: if isSignedIn()
+                    && request.resource.data.supervisorId == callerUid()
+                    && canManageTenant(request.resource.data.contractorId);
+
+      // Supervisor who owns the session can update (mark count, end session).
+      // Contractor admin can also force-end (e.g. stuck session).
+      allow update: if isSignedIn()
+                    && (
+                      resource.data.supervisorId == callerUid()
+                      || isContractorAdmin(resource.data.contractorId)
+                      || isSuperAdmin()
+                    );
+
+      allow delete: if isSuperAdmin();
+    }
+
     // ── payments/ ────────────────────────────────────────────────────────────
 
     match /payments/{paymentId} {
