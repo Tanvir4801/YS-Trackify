@@ -5,6 +5,12 @@ import 'package:flutter/foundation.dart';
 import '../models/attendance_session_model.dart';
 import 'session_service.dart';
 
+/// Sessions are stored at:
+///   attendance/{contractorId}/sessions/{sessionId}
+///
+/// This path is already covered by the existing Firestore wildcard rule:
+///   match /attendance/{contractorId}/{rest=**} { allow write: canManageTenant }
+/// so NO new Firestore rules are needed.
 class AttendanceSessionService {
   AttendanceSessionService({
     FirebaseFirestore? firestore,
@@ -27,8 +33,16 @@ class AttendanceSessionService {
     return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
+  /// Sessions subcollection for the current contractor.
+  CollectionReference<Map<String, dynamic>> _sessionsCol(String contractorId) =>
+      _db.collection('attendance').doc(contractorId).collection('sessions');
+
   CollectionReference<Map<String, dynamic>> get _col =>
-      _db.collection('attendanceSessions');
+      _sessionsCol(_contractorId);
+
+  /// Document reference given a sessionId (uses current contractorId).
+  DocumentReference<Map<String, dynamic>> _docRef(String sessionId) =>
+      _col.doc(sessionId);
 
   // ── Start a session ──────────────────────────────────────────────────────────
   Future<AttendanceSession> startSession({
@@ -40,9 +54,10 @@ class AttendanceSessionService {
     if (uid.isEmpty) throw Exception('Not logged in');
     final contractorId = _contractorId;
     final today = _todayString();
+    final col = _sessionsCol(contractorId);
 
     // Check for existing active session for THIS supervisor
-    final myActive = await _col
+    final myActive = await col
         .where('supervisorId', isEqualTo: uid)
         .where('status', isEqualTo: 'active')
         .limit(1)
@@ -51,9 +66,8 @@ class AttendanceSessionService {
       return AttendanceSession.fromFirestore(myActive.docs.first);
     }
 
-    // Check for active session for this site today (by anyone)
-    final siteActive = await _col
-        .where('contractorId', isEqualTo: contractorId)
+    // Check for active session for this site today (by anyone in same tenant)
+    final siteActive = await col
         .where('siteId', isEqualTo: siteId)
         .where('date', isEqualTo: today)
         .where('status', isEqualTo: 'active')
@@ -65,7 +79,7 @@ class AttendanceSessionService {
       );
     }
 
-    final docRef = _col.doc();
+    final docRef = col.doc();
     final session = AttendanceSession(
       id:             docRef.id,
       supervisorId:   uid,
@@ -84,7 +98,7 @@ class AttendanceSessionService {
 
   // ── End a session ────────────────────────────────────────────────────────────
   Future<void> endSession(String sessionId, {int totalPresent = 0}) async {
-    await _col.doc(sessionId).update({
+    await _docRef(sessionId).update({
       'status':       'completed',
       'endedAt':      FieldValue.serverTimestamp(),
       'totalPresent': totalPresent,
@@ -94,8 +108,8 @@ class AttendanceSessionService {
 
   // ── Increment marked count atomically ────────────────────────────────────────
   Future<void> incrementMarkedCount(String sessionId) async {
-    await _col.doc(sessionId).update({
-      'markedCount': FieldValue.increment(1),
+    await _docRef(sessionId).update({
+      'markedCount':  FieldValue.increment(1),
       'totalPresent': FieldValue.increment(1),
     });
   }
@@ -134,10 +148,8 @@ class AttendanceSessionService {
 
   // ── Stream all sessions for today (for dashboard site cards) ─────────────────
   Stream<List<AttendanceSession>> streamSessionsForToday() {
-    final contractorId = _contractorId;
     final today = _todayString();
     return _col
-        .where('contractorId', isEqualTo: contractorId)
         .where('date', isEqualTo: today)
         .snapshots()
         .map((snap) =>
@@ -146,8 +158,8 @@ class AttendanceSessionService {
 
   // ── Stream a single session by ID ────────────────────────────────────────────
   Stream<AttendanceSession?> streamSession(String sessionId) {
-    return _col.doc(sessionId).snapshots().map((doc) =>
-        doc.exists ? AttendanceSession.fromFirestore(doc) : null);
+    return _docRef(sessionId).snapshots().map(
+        (doc) => doc.exists ? AttendanceSession.fromFirestore(doc) : null);
   }
 
   // ── Abandon orphaned sessions on app start ───────────────────────────────────
