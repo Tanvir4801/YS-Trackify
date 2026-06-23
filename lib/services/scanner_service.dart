@@ -26,20 +26,29 @@ class ScannerService {
     return supervisorId;
   }
 
-  // ── JSON QR decoder (v2 QR format) ─────────────────────────────────────────
+  // ── JSON QR decoder (admin format + v2 QR format) ──────────────────────────
 
   Map<String, dynamic>? decodeJsonQr(String raw) {
     try {
       final dynamic parsed = jsonDecode(raw);
       if (parsed is! Map) return null;
-      final labourId     = (parsed['labourId']     as String?)?.trim() ?? '';
+
+      final labourId = (parsed['labourId'] as String?)?.trim() ?? '';
+      if (labourId.isEmpty) return {'error': 'invalid'};
+
+      // Admin format: {"type":"labour_qr","labourId":"...","name":"...","appId":"..."}
+      final type = (parsed['type'] as String?)?.trim() ?? '';
+      if (type == 'labour_qr') {
+        final labourName = (parsed['name'] as String?) ?? 'Labour';
+        return {'labourId': labourId, 'labourName': labourName};
+      }
+
+      // V2 format: {"labourId":"...","contractorId":"...","labourName":"...","expiresAt":...}
       final contractorId = (parsed['contractorId'] as String?)?.trim() ?? '';
       final labourName   = (parsed['labourName']   as String?) ?? 'Labour';
       final expiresAt    = (parsed['expiresAt']    as num?)?.toInt() ?? 0;
 
-      if (labourId.isEmpty || contractorId.isEmpty) {
-        return {'error': 'invalid'};
-      }
+      if (contractorId.isEmpty) return {'error': 'invalid'};
       if (expiresAt > 0 && DateTime.now().millisecondsSinceEpoch > expiresAt) {
         return {'error': 'expired'};
       }

@@ -7,6 +7,7 @@ import { useAttendanceByDate } from '../hooks/useAttendance';
 import { bulkMarkAttendance, getAttendanceRange, updateAttendanceRemark, updateAttendanceAllowances } from '../lib/services/attendance.service';
 import { addTemporaryLabour } from '../lib/services/labours.service';
 import { subscribeSites } from '../lib/services/sites.service';
+import { subscribeSessionsForDate } from '../lib/services/sessions.service';
 import { todayKey, toDateKey, exportCSV, formatCurrency } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -75,6 +76,7 @@ export default function Attendance() {
   const [savingAllowance, setSavingAllowance] = useState(false);
   const [sites, setSites] = useState([]);
   const [selectedSite, setSelectedSite] = useState(null); // null = all sites
+  const [sessions, setSessions] = useState([]);
 
   const { data: labours, isLoading: loadingLabours } = useLabours();
   const { records, isLoading: loadingRecords } = useAttendanceByDate(date);
@@ -85,6 +87,19 @@ export default function Attendance() {
     const unsub = subscribeSites(contractorId, setSites);
     return unsub;
   }, [writeScope, scopeFromStore, isSupervisor]);
+
+  useEffect(() => {
+    const contractorId = isSupervisor ? scopeFromStore : writeScope;
+    if (!contractorId) return;
+    const unsub = subscribeSessionsForDate(contractorId, date, setSessions);
+    return unsub;
+  }, [writeScope, scopeFromStore, isSupervisor, date]);
+
+  const sessionMap = useMemo(() => {
+    const m = {};
+    sessions.forEach((s) => { m[s.siteId] = s; });
+    return m;
+  }, [sessions]);
 
   useEffect(() => {
     const next = {};
@@ -576,15 +591,22 @@ export default function Attendance() {
               <span className={`text-xs font-semibold ${selectedSite === null ? 'text-white' : 'text-green-600'}`}>All ✓</span>
             )}
           </button>
-          {/* Per-site cards — show how many labours were marked at this site today */}
+          {/* Per-site cards — show session status + how many labours were marked today */}
           {sites.map((s) => {
             const markedHere = records.filter((r) => r.siteId === s.id).length;
             const isActive = selectedSite === s.id;
+            const siteSession = sessionMap[s.id];
+            const sessionStatus = siteSession?.status;
+            const sessionBadge = !siteSession
+              ? { label: 'PENDING', cls: 'bg-amber-100 text-amber-700', dot: null }
+              : sessionStatus === 'active'
+              ? { label: 'IN PROGRESS', cls: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' }
+              : { label: 'COMPLETE', cls: 'bg-green-100 text-green-700', dot: null };
             return (
               <button
                 key={s.id}
                 onClick={() => setSelectedSite(s.id)}
-                className={`flex shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-5 py-4 text-center shadow-sm transition-all min-w-[110px] ${
+                className={`flex shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-5 py-4 text-center shadow-sm transition-all min-w-[120px] ${
                   isActive
                     ? 'border-blue-600 bg-blue-600 text-white'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
@@ -595,10 +617,17 @@ export default function Attendance() {
                 <span className={`text-xs ${isActive ? 'text-blue-100' : 'text-slate-400'}`}>
                   {markedHere} marked today
                 </span>
-                {markedHere > 0 ? (
-                  <span className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-green-600'}`}>{markedHere} ✓</span>
-                ) : (
-                  <span className={`text-xs ${isActive ? 'text-blue-200' : 'text-slate-300'}`}>None yet</span>
+                {/* Session status badge */}
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${isActive ? 'bg-white/20 text-white' : sessionBadge.cls}`}>
+                  {sessionBadge.dot && (
+                    <span className={`inline-block h-1.5 w-1.5 animate-pulse rounded-full ${isActive ? 'bg-white' : sessionBadge.dot}`} />
+                  )}
+                  {sessionBadge.label}
+                </span>
+                {siteSession?.markedCount > 0 && (
+                  <span className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-green-600'}`}>
+                    {siteSession.markedCount} scanned
+                  </span>
                 )}
               </button>
             );

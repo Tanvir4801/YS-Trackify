@@ -70,6 +70,7 @@ export default function Labours() {
   const [qrLabour, setQrLabour] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const qrCanvasRef = useRef(null);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
 
   // Build supervisorId → supervisor object map for display
   const supervisorMap = useMemo(() => {
@@ -274,6 +275,58 @@ export default function Labours() {
     win.document.close();
   };
 
+  const bulkDownloadQR = async () => {
+    const targets = selected.size > 0
+      ? filtered.filter((l) => selected.has(l.id))
+      : filtered.filter((l) => l.isActive !== false);
+    if (targets.length === 0) return toast.error('No labours to download');
+    if (targets.length > 200) return toast.error('Too many labours — select a subset first');
+
+    setBulkDownloading(true);
+    const t = toast.loading(`Generating QR codes for ${targets.length} labours…`);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      const appId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'ys-construction';
+
+      await Promise.all(
+        targets.map(async (l) => {
+          const payload = JSON.stringify({
+            labourId: l.id,
+            name: l.name,
+            type: 'labour_qr',
+            appId,
+          });
+          const dataUrl = await QRCode.toDataURL(payload, {
+            errorCorrectionLevel: 'H',
+            margin: 2,
+            width: 400,
+            color: { dark: '#1e293b', light: '#ffffff' },
+          });
+          const base64 = dataUrl.split(',')[1];
+          const safeName = l.name.replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_');
+          zip.file(`${safeName}_${l.id.slice(0, 6)}.png`, base64, { base64: true });
+        }),
+      );
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `labour_qr_codes_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.dismiss(t);
+      toast.success(`Downloaded ${targets.length} QR codes`);
+    } catch (e) {
+      console.error('Bulk QR error:', e);
+      toast.dismiss(t);
+      toast.error('Bulk QR download failed');
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
   const SortHeader = ({ field, label }) => (
     <button
       onClick={() => toggleSort(field)}
@@ -299,14 +352,26 @@ export default function Labours() {
             <span className="font-semibold">{formatCurrency(totalWage)}</span>/day
           </p>
         </div>
-        {!isSupervisor && (
+        <div className="flex items-center gap-2">
           <Button
-            onClick={openAdd}
-            className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
+            variant="outline"
+            onClick={bulkDownloadQR}
+            disabled={bulkDownloading}
+            title={selected.size > 0 ? `Download QR for ${selected.size} selected` : 'Download QR for all active labours'}
+            className="gap-2 text-slate-700"
           >
-            <Plus className="h-4 w-4" /> Add Labour
+            <Download className="h-4 w-4" />
+            {bulkDownloading ? 'Generating…' : selected.size > 0 ? `QR (${selected.size})` : 'Bulk QR'}
           </Button>
-        )}
+          {!isSupervisor && (
+            <Button
+              onClick={openAdd}
+              className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" /> Add Labour
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
