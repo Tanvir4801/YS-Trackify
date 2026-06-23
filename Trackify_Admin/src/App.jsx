@@ -23,6 +23,7 @@ import Payroll from './pages/Payroll';
 import Supervisors from './pages/Supervisors';
 import Settings from './pages/Settings';
 import Sites from './pages/Sites';
+import Expenses from './pages/Expenses';
 
 function NavigateByRole() {
   const role = useAuthStore((s) => s.role);
@@ -192,6 +193,15 @@ export default function App() {
           element={
             <RoleRoute allowedRoles={adminRoles} fallback="/attendance">
               <Sites />
+            </RoleRoute>
+          }
+        />
+
+        <Route
+          path="/expenses"
+          element={
+            <RoleRoute allowedRoles={adminRoles} fallback="/attendance">
+              <Expenses />
             </RoleRoute>
           }
         />

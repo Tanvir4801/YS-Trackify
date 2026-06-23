@@ -16,6 +16,21 @@ import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import StatusBadge from '../components/shared/StatusBadge';
 
+function MarkedViaBadge({ via }) {
+  const map = {
+    qr:           { label: 'QR',         cls: 'bg-emerald-100 text-emerald-700' },
+    offline_qr:   { label: 'Offline QR', cls: 'bg-orange-100  text-orange-700'  },
+    manual:       { label: 'Manual',     cls: 'bg-blue-100    text-blue-700'    },
+    admin_manual: { label: 'Admin',      cls: 'bg-purple-100  text-purple-700'  },
+  };
+  const { label, cls } = map[via] || { label: via || '—', cls: 'bg-slate-100 text-slate-500' };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
 const STATUS_CYCLE = ['present', 'absent', 'half'];
 const STATUS_OPTIONS = [
   { value: 'present', label: 'Present' },
@@ -119,6 +134,7 @@ export default function Attendance() {
           breakfast: Number(existing.breakfast) || 0,
           tea: Number(existing.tea) || 0,
           advance: Number(existing.advance) || 0,
+          markedVia: existing.markedVia || '',
         };
       } else {
         const localRow = rows[l.id];
@@ -707,6 +723,7 @@ export default function Attendance() {
                           <th className="px-4 py-2">Remark</th>
                           <th className="px-4 py-2 text-right">Day Earnings</th>
                           <th className="px-4 py-2">Site</th>
+                          <th className="px-4 py-2">Via</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -756,6 +773,7 @@ export default function Attendance() {
                               </td>
                               <td className="px-4 py-2 text-right font-semibold text-slate-900">{formatCurrency(dayEarnings)}</td>
                               <td className="px-4 py-2 text-xs text-slate-500">{siteLabel}</td>
+                              <td className="px-4 py-2"><MarkedViaBadge via={row.markedVia} /></td>
                             </tr>
                           );
                         })}

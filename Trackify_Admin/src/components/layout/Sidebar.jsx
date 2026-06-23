@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users as UsersIcon, HardHat, ClipboardList, Wallet,
   FileText, Users2, Calculator, UserCheck, Settings, ChevronLeft, ChevronRight,
-  Building2,
+  Building2, Receipt,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -14,6 +14,7 @@ const ALL_LINKS = [
   { to: '/attendance',  label: 'Attendance',   icon: ClipboardList,   roles: ['super_admin', 'contractor', 'supervisor'] },
   { to: '/payroll',     label: 'Payroll',      icon: Calculator,      roles: ['super_admin', 'contractor'] },
   { to: '/payments',    label: 'Payments',     icon: Wallet,          roles: ['super_admin', 'contractor'] },
+  { to: '/expenses',    label: 'Expenses',     icon: Receipt,         roles: ['super_admin', 'contractor'] },
   { to: '/reports',     label: 'Reports',      icon: FileText,        roles: ['super_admin', 'contractor'] },
   { to: '/supervisors', label: 'Supervisors',  icon: UserCheck,       roles: ['super_admin', 'contractor'] },
   { to: '/users',       label: 'Users',        icon: UsersIcon,       roles: ['super_admin', 'contractor'] },

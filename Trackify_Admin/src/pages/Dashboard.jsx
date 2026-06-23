@@ -7,17 +7,34 @@ import {
   Users, UserCheck, UserX, Wallet, TrendingUp, Activity,
   AlertTriangle, RefreshCw, Plus, HardHat, FileText, Download,
 } from 'lucide-react';
+
 import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../store/authStore';
 import { useLabours } from '../hooks/useLabours';
 import { getAttendanceRange, subscribeAttendanceByDate } from '../lib/services/attendance.service';
 import { getPayments } from '../lib/services/payments.service';
 import { useSupervisors } from '../hooks/useSupervisors';
+
 import { todayKey, toDateKey, formatCurrency, exportCSV } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import StatusBadge from '../components/shared/StatusBadge';
 import AlertBanner from '../components/shared/AlertBanner';
+
+function MarkedViaBadge({ via }) {
+  const map = {
+    qr:           { label: 'QR',         cls: 'bg-emerald-100 text-emerald-700' },
+    offline_qr:   { label: 'Offline QR', cls: 'bg-orange-100  text-orange-700'  },
+    manual:       { label: 'Manual',     cls: 'bg-blue-100    text-blue-700'    },
+    admin_manual: { label: 'Admin',      cls: 'bg-purple-100  text-purple-700'  },
+  };
+  const { label, cls } = map[via] || { label: via || '—', cls: 'bg-slate-100 text-slate-500' };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      {label}
+    </span>
+  );
+}
 
 function StatCard({ label, value, sub, icon: Icon, accent = 'bg-blue-50 text-blue-600' }) {
   return (
@@ -324,6 +341,7 @@ export default function Dashboard() {
                   <th className="px-5 py-2 text-left">Labour</th>
                   <th className="px-5 py-2 text-left">Supervisor</th>
                   <th className="px-5 py-2 text-left">Status</th>
+                  <th className="px-5 py-2 text-left">Via</th>
                   <th className="px-5 py-2 text-right">OT Hrs</th>
                 </tr>
               </thead>
@@ -338,6 +356,7 @@ export default function Dashboard() {
                       </td>
                       <td className="px-5 py-2 text-slate-600">{supervisor?.name || '—'}</td>
                       <td className="px-5 py-2"><StatusBadge status={r.status} /></td>
+                      <td className="px-5 py-2"><MarkedViaBadge via={r.markedVia} /></td>
                       <td className="px-5 py-2 text-right text-slate-700">{r.overtimeHours || 0}</td>
                     </tr>
                   );

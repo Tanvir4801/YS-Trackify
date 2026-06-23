@@ -63,9 +63,13 @@ class _LabourMyAttendanceScreenState extends State<LabourMyAttendanceScreen> {
         // Allow legacy docs missing contractorId to still appear.
         if (cid.isNotEmpty && cid != widget.contractorId) continue;
 
+        final rawStatus = (data['status'] as String?) ?? 'absent';
+        final normStatus = (rawStatus == 'half_day' || rawStatus == 'half-day')
+            ? 'half'
+            : rawStatus;
         records[date] = _DayRecord(
           date: date,
-          status: (data['status'] as String?) ?? 'absent',
+          status: normStatus,
           overtime: (data['overtimeHours'] as num?)?.toDouble() ?? 0,
           markedVia: (data['markedVia'] as String?) ?? 'manual',
           markedAt: _toDate(data['syncedAt']) ?? _toDate(data['markedAt']),
