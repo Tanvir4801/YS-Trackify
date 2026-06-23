@@ -147,140 +147,149 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         // Site is only recorded on the attendance record for that day.
         final List<Labour> allLabours = data.labours;
 
-        // Apply search
+        // Apply search filter (only relevant in marking mode)
         final filteredLabours = _searchQuery.isEmpty
             ? allLabours
             : allLabours.where((l) =>
                 l.name.toLowerCase().contains(_searchQuery) ||
                 l.phone.contains(_searchQuery)).toList();
 
+        // Pending = NOT yet marked today across ANY site
         final pendingList = filteredLabours.where((l) => !attendanceByLabour.containsKey(l.id)).toList();
         final markedList  = filteredLabours.where((l) => attendanceByLabour.containsKey(l.id)).toList();
 
-        // Stats across all labours
+        // Stats across all labours for today
         final presentCount = attendanceByLabour.values.where((v) => v == 'present').length;
         final absentCount  = attendanceByLabour.values.where((v) => v == 'absent').length;
         final halfDayCount = attendanceByLabour.values.where((v) => v == 'half').length;
         final totalMarked  = presentCount + absentCount + halfDayCount;
         final totalLabours = allLabours.length;
 
+        // How many labours marked at each site today
+        final markedBySite = <String, int>{};
+        for (final entry in data.siteMap.entries) {
+          if (attendanceByLabour.containsKey(entry.key) && entry.value.isNotEmpty) {
+            markedBySite[entry.value] = (markedBySite[entry.value] ?? 0) + 1;
+          }
+        }
+
         return Scaffold(
           backgroundColor: AppColors.background,
           body: Column(
             children: [
               _buildDateBar(context, data),
-              _buildStatsBar(presentCount, absentCount, halfDayCount, totalLabours, totalMarked),
 
-              // ── SITES SELECTOR ──────────────────────────────────────────
-              if (sites.isNotEmpty)
-                _buildSiteSelector(sites, attendanceByLabour, data.siteMap),
+              // ── SITE PICKER MODE (no site selected) ──────────────────────
+              if (_selectedSiteId == null)
+                Expanded(
+                  child: _buildSitePickerBody(
+                    sites: sites,
+                    markedBySite: markedBySite,
+                    totalMarkedToday: totalMarked,
+                    isLoading: sitesData.isLoading,
+                  ),
+                )
 
-              _buildSearchBar(),
-              _buildSummaryRow(presentCount, absentCount, halfDayCount),
-              Expanded(
-                child: Stack(
-                  children: [
-                    if (data.isLoading)
-                      const ShimmerList(count: 5, height: 110)
-                    else if (data.labours.isEmpty)
-                      const EmptyState(
-                        icon: Icons.fact_check_outlined,
-                        title: 'No Labour Added',
-                        subtitle: 'Add labours first to mark attendance.',
-                      )
-                    else
-                      RefreshIndicator(
-                        color: AppColors.primary,
-                        onRefresh: data.initialize,
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: [
-                            // Add Temp Labour button
-                            _buildTempLabourButton(data),
-                            const SizedBox(height: 8),
+              // ── MARKING MODE (site selected) ──────────────────────────────
+              else ...[
+                _buildStatsBar(presentCount, absentCount, halfDayCount, totalLabours, totalMarked),
+                _buildActiveSiteHeader(sites, data),
+                _buildSearchBar(),
+                Expanded(
+                  child: data.isLoading
+                      ? const ShimmerList(count: 5, height: 110)
+                      : data.labours.isEmpty
+                          ? const EmptyState(
+                              icon: Icons.fact_check_outlined,
+                              title: 'No Labour Added',
+                              subtitle: 'Add labours first to mark attendance.',
+                            )
+                          : RefreshIndicator(
+                              color: AppColors.primary,
+                              onRefresh: data.initialize,
+                              child: ListView(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: [
+                                  _buildTempLabourButton(data),
+                                  const SizedBox(height: 8),
 
-                            // Pending (unmarked) labours
-                            if (pendingList.isEmpty && _searchQuery.isEmpty)
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                decoration: BoxDecoration(
-                                  color: AppColors.presentSurface,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: AppColors.present.withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.check_circle_outline, color: AppColors.present, size: 20),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      _selectedSiteId != null
-                                          ? 'All labours in this site marked!'
-                                          : 'All labours marked for today!',
-                                      style: const TextStyle(color: AppColors.present, fontWeight: FontWeight.w600, fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else ...[
-                              if (_searchQuery.isEmpty && pendingList.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        'Pending — ${pendingList.length}',
-                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                                  // Pending labours — all not yet marked today
+                                  if (pendingList.isEmpty && _searchQuery.isEmpty)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.presentSurface,
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: AppColors.present.withValues(alpha: 0.3)),
                                       ),
-                                      const Spacer(),
-                                      const Text('Already marked → scroll down', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                                    ],
-                                  ),
-                                ),
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.check_circle_outline, color: AppColors.present, size: 20),
+                                          SizedBox(width: 10),
+                                          Text(
+                                            'All labours marked for today!',
+                                            style: TextStyle(color: AppColors.present, fontWeight: FontWeight.w600, fontSize: 14),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  else ...[
+                                    if (_searchQuery.isEmpty && pendingList.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: Row(
+                                          children: [
+                                            Text(
+                                              'Available — ${pendingList.length}',
+                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                                            ),
+                                            const Spacer(),
+                                            const Text('Already marked → scroll down', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                                          ],
+                                        ),
+                                      ),
+                                    // All unassigned labours — siteId applied at mark time
+                                    ...pendingList.map((labour) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 10),
+                                      child: _AttendanceCard(
+                                        labour: labour,
+                                        status: attendanceByLabour[labour.id],
+                                        remark: data.remarkMap[labour.id] ?? '',
+                                        data: data,
+                                        siteId: _selectedSiteId ?? '',
+                                      ),
+                                    )),
+                                  ],
 
-                              // All pending labours shown — site is applied at mark time
-                              // via the site card selected above.
-                              ...pendingList.map((labour) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: _AttendanceCard(
-                                  labour: labour,
-                                  status: attendanceByLabour[labour.id],
-                                  remark: data.remarkMap[labour.id] ?? '',
-                                  data: data,
-                                  siteId: _selectedSiteId ?? '',
-                                ),
-                              )),
-                            ],
+                                  // Temp labours for today
+                                  if (data.tempLabours.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    _buildSectionHeader('Today\'s Temp Workers', Icons.person_outline, Colors.purple),
+                                    const SizedBox(height: 8),
+                                    ...data.tempLabours.map((labour) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 10),
+                                      child: _AttendanceCard(
+                                        labour: labour,
+                                        status: attendanceByLabour[labour.id],
+                                        remark: data.remarkMap[labour.id] ?? '',
+                                        data: data,
+                                        isTemp: true,
+                                      ),
+                                    )),
+                                  ],
 
-                            // Temp labours for today
-                            if (data.tempLabours.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              _buildSectionHeader('Today\'s Temp Workers', Icons.person_outline, Colors.purple),
-                              const SizedBox(height: 8),
-                              ...data.tempLabours.map((labour) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: _AttendanceCard(
-                                  labour: labour,
-                                  status: attendanceByLabour[labour.id],
-                                  remark: data.remarkMap[labour.id] ?? '',
-                                  data: data,
-                                  isTemp: true,
-                                ),
-                              )),
-                            ],
-
-                            // Safety Net Panel
-                            if (markedList.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              _buildSafetyNetPanel(context, data, markedList, sites),
-                            ],
-                          ],
-                        ),
-                      ),
-                  ],
+                                  // Safety Net — already marked (any site)
+                                  if (markedList.isNotEmpty) ...[
+                                    const SizedBox(height: 12),
+                                    _buildSafetyNetPanel(context, data, markedList, sites),
+                                  ],
+                                ],
+                              ),
+                            ),
                 ),
-              ),
+              ],
             ],
           ),
         );
@@ -297,136 +306,138 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  Widget _buildSiteSelector(List<SiteModel> sites, Map<String, String> attendanceByLabour, Map<String, String> siteMap) {
-    // Count how many labours were marked at each site today
-    final markedBySite = <String, int>{};
-    for (final entry in siteMap.entries) {
-      if (attendanceByLabour.containsKey(entry.key) && entry.value.isNotEmpty) {
-        markedBySite[entry.value] = (markedBySite[entry.value] ?? 0) + 1;
-      }
-    }
-
-    SiteModel? selectedSite;
-    if (_selectedSiteId != null) {
-      try { selectedSite = sites.firstWhere((s) => s.id == _selectedSiteId); } catch (_) {}
-    }
-
+  // ── Site Picker (fullscreen, shown when no site is selected) ────────────
+  Widget _buildSitePickerBody({
+    required List<SiteModel> sites,
+    required Map<String, int> markedBySite,
+    required int totalMarkedToday,
+    required bool isLoading,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.apartment_rounded, size: 13, color: AppColors.textTertiary),
-              const SizedBox(width: 5),
+              const Text(
+                'Select a Site',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 2),
               Text(
-                'Sites — ${sites.length}',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textTertiary, letterSpacing: 0.5),
+                totalMarkedToday > 0
+                    ? '$totalMarkedToday labour${totalMarkedToday == 1 ? '' : 's'} marked across all sites today'
+                    : 'Choose which site to mark attendance for',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
-              const Spacer(),
-              if (_selectedSiteId != null)
-                GestureDetector(
-                  onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
-                  child: const Text('Show All', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
-                ),
             ],
           ),
         ),
-        SizedBox(
-          height: 90,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            children: [
-              _SiteCard(
-                label: 'All Sites',
-                icon: Icons.grid_view_rounded,
-                count: attendanceByLabour.length,
-                countLabel: '${attendanceByLabour.length} marked',
-                selected: _selectedSiteId == null,
-                onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
+        if (isLoading)
+          const Expanded(child: Center(child: CircularProgressIndicator()))
+        else if (sites.isEmpty)
+          const Expanded(
+            child: EmptyState(
+              icon: Icons.location_city_outlined,
+              title: 'No Sites Added',
+              subtitle: 'Ask your admin to create sites first.',
+            ),
+          )
+        else
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.1,
               ),
-              ...sites.map((site) {
-                final markedHere = markedBySite[site.id] ?? 0;
-                return Padding(
-                  padding: const EdgeInsets.only(left: 10),
-                  child: _SiteCard(
-                    label: site.name,
-                    icon: Icons.location_on_rounded,
-                    count: markedHere,
-                    countLabel: markedHere > 0 ? '$markedHere marked' : 'Tap to mark',
-                    selected: _selectedSiteId == site.id,
-                    onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = site.id); },
-                  ),
+              itemCount: sites.length,
+              itemBuilder: (_, i) {
+                final site = sites[i];
+                final count = markedBySite[site.id] ?? 0;
+                return _SitePickerCard(
+                  site: site,
+                  markedCount: count,
+                  onTap: () {
+                    HapticUtils.light();
+                    setState(() => _selectedSiteId = site.id);
+                  },
                 );
-              }),
-            ],
-          ),
-        ),
-        // Active site banner
-        if (selectedSite != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: AppColors.primarySurface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.location_on_rounded, size: 15, color: AppColors.primary),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: RichText(
-                      text: TextSpan(
-                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                        children: [
-                          const TextSpan(text: 'Marking for '),
-                          TextSpan(
-                            text: selectedSite.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      HapticUtils.light();
-                      _showAllowanceSheet(
-                        context.read<AttendanceProvider>(),
-                        context.read<SitesProvider>().sites,
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.monetization_on_rounded, size: 13, color: Colors.white),
-                          SizedBox(width: 4),
-                          Text('Allowances', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () { HapticUtils.light(); setState(() => _selectedSiteId = null); },
-                    child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textTertiary),
-                  ),
-                ],
-              ),
+              },
             ),
           ),
       ],
+    );
+  }
+
+  // ── Active Site Header (shown when a site IS selected) ──────────────────
+  Widget _buildActiveSiteHeader(List<SiteModel> sites, AttendanceProvider data) {
+    SiteModel? site;
+    try { site = sites.firstWhere((s) => s.id == _selectedSiteId); } catch (_) {}
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.primarySurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () {
+                HapticUtils.light();
+                setState(() { _selectedSiteId = null; _searchController.clear(); });
+              },
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(Icons.location_on_rounded, size: 15, color: AppColors.primary),
+            const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                site?.name ?? _selectedSiteId ?? '',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            GestureDetector(
+              onTap: () {
+                HapticUtils.light();
+                _showAllowanceSheet(data, sites);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.monetization_on_rounded, size: 13, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text('Allowances', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -694,106 +705,81 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 }
 
-class _SiteCard extends StatelessWidget {
-  const _SiteCard({
-    required this.label,
-    required this.icon,
-    required this.count,
-    required this.countLabel,
-    required this.selected,
+// Site picker grid card — shown on the fullscreen site selection view
+class _SitePickerCard extends StatelessWidget {
+  const _SitePickerCard({
+    required this.site,
+    required this.markedCount,
     required this.onTap,
   });
-  final String label;
-  final IconData icon;
-  final int count;
-  final String countLabel;
-  final bool selected;
+
+  final SiteModel site;
+  final int markedCount;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final hasActivity = count > 0;
+    final hasMarked = markedCount > 0;
 
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 118,
-        padding: const EdgeInsets.all(10),
+      child: Container(
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected
-                ? AppColors.primary
-                : hasActivity
-                    ? AppColors.present.withValues(alpha: 0.45)
-                    : AppColors.border,
-            width: selected ? 2 : 1,
+            color: hasMarked
+                ? AppColors.primary.withValues(alpha: 0.30)
+                : AppColors.border,
           ),
-          boxShadow: selected
-              ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.28), blurRadius: 10, offset: const Offset(0, 4))]
-              : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 1))],
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 3)),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(5),
+                  padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
-                    color: selected
-                        ? Colors.white.withValues(alpha: 0.2)
-                        : AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppColors.primarySurface,
+                    borderRadius: BorderRadius.circular(11),
                   ),
-                  child: Icon(icon, size: 14, color: selected ? Colors.white : AppColors.primary),
+                  child: const Icon(Icons.location_on_rounded, color: AppColors.primary, size: 18),
                 ),
                 const Spacer(),
-                if (count > 0)
+                if (hasMarked)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: selected
-                          ? Colors.white.withValues(alpha: 0.22)
-                          : AppColors.present.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
+                      color: AppColors.presentSurface,
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: selected ? Colors.white : AppColors.present,
-                      ),
+                      '$markedCount ✓',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.present),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const Spacer(),
             Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.textPrimary,
-              ),
+              site.name,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
-              countLabel,
+              hasMarked ? '$markedCount marked today' : 'Tap to start marking',
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: hasActivity ? FontWeight.w600 : FontWeight.w400,
-                color: selected
-                    ? Colors.white.withValues(alpha: 0.75)
-                    : hasActivity
-                        ? AppColors.present
-                        : AppColors.textTertiary,
+                fontSize: 11,
+                color: hasMarked ? AppColors.present : AppColors.textTertiary,
+                fontWeight: hasMarked ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ],

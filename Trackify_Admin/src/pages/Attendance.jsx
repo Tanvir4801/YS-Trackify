@@ -571,7 +571,7 @@ export default function Attendance() {
                           let dayEarnings = 0;
                           if (row.status === 'present') dayEarnings = dailyWage + otHours * otRate;
                           else if (row.status === 'half') dayEarnings = dailyWage / 2 + otHours * otRate;
-                          const siteLabel = row.siteId ? `Site: ${row.siteId.slice(0, 6)}…` : '—';
+                          const siteLabel = row.siteId ? (sites.find((s) => s.id === row.siteId)?.name || row.siteId.slice(0, 6) + '…') : '—';
 
                           return (
                             <tr key={l.id} className="border-b border-amber-50 last:border-b-0 hover:bg-amber-50">
