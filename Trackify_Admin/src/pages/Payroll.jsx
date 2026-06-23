@@ -77,9 +77,15 @@ export default function Payroll() {
       ]);
 
       const advByLabour = new Map();
-      payments.filter((p) => p.type === 'advance').forEach((p) =>
-        advByLabour.set(p.labourId, (advByLabour.get(p.labourId) || 0) + (p.amount || 0)),
-      );
+      const salByLabour = new Map();
+      payments.forEach((p) => {
+        const amt = Number(p.amount) || 0;
+        if (p.type === 'advance') {
+          advByLabour.set(p.labourId, (advByLabour.get(p.labourId) || 0) + amt);
+        } else if (p.type === 'salary') {
+          salByLabour.set(p.labourId, (salByLabour.get(p.labourId) || 0) + amt);
+        }
+      });
 
       const rows = labours.map((l) => {
         const recs = attendance.filter((r) => r.labourId === l.id);
@@ -92,7 +98,16 @@ export default function Payroll() {
         const otRate    = Number(l.overtimeWagePerHour) || 0;
         const gross     = totalDays * dailyWage + otHours * otRate;
         const advances  = advByLabour.get(l.id) || 0;
-        return { labourId: l.id, name: l.name, present, half, absent, otHours, totalDays, gross, advances, net: gross - advances };
+        const salaryPaid = salByLabour.get(l.id) || 0;
+        const totalPaid  = advances + salaryPaid;
+        const net        = Math.max(0, gross - totalPaid);
+        return {
+          labourId: l.id, name: l.name,
+          present, half, absent, otHours, totalDays,
+          gross, advances, salaryPaid, totalPaid,
+          net,
+          isPaid: salaryPaid >= gross && gross > 0,
+        };
       });
 
       setReport(rows);
@@ -108,7 +123,16 @@ export default function Payroll() {
   };
 
   const totals = useMemo(
-    () => report.reduce((acc, r) => ({ gross: acc.gross + r.gross, advances: acc.advances + r.advances, net: acc.net + r.net }), { gross: 0, advances: 0, net: 0 }),
+    () => report.reduce(
+      (acc, r) => ({
+        gross:      acc.gross      + r.gross,
+        advances:   acc.advances   + r.advances,
+        salaryPaid: acc.salaryPaid + r.salaryPaid,
+        totalPaid:  acc.totalPaid  + r.totalPaid,
+        net:        acc.net        + r.net,
+      }),
+      { gross: 0, advances: 0, salaryPaid: 0, totalPaid: 0, net: 0 },
+    ),
     [report],
   );
 
@@ -123,24 +147,40 @@ export default function Payroll() {
   const markAsPaid = async () => {
     if (!writeScope) return toast.error('No scope selected');
     if (selected.size === 0) return toast.error('Select labours first');
+
+    const eligible = Array.from(selected).filter((labourId) => {
+      const row = report.find((r) => r.labourId === labourId);
+      return row && row.net > 0;
+    });
+
+    if (eligible.length === 0) {
+      toast.error('All selected labours are already fully paid');
+      return;
+    }
+
+    const skipped = selected.size - eligible.length;
     const dateStr = monthBounds(month, year).end;
     setPaying(true);
-    const t = toast.loading(`Creating ${selected.size} salary payment(s)…`);
+    const t = toast.loading(`Recording ${eligible.length} salary payment(s)…`);
     try {
       await Promise.all(
-        Array.from(selected).map((labourId) => {
+        eligible.map((labourId) => {
           const row = report.find((r) => r.labourId === labourId);
-          if (!row || row.net <= 0) return null;
           return addPayment({
             scopeId: writeScope, supervisorId: writeScope, contractorId: scopeId, labourId,
             type: 'salary', amount: Math.round(row.net), date: dateStr,
             notes: `Auto-generated salary for ${MONTHS[month - 1]} ${year}`,
           });
-        }).filter(Boolean),
+        }),
       );
       toast.dismiss(t);
-      toast.success('Salary payments recorded');
+      toast.success(
+        skipped > 0
+          ? `${eligible.length} paid · ${skipped} skipped (already paid)`
+          : `${eligible.length} salary payment(s) recorded`,
+      );
       setSelected(new Set());
+      await handleGenerate();
     } catch (e) {
       toast.dismiss(t);
       console.error(e);
@@ -204,10 +244,11 @@ export default function Payroll() {
 
       {/* Summary cards */}
       {loaded && (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <SummaryCard label="Total Gross"     value={formatCurrency(totals.gross)}    icon={Wallet}      color="#2563EB" sub={`${MONTHS[month-1]} ${year}`} />
-          <SummaryCard label="Total Advances"  value={formatCurrency(totals.advances)} icon={TrendingDown} color="#D97706" sub="deducted from salary" />
-          <SummaryCard label="Net Payable"     value={formatCurrency(totals.net)}      icon={TrendingUp}  color="#16A34A" sub="after deductions" />
+        <div className="grid gap-4 sm:grid-cols-4">
+          <SummaryCard label="Total Gross"    value={formatCurrency(totals.gross)}      icon={Wallet}      color="#2563EB" sub={`${MONTHS[month-1]} ${year}`} />
+          <SummaryCard label="Advances Paid"  value={formatCurrency(totals.advances)}   icon={TrendingDown} color="#D97706" sub="cash advances given" />
+          <SummaryCard label="Salary Paid"    value={formatCurrency(totals.salaryPaid)} icon={CheckCircle} color="#16A34A" sub="salary disbursed" />
+          <SummaryCard label="Net Remaining"  value={formatCurrency(totals.net)}        icon={TrendingUp}  color={totals.net === 0 ? '#16A34A' : '#DC2626'} sub={totals.net === 0 ? 'all paid ✓' : 'still to pay'} />
         </div>
       )}
 
@@ -227,31 +268,45 @@ export default function Payroll() {
                   <th className="w-10 px-4 py-3">
                     <input type="checkbox" checked={selected.size === report.length && report.length > 0} onChange={toggleAll} className="rounded border-slate-300" />
                   </th>
-                  {['Labour', 'Days', 'OT Hrs', 'Gross', 'Advances', 'Net'].map((h, i) => (
+                  {['Labour', 'Days', 'OT Hrs', 'Gross', 'Advances', 'Salary Paid', 'Net Due'].map((h, i) => (
                     <th key={h} className={`px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {report.map((r) => (
-                  <tr key={r.labourId} className={`border-b border-slate-50 last:border-b-0 transition ${selected.has(r.labourId) ? 'bg-blue-50/60' : 'hover:bg-slate-50/60'}`}>
+                  <tr key={r.labourId} className={`border-b border-slate-50 last:border-b-0 transition ${selected.has(r.labourId) ? 'bg-blue-50/60' : r.isPaid ? 'bg-green-50/40' : 'hover:bg-slate-50/60'}`}>
                     <td className="px-4 py-3.5">
-                      <input type="checkbox" checked={selected.has(r.labourId)} onChange={() => toggleSelect(r.labourId)} className="rounded border-slate-300" />
+                      <input
+                        type="checkbox"
+                        checked={selected.has(r.labourId)}
+                        onChange={() => toggleSelect(r.labourId)}
+                        disabled={r.isPaid}
+                        className="rounded border-slate-300 disabled:opacity-40"
+                      />
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${r.isPaid ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                           {(r.name || '?')[0].toUpperCase()}
                         </div>
-                        <span className="font-semibold text-slate-900">{r.name}</span>
+                        <div>
+                          <span className="font-semibold text-slate-900">{r.name}</span>
+                          {r.isPaid && (
+                            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
+                              ✓ Paid
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-right text-slate-700">{r.totalDays}</td>
                     <td className="px-4 py-3.5 text-right text-slate-700">{r.otHours}</td>
                     <td className="px-4 py-3.5 text-right font-semibold text-slate-900">{formatCurrency(r.gross)}</td>
-                    <td className="px-4 py-3.5 text-right text-amber-700">{formatCurrency(r.advances)}</td>
-                    <td className={`px-4 py-3.5 text-right font-bold ${r.net < 0 ? 'text-red-600' : 'text-green-700'}`}>
-                      {formatCurrency(r.net)}
+                    <td className="px-4 py-3.5 text-right text-amber-700">{r.advances > 0 ? formatCurrency(r.advances) : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-4 py-3.5 text-right text-green-700 font-semibold">{r.salaryPaid > 0 ? formatCurrency(r.salaryPaid) : <span className="text-slate-300">—</span>}</td>
+                    <td className={`px-4 py-3.5 text-right font-bold ${r.net === 0 ? 'text-green-600' : r.net < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                      {r.net === 0 ? <span className="text-green-600">₹0</span> : formatCurrency(r.net)}
                     </td>
                   </tr>
                 ))}
@@ -261,7 +316,8 @@ export default function Payroll() {
                   <td className="px-4 py-3.5" colSpan={4}>Totals</td>
                   <td className="px-4 py-3.5 text-right">{formatCurrency(totals.gross)}</td>
                   <td className="px-4 py-3.5 text-right text-amber-700">{formatCurrency(totals.advances)}</td>
-                  <td className="px-4 py-3.5 text-right text-green-700">{formatCurrency(totals.net)}</td>
+                  <td className="px-4 py-3.5 text-right text-green-700">{formatCurrency(totals.salaryPaid)}</td>
+                  <td className={`px-4 py-3.5 text-right ${totals.net === 0 ? 'text-green-600' : 'text-slate-900'}`}>{formatCurrency(totals.net)}</td>
                 </tr>
               </tfoot>
             </table>
