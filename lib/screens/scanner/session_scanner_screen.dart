@@ -290,63 +290,87 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     _setCooldown();
   }
 
-  Future<bool> _markLabour(String labourId, String labourName, String status) async {
+  /// Mark a labour's attendance in both the nested and flat collections.
+  /// [markedVia] should be 'qr' for QR scans and 'manual' for manual entry.
+  Future<bool> _markLabour(
+    String labourId,
+    String labourName,
+    String status, {
+    String markedVia = 'qr',
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final contractorId = SessionService.instance.contractorId ?? uid;
     final today = _today();
     final session = _liveSession ?? widget.session;
 
     try {
+      // ── Primary write: nested multi-tenant path (source of truth) ─────────
       final nestedRef = FirestorePaths.attendanceRecordRef(contractorId, today, labourId);
       await nestedRef.set({
-        'labourId':    labourId,
-        'labourName':  labourName,
+        'labourId':     labourId,
+        'labourName':   labourName,
         'contractorId': contractorId,
         'supervisorId': uid,
         'supervisorRef': FirestorePaths.userRef(uid),
-        'siteId':      session.siteId,
-        'siteName':    session.siteName,
-        'sessionId':   session.id,
-        'date':        today,
-        'status':      status,
+        'siteId':       session.siteId,
+        'siteName':     session.siteName,
+        'sessionId':    session.id,
+        'date':         today,
+        'status':       status,
         'overtimeHours': 0,
-        'markedVia':   'qr',
-        'markedAt':    FieldValue.serverTimestamp(),
+        'markedVia':    markedVia,
+        'markedAt':     FieldValue.serverTimestamp(),
+        'wageAtTime': _allLabours
+            .firstWhere((l) => l.id == labourId,
+                orElse: () => _allLabours.isNotEmpty ? _allLabours.first : Labour.empty())
+            .dailyWage,
       }, SetOptions(merge: true));
 
+      // Date-level metadata doc
       await FirestorePaths.attendanceDateDoc(contractorId, today).set({
         'date': today, 'contractorId': contractorId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Flat collection mirror
+      // ── Secondary write: flat collection (for admin panel reads) ──────────
+      // Uses a deterministic doc ID so the write is idempotent (no query needed)
+      final flatDocId = '${contractorId}_${today}_$labourId';
+      final flatRef = _db.collection('attendance').doc(flatDocId);
       try {
-        final existing = await _db.collection('attendance')
-            .where('labourId', isEqualTo: labourId)
-            .where('date', isEqualTo: today)
-            .where('supervisorId', isEqualTo: uid)
-            .limit(1).get();
-        if (existing.docs.isEmpty) {
-          final docRef = await _db.collection('attendance').add({
-            'labourId': labourId, 'labourName': labourName,
-            'supervisorId': uid, 'contractorId': contractorId,
-            'siteId': session.siteId, 'siteName': session.siteName,
-            'sessionId': session.id, 'date': today, 'status': status,
-            'overtimeHours': 0, 'markedVia': 'qr',
-            'isSynced': true, 'syncedAt': FieldValue.serverTimestamp(),
-          });
-          await docRef.update({'id': docRef.id});
-        }
-      } catch (_) {}
+        final wageAtTime = _allLabours
+            .where((l) => l.id == labourId)
+            .map((l) => l.dailyWage)
+            .firstOrNull ?? 0.0;
+        await flatRef.set({
+          'id':           flatDocId,
+          'labourId':     labourId,
+          'labourName':   labourName,
+          'supervisorId': uid,
+          'contractorId': contractorId,
+          'siteId':       session.siteId,
+          'siteName':     session.siteName,
+          'sessionId':    session.id,
+          'date':         today,
+          'status':       status,
+          'overtimeHours': 0,
+          'markedVia':    markedVia,
+          'wageAtTime':   wageAtTime,
+          'isSynced':     true,
+          'syncedAt':     FieldValue.serverTimestamp(),
+          'updatedAt':    FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('⚠️ flat write failed (non-critical): $e');
+      }
 
-      // Hive local cache
+      // ── Hive local cache ──────────────────────────────────────────────────
       try {
         final box = Hive.box('pending_attendance');
         box.put('${labourId}_$today', {
           'labourId': labourId, 'labourName': labourName,
           'supervisorId': uid, 'contractorId': contractorId,
           'siteId': session.siteId, 'sessionId': session.id,
-          'date': today, 'status': status,
+          'date': today, 'status': status, 'markedVia': markedVia,
           'isSynced': true, 'scannedAt': DateTime.now().toIso8601String(),
         });
       } catch (_) {}
@@ -361,7 +385,7 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
           'labourId': labourId, 'labourName': labourName,
           'supervisorId': uid, 'contractorId': contractorId,
           'siteId': session.siteId, 'sessionId': session.id,
-          'date': today, 'status': status,
+          'date': today, 'status': status, 'markedVia': markedVia,
           'isSynced': false, 'scannedAt': DateTime.now().toIso8601String(),
         });
         return true;
