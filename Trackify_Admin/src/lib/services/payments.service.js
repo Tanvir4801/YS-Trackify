@@ -102,8 +102,8 @@ export async function addPayment(data) {
 
   const payload = {
     labourId: data.labourId,
-    supervisorId: data.scopeId,
-    contractorId: data.scopeId,
+    supervisorId: data.supervisorId || data.scopeId,
+    contractorId: data.contractorId || data.scopeId,
     type: data.type,
     amount: Number(data.amount) || 0,
     date: Timestamp.fromDate(dateValue),

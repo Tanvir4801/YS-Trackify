@@ -136,6 +136,8 @@ export default function Payroll() {
           if (!row || row.net <= 0) return null;
           return addPayment({
             scopeId: writeScope,
+            supervisorId: writeScope,
+            contractorId: scopeId,
             labourId,
             type: 'salary',
             amount: Math.round(row.net),

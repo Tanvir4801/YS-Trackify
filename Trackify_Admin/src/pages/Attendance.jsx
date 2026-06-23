@@ -200,8 +200,9 @@ export default function Attendance() {
   const handleRemarkSave = async (labourId) => {
     const row = rows[labourId];
     if (!row?.recordId) return;
+    const contractorId = isSupervisor ? scopeFromStore : writeScope;
     try {
-      await updateAttendanceRemark(row.recordId, row.remark || '');
+      await updateAttendanceRemark(row.recordId, row.remark || '', contractorId, date, labourId);
     } catch (e) {
       console.error('Failed to save remark:', e);
     }
@@ -225,8 +226,15 @@ export default function Attendance() {
     const row = rows[editingAllowances];
     if (!row?.recordId) return;
     setSavingAllowance(true);
+    const contractorId = isSupervisor ? scopeFromStore : writeScope;
     try {
-      await updateAttendanceAllowances(row.recordId, { ...allowanceForm, wageAtTime: row.wageAtTime });
+      await updateAttendanceAllowances(row.recordId, {
+        ...allowanceForm,
+        wageAtTime: row.wageAtTime,
+        contractorId,
+        date,
+        labourId: editingAllowances,
+      });
       updateRow(editingAllowances, { ...allowanceForm });
       toast.success('Allowances saved');
       setEditingAllowances(null);

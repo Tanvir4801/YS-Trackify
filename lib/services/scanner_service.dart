@@ -278,7 +278,12 @@ class ScannerService {
           });
           await docRef.update({'id': docRef.id});
         }
-      } catch (_) {}
+      } catch (flatErr) {
+        // Log prominently — admin panel reads the flat collection.
+        // If this fails, the admin panel's nested-path fallback will still
+        // surface the record, but the error should be visible in logs.
+        debugPrint('⚠️ QR flat-collection mirror failed for $labourId on $today: $flatErr');
+      }
 
       _saveToHive(labourId, status, labourName: labourName, isSynced: true);
       final label = status == 'half' ? 'Half Day' : 'Present';

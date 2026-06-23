@@ -166,7 +166,11 @@ class AttendanceService {
     await _attendanceBox.put(attendance.id, attendance);
 
     try {
-      final flatPayload = attendance.toFirestore();
+      // Flat write: include markedVia so admin's flat-only readers see it
+      final flatPayload = {
+        ...attendance.toFirestore(),
+        'markedVia': markedVia,
+      };
       final docRef = _db.collection('attendance').doc(attendance.id);
       await docRef.set(flatPayload, SetOptions(merge: true));
       _logWrite('attendance', 'SET', docRef.id);
@@ -177,21 +181,39 @@ class AttendanceService {
         attendance.date,
         attendance.labourId,
       );
-      await nestedRef.set({
-        'labourId':      attendance.labourId,
-        'contractorId':  contractorId,
-        'supervisorId':  uid,
-        'siteId':        attendance.siteId.isNotEmpty ? attendance.siteId : uid,
-        'supervisorRef': FirestorePaths.userRef(uid),
-        'date':          attendance.date,
-        'status':        attendance.status.firestoreValue,
-        'overtimeHours': attendance.overtimeHours,
-        'remark':        attendance.remark,
-        'wageAtTime':    attendance.wageAtTime,
-        'markedVia':     markedVia,
-        'markedAt':      FieldValue.serverTimestamp(),
-        'legacyId':      docRef.id,
-      }, SetOptions(merge: true));
+
+      // For manual marks: exclude markedVia/markedAt from the mergeFields list
+      // so an existing QR-scanned record keeps its original markedVia:'qr'.
+      // The lastModifiedVia field always reflects the most recent action.
+      final nestedPayload = <String, dynamic>{
+        'labourId':          attendance.labourId,
+        'contractorId':      contractorId,
+        'supervisorId':      uid,
+        'siteId':            attendance.siteId.isNotEmpty ? attendance.siteId : uid,
+        'supervisorRef':     FirestorePaths.userRef(uid),
+        'date':              attendance.date,
+        'status':            attendance.status.firestoreValue,
+        'overtimeHours':     attendance.overtimeHours,
+        'remark':            attendance.remark,
+        'wageAtTime':        attendance.wageAtTime,
+        'lastModifiedVia':   markedVia,
+        'lastModifiedAt':    FieldValue.serverTimestamp(),
+        'legacyId':          docRef.id,
+      };
+
+      if (markedVia != 'manual') {
+        // QR / offline_qr: write markedVia + markedAt (full merge)
+        nestedPayload['markedVia'] = markedVia;
+        nestedPayload['markedAt'] = FieldValue.serverTimestamp();
+        await nestedRef.set(nestedPayload, SetOptions(merge: true));
+      } else {
+        // Manual: only update the listed fields — preserves existing markedVia:'qr'
+        await nestedRef.set(nestedPayload, SetOptions(mergeFields: [
+          'labourId', 'contractorId', 'supervisorId', 'siteId',
+          'supervisorRef', 'date', 'status', 'overtimeHours', 'remark',
+          'wageAtTime', 'lastModifiedVia', 'lastModifiedAt', 'legacyId',
+        ]));
+      }
       _logWrite('attendance/$contractorId/dates/${attendance.date}/records', 'SET', attendance.labourId);
 
       await FirestorePaths.attendanceDateDoc(contractorId, attendance.date).set({

@@ -103,6 +103,8 @@ export default function Payments() {
     try {
       await addPayment({
         scopeId: writeScope,
+        supervisorId: writeScope,
+        contractorId: scopeFromStore,
         labourId: form.labourId,
         amount: form.amount,
         date: form.date,
