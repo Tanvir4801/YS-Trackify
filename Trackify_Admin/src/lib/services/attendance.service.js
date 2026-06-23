@@ -16,14 +16,28 @@ import { getLabour } from './labours.service';
 
 function snapToDoc(snap) {
   const data = snap.data() || {};
+  const al = (typeof data.allowances === 'object' && data.allowances) ? data.allowances : {};
+  const petrol    = Number(al.petrol    ?? data.petrol    ?? 0) || 0;
+  const lunch     = Number(al.lunch     ?? data.lunch     ?? 0) || 0;
+  const breakfast = Number(al.breakfast ?? data.breakfast ?? 0) || 0;
+  const tea       = Number(al.tea       ?? data.tea       ?? 0) || 0;
+  const advance   = Number(data.advance ?? 0) || 0;
+  const wageAtTime = Number(data.wageAtTime) || 0;
   return {
     id: snap.id,
     ...data,
     overtimeHours: Number(data.overtimeHours) || 0,
-    wageAtTime: Number(data.wageAtTime) || 0,
+    wageAtTime,
     remark: data.remark || data.notes || '',
     siteId: data.siteId || data.supervisorId || '',
     syncedAt: data.syncedAt?.toDate?.() || null,
+    petrol,
+    lunch,
+    breakfast,
+    tea,
+    advance,
+    totalAllowance: petrol + lunch + breakfast + tea,
+    grandTotal: wageAtTime + petrol + lunch + breakfast + tea - advance,
   };
 }
 
@@ -186,6 +200,28 @@ export async function bulkMarkAttendance(scopeId, date, records, isSupervisor = 
     }
     await batch.commit();
   }
+}
+
+export async function updateAttendanceAllowances(id, { petrol = 0, lunch = 0, breakfast = 0, tea = 0, advance = 0, wageAtTime = 0 }) {
+  const p = Number(petrol) || 0;
+  const l = Number(lunch) || 0;
+  const b = Number(breakfast) || 0;
+  const t = Number(tea) || 0;
+  const adv = Number(advance) || 0;
+  const wage = Number(wageAtTime) || 0;
+  const totalAllowance = p + l + b + t;
+  const grandTotal = wage + totalAllowance - adv;
+  await updateDoc(doc(db, 'attendance', id), {
+    allowances: { petrol: p, lunch: l, breakfast: b, tea: t },
+    petrol: p,
+    lunch: l,
+    breakfast: b,
+    tea: t,
+    advance: adv,
+    totalAllowance,
+    grandTotal,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function getAttendanceRange(scopeId, startDate, endDate, labourId, isSupervisor = false, supervisorId = null) {

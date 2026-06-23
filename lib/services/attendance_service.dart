@@ -467,6 +467,53 @@ class AttendanceService {
     return records.length;
   }
 
+  // ── updateSingleLabourAllowances ─────────────────────────────
+  /// Update allowances for ONE specific labour's attendance record.
+  Future<void> updateSingleLabourAllowances({
+    required String labourId,
+    required String date,
+    required double petrol,
+    required double lunch,
+    required double breakfast,
+    required double tea,
+    required double advance,
+  }) async {
+    final uid          = _requireUid();
+    final contractorId = _contractorScope(uid);
+    final id           = '${labourId}_$date';
+
+    final att = _attendanceBox.get(id);
+    if (att != null) {
+      att.petrol    = petrol;
+      att.lunch     = lunch;
+      att.breakfast = breakfast;
+      att.tea       = tea;
+      att.advance   = advance;
+      await _attendanceBox.put(id, att);
+    }
+
+    final totalAllowance = petrol + lunch + breakfast + tea;
+    final wageAtTime     = att?.wageAtTime ?? 0;
+    final grandTotal     = wageAtTime + totalAllowance - advance;
+
+    final payload = {
+      'allowances': {'petrol': petrol, 'lunch': lunch, 'breakfast': breakfast, 'tea': tea},
+      'totalAllowance': totalAllowance,
+      'advance':        advance,
+      'grandTotal':     grandTotal,
+      'updatedAt':      FieldValue.serverTimestamp(),
+    };
+
+    try { await _db.collection('attendance').doc(id).update(payload); } catch (e) {
+      debugPrint('updateSingleLabourAllowances flat failed: $e');
+    }
+    try {
+      await FirestorePaths.attendanceRecordRef(contractorId, date, labourId).update(payload);
+    } catch (e) {
+      debugPrint('updateSingleLabourAllowances nested failed: $e');
+    }
+  }
+
   // ── setAdvance ───────────────────────────────────────────────
   Future<void> setAdvance({
     required String labourId,

@@ -8,7 +8,7 @@ export function usePayments(options = {}) {
   return useQuery({
     queryKey: ['payments', scopeId, options],
     queryFn: () => getPayments(scopeId, options),
-    enabled: !!scopeId,
+    enabled: true,
     staleTime: 10_000,
   });
 }

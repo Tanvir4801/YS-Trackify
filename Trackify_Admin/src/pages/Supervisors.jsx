@@ -25,11 +25,12 @@ export default function Supervisors() {
 
   useEffect(() => {
     setLoading(true);
+    const safeGet = (fn) => fn.catch((e) => { console.warn('Supervisor page sub-query failed:', e?.message); return []; });
     Promise.all([
-      getUsers(scopeId, { role: 'supervisor' }),
-      getLabours(scopeId, { activeOnly: true }),
-      getAttendanceByDate(scopeId, today),
-      getPayments(scopeId, { startDate: monthStart, endDate: today }),
+      safeGet(getUsers(scopeId, { role: 'supervisor' })),
+      safeGet(getLabours(scopeId, { activeOnly: true })),
+      safeGet(getAttendanceByDate(scopeId, today)),
+      safeGet(getPayments(scopeId, { startDate: monthStart, endDate: today })),
     ])
       .then(([sups, labs, att, pays]) => {
         setSupervisors(sups);
@@ -39,12 +40,7 @@ export default function Supervisors() {
       })
       .catch((e) => {
         console.error('SUPERVISOR PAGE ERROR:', e);
-        const isIndexError = e?.code === 'failed-precondition';
-        toast.error(
-          isIndexError
-            ? 'Firestore index is still building. Data will load automatically once ready.'
-            : e?.message || 'Failed to load supervisors',
-        );
+        toast.error(e?.message || 'Failed to load supervisors');
       })
       .finally(() => setLoading(false));
   }, [scopeId, today]);

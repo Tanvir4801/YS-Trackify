@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import QRCode from 'qrcode';
 import {
-  Plus, Search, Pencil, Ban, RotateCcw, HardHat, ArrowUpDown,
+  Plus, Search, Pencil, Ban, RotateCcw, HardHat, ArrowUpDown, QrCode, Download, Printer,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../store/authStore';
@@ -66,6 +67,9 @@ export default function Labours() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [qrLabour, setQrLabour] = useState(null);
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const qrCanvasRef = useRef(null);
 
   // Build supervisorId → supervisor object map for display
   const supervisorMap = useMemo(() => {
@@ -231,6 +235,43 @@ export default function Labours() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openQr = async (labour) => {
+    setQrLabour(labour);
+    setQrDataUrl('');
+    try {
+      const payload = JSON.stringify({
+        labourId: labour.id,
+        name: labour.name,
+        type: 'labour_qr',
+        appId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'ys-construction',
+      });
+      const url = await QRCode.toDataURL(payload, {
+        errorCorrectionLevel: 'H',
+        margin: 2,
+        width: 400,
+        color: { dark: '#1e293b', light: '#ffffff' },
+      });
+      setQrDataUrl(url);
+    } catch (e) {
+      toast.error('QR generation failed');
+    }
+  };
+
+  const downloadQr = () => {
+    if (!qrDataUrl || !qrLabour) return;
+    const a = document.createElement('a');
+    a.href = qrDataUrl;
+    a.download = `qr_${qrLabour.name.replace(/\s+/g, '_')}.png`;
+    a.click();
+  };
+
+  const printQr = () => {
+    if (!qrDataUrl || !qrLabour) return;
+    const win = window.open('', '_blank');
+    win.document.write(`<html><head><title>QR – ${qrLabour.name}</title><style>body{text-align:center;font-family:sans-serif;padding:20px}img{max-width:300px}h2{margin:10px 0 4px}p{color:#64748b;font-size:13px;margin:0}</style></head><body><h2>${qrLabour.name}</h2><p>${qrLabour.skill || 'Labour'} · ₹${qrLabour.dailyWage || 0}/day</p><br><img src="${qrDataUrl}" /><br><button onclick="window.print()">🖨 Print</button></body></html>`);
+    win.document.close();
   };
 
   const SortHeader = ({ field, label }) => (
@@ -433,46 +474,57 @@ export default function Labours() {
                             status={l.isActive === false ? 'inactive' : 'active'}
                           />
                         </td>
-                        {!isSupervisor && (
-                          <td
-                            className="px-4 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openEdit(l)}
-                                className="gap-1 h-7 px-2 text-xs"
-                              >
-                                <Pencil className="h-3 w-3" /> Edit
-                              </Button>
-                              {l.isActive === false ? (
+                        <td
+                          className="px-4 py-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openQr(l)}
+                              className="gap-1 h-7 px-2 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                              title="Show QR code"
+                            >
+                              <QrCode className="h-3 w-3" /> QR
+                            </Button>
+                            {!isSupervisor && (
+                              <>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => activateLabour(l.id).then(
-                                    () => toast.success(`${l.name} activated`),
-                                  )}
-                                  className="gap-1 h-7 px-2 text-xs text-green-700"
+                                  onClick={() => openEdit(l)}
+                                  className="gap-1 h-7 px-2 text-xs"
                                 >
-                                  <RotateCcw className="h-3 w-3" />
+                                  <Pencil className="h-3 w-3" /> Edit
                                 </Button>
-                              ) : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => deactivateLabour(l.id).then(
-                                    () => toast.success(`${l.name} deactivated`),
-                                  )}
-                                  className="gap-1 h-7 px-2 text-xs text-red-600"
-                                >
-                                  <Ban className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </div>
-                          </td>
-                        )}
+                                {l.isActive === false ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => activateLabour(l.id).then(
+                                      () => toast.success(`${l.name} activated`),
+                                    )}
+                                    className="gap-1 h-7 px-2 text-xs text-green-700"
+                                  >
+                                    <RotateCcw className="h-3 w-3" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => deactivateLabour(l.id).then(
+                                      () => toast.success(`${l.name} deactivated`),
+                                    )}
+                                    className="gap-1 h-7 px-2 text-xs text-red-600"
+                                  >
+                                    <Ban className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -605,6 +657,40 @@ export default function Labours() {
           )}
         </div>
       </Modal>
+
+      {/* QR Code Modal */}
+      {qrLabour && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setQrLabour(null)}>
+          <div className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 text-center">
+              <div className="mx-auto mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100">
+                <QrCode className="h-5 w-5 text-indigo-600" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">{qrLabour.name}</h3>
+              <p className="text-xs text-slate-500">{qrLabour.skill || 'Labour'} · ₹{qrLabour.dailyWage || 0}/day</p>
+            </div>
+            <div className="flex justify-center rounded-xl border border-slate-200 bg-slate-50 p-4">
+              {qrDataUrl ? (
+                <img src={qrDataUrl} alt={`QR for ${qrLabour.name}`} className="h-48 w-48 rounded-lg" />
+              ) : (
+                <div className="flex h-48 w-48 items-center justify-center rounded-lg bg-slate-100">
+                  <span className="text-xs text-slate-400">Generating…</span>
+                </div>
+              )}
+            </div>
+            <p className="mt-2 text-center text-xs text-slate-400">Scan with the Trackify mobile app</p>
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" onClick={() => setQrLabour(null)} className="flex-1 text-xs">Close</Button>
+              <Button variant="outline" onClick={downloadQr} disabled={!qrDataUrl} className="gap-1 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                <Download className="h-3 w-3" /> PNG
+              </Button>
+              <Button variant="outline" onClick={printQr} disabled={!qrDataUrl} className="gap-1 text-xs text-slate-600">
+                🖨 Print
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../store/authStore';
 import { useLabours } from '../hooks/useLabours';
 import { useAttendanceByDate } from '../hooks/useAttendance';
-import { bulkMarkAttendance, getAttendanceRange, updateAttendanceRemark } from '../lib/services/attendance.service';
+import { bulkMarkAttendance, getAttendanceRange, updateAttendanceRemark, updateAttendanceAllowances } from '../lib/services/attendance.service';
 import { addTemporaryLabour } from '../lib/services/labours.service';
 import { subscribeSites } from '../lib/services/sites.service';
 import { todayKey, toDateKey, exportCSV, formatCurrency } from '../lib/utils';
@@ -70,6 +70,9 @@ export default function Attendance() {
   const [search, setSearch] = useState('');
   const [editingOT, setEditingOT] = useState(null);
   const [editingRemark, setEditingRemark] = useState(null);
+  const [editingAllowances, setEditingAllowances] = useState(null);
+  const [allowanceForm, setAllowanceForm] = useState({ petrol: 0, lunch: 0, breakfast: 0, tea: 0, advance: 0 });
+  const [savingAllowance, setSavingAllowance] = useState(false);
   const [sites, setSites] = useState([]);
   const [selectedSite, setSelectedSite] = useState(null); // null = all sites
 
@@ -96,6 +99,11 @@ export default function Attendance() {
           wageAtTime: Number(existing.wageAtTime) || Number(l.dailyWage) || 0,
           siteId: existing.siteId || '',
           recordId: existing.id,
+          petrol: Number(existing.petrol) || 0,
+          lunch: Number(existing.lunch) || 0,
+          breakfast: Number(existing.breakfast) || 0,
+          tea: Number(existing.tea) || 0,
+          advance: Number(existing.advance) || 0,
         };
       } else {
         const localRow = rows[l.id];
@@ -183,6 +191,35 @@ export default function Attendance() {
       console.error('Failed to save remark:', e);
     }
     setEditingRemark(null);
+  };
+
+  const openAllowanceEdit = (labourId) => {
+    const row = rows[labourId];
+    if (!row?.recordId) { toast.error('Save attendance first before editing allowances'); return; }
+    setAllowanceForm({
+      petrol: row.petrol || 0,
+      lunch: row.lunch || 0,
+      breakfast: row.breakfast || 0,
+      tea: row.tea || 0,
+      advance: row.advance || 0,
+    });
+    setEditingAllowances(labourId);
+  };
+
+  const handleAllowanceSave = async () => {
+    const row = rows[editingAllowances];
+    if (!row?.recordId) return;
+    setSavingAllowance(true);
+    try {
+      await updateAttendanceAllowances(row.recordId, { ...allowanceForm, wageAtTime: row.wageAtTime });
+      updateRow(editingAllowances, { ...allowanceForm });
+      toast.success('Allowances saved');
+      setEditingAllowances(null);
+    } catch (e) {
+      toast.error('Failed to save allowances');
+    } finally {
+      setSavingAllowance(false);
+    }
   };
 
   const handleAddTempLabour = async () => {
@@ -338,6 +375,17 @@ export default function Attendance() {
         </td>
         <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(dayEarnings)}</td>
         <td className="px-4 py-3 text-center">
+          <button
+            onClick={() => openAllowanceEdit(l.id)}
+            title="Edit allowances"
+            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+          >
+            {(row.petrol || row.lunch || row.breakfast || row.tea || row.advance)
+              ? <span className="font-semibold">₹{((row.petrol||0)+(row.lunch||0)+(row.breakfast||0)+(row.tea||0)).toFixed(0)}</span>
+              : <span className="text-slate-400">+ add</span>}
+          </button>
+        </td>
+        <td className="px-4 py-3 text-center">
           {row.recordId ? <span className="text-xs font-medium text-green-700">✓</span> : <span className="text-xs text-slate-400">—</span>}
         </td>
       </tr>
@@ -391,6 +439,67 @@ export default function Attendance() {
           </Button>
         </div>
       </div>
+
+      {/* ── ALLOWANCES EDIT MODAL ───────────────────────────── */}
+      {editingAllowances && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">💰</span>
+              <h3 className="text-base font-semibold text-slate-900">Daily Allowances</h3>
+            </div>
+            <p className="mb-4 text-xs text-slate-500">{labours.find((l) => l.id === editingAllowances)?.name}</p>
+            <div className="space-y-3">
+              {[
+                { key: 'petrol', emoji: '🚗', label: 'Petrol' },
+                { key: 'lunch', emoji: '🍽', label: 'Lunch' },
+                { key: 'breakfast', emoji: '🍳', label: 'Breakfast' },
+                { key: 'tea', emoji: '☕', label: 'Tea' },
+              ].map(({ key, emoji, label }) => (
+                <div key={key} className="flex items-center gap-3">
+                  <span className="text-base w-5">{emoji}</span>
+                  <Label className="w-20 text-xs text-slate-600">{label}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={allowanceForm[key]}
+                    onChange={(e) => setAllowanceForm((f) => ({ ...f, [key]: Number(e.target.value) || 0 }))}
+                    className="h-8 flex-1 text-right text-sm"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-slate-400">₹</span>
+                </div>
+              ))}
+              <div className="border-t border-slate-100 pt-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-base w-5">💸</span>
+                  <Label className="w-20 text-xs text-red-600">Advance</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={allowanceForm.advance}
+                    onChange={(e) => setAllowanceForm((f) => ({ ...f, advance: Number(e.target.value) || 0 }))}
+                    className="h-8 flex-1 text-right text-sm border-red-200"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-slate-400">₹</span>
+                </div>
+              </div>
+              <div className="rounded-lg bg-blue-50 p-3 text-xs text-slate-600">
+                <span className="font-semibold text-blue-700">Total allowances: </span>
+                ₹{(allowanceForm.petrol + allowanceForm.lunch + allowanceForm.breakfast + allowanceForm.tea).toFixed(0)}
+                {allowanceForm.advance > 0 && <span className="ml-2 text-red-600">· Advance: ₹{allowanceForm.advance.toFixed(0)}</span>}
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <Button variant="outline" onClick={() => setEditingAllowances(null)} className="flex-1">Cancel</Button>
+              <Button onClick={handleAllowanceSave} disabled={savingAllowance} className="flex-1 bg-blue-600 text-white hover:bg-blue-700">
+                {savingAllowance ? 'Saving…' : 'Save Allowances'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showTempDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -523,6 +632,7 @@ export default function Attendance() {
                         <th className="px-4 py-3 text-right">OT Hours</th>
                         <th className="px-4 py-3">Remark</th>
                         <th className="px-4 py-3 text-right">Day Earnings</th>
+                        <th className="px-4 py-3 text-center">Allowances</th>
                         <th className="px-4 py-3 text-center">Saved</th>
                       </tr>
                     </thead>

@@ -365,6 +365,32 @@ class AttendanceProvider extends ChangeNotifier {
     _loadLocalAttendance();
   }
 
+  Future<void> updateSingleLabourAllowances({
+    required String labourId,
+    required double petrol,
+    required double lunch,
+    required double breakfast,
+    required double tea,
+    required double advance,
+  }) async {
+    allowancePetrolMap[labourId]    = petrol;
+    allowanceLunchMap[labourId]     = lunch;
+    allowanceBreakfastMap[labourId] = breakfast;
+    allowanceTeaMap[labourId]       = tea;
+    advanceMap[labourId]            = advance;
+    notifyListeners();
+    await _service.updateSingleLabourAllowances(
+      labourId:  labourId,
+      date:      selectedDateStr,
+      petrol:    petrol,
+      lunch:     lunch,
+      breakfast: breakfast,
+      tea:       tea,
+      advance:   advance,
+    );
+    _loadLocalAttendance();
+  }
+
   Future<void> cycleStatus(String labourId) async {
     final current = attendanceMap[labourId] ?? 'absent';
     final next = _service.cycleStatus(current);
