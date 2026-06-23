@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Building2, Bell, Database, RefreshCw } from 'lucide-react';
+import { Building2, Bell, Database, RefreshCw, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getDocs, collection, query, where, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -12,15 +12,27 @@ import LoadingSpinner from '../components/shared/LoadingSpinner';
 const LS_KEY = 'trackify_settings';
 
 function loadSettings() {
-  try {
-    return JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
+  catch { return {}; }
 }
 
-function saveSettings(data) {
-  localStorage.setItem(LS_KEY, JSON.stringify(data));
+function saveSettings(data) { localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+
+function Section({ icon: Icon, title, desc, children }) {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
+      <div className="flex items-start gap-4 border-b border-slate-100 px-6 py-5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50">
+          <Icon className="h-4 w-4 text-blue-600" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+          {desc && <p className="mt-0.5 text-xs text-slate-500">{desc}</p>}
+        </div>
+      </div>
+      <div className="px-6 py-5">{children}</div>
+    </div>
+  );
 }
 
 export default function Settings() {
@@ -36,9 +48,9 @@ export default function Settings() {
   const [unsyncedCount, setUnsyncedCount] = useState(null);
   const [loadingSync, setLoadingSync] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    // Count unsynced records
     setLoadingSync(true);
     const queries = [
       getDocs(query(collection(db, 'attendance'), where('isSynced', '==', false))),
@@ -46,9 +58,7 @@ export default function Settings() {
       getDocs(query(collection(db, 'payments'), where('isSynced', '==', false))),
     ];
     Promise.all(queries)
-      .then(([att, lab, pay]) => {
-        setUnsyncedCount(att.size + lab.size + pay.size);
-      })
+      .then(([att, lab, pay]) => { setUnsyncedCount(att.size + lab.size + pay.size); })
       .catch(console.error)
       .finally(() => setLoadingSync(false));
   }, []);
@@ -56,13 +66,12 @@ export default function Settings() {
   const handleSave = () => {
     saveSettings(settings);
     toast.success('Settings saved');
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   const handleForceSync = async () => {
-    if (unsyncedCount === 0) {
-      toast('No unsynced records', { icon: 'ℹ️' });
-      return;
-    }
+    if (unsyncedCount === 0) { toast('No unsynced records', { icon: 'ℹ️' }); return; }
     setSyncing(true);
     const t = toast.loading(`Marking ${unsyncedCount} records as synced…`);
     try {
@@ -87,111 +96,125 @@ export default function Settings() {
 
   void scopeId;
 
-  const section = 'rounded-2xl border border-slate-200/70 bg-white/90 p-5 shadow-sm space-y-4';
-  const heading = 'flex items-center gap-2 text-base font-semibold text-slate-900 border-b border-slate-100 pb-3 mb-2';
+  const fieldClass = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Settings</h2>
-        <p className="mt-1 text-sm text-slate-500">Configure your workspace preferences.</p>
-      </div>
-
-      <div className={section}>
-        <div className={heading}>
-          <Building2 className="h-4 w-4 text-slate-400" />
-          Company Settings
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label>Company Name</Label>
+      <Section
+        icon={Building2}
+        title="Company Settings"
+        desc="Configure your organisation's basic information and work schedule"
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-600">Company Name</Label>
             <Input
               value={settings.companyName}
               onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
               placeholder="YS Construction"
+              className="h-10 rounded-xl"
             />
+            <p className="text-xs text-slate-400">Displayed across reports and exports</p>
           </div>
-          <div className="space-y-1">
-            <Label>Default Working Hours / day</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-600">Default Working Hours / day</Label>
             <Input
               type="number"
               value={settings.defaultWorkingHours}
               onChange={(e) => setSettings({ ...settings, defaultWorkingHours: Number(e.target.value) })}
+              className="h-10 rounded-xl"
             />
+            <p className="text-xs text-slate-400">Standard shift length used for payroll</p>
           </div>
-          <div className="space-y-1">
-            <Label>Weekly Off</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-600">Weekly Off</Label>
             <select
               value={settings.weeklyOff}
               onChange={(e) => setSettings({ ...settings, weeklyOff: e.target.value })}
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className={fieldClass}
             >
               <option value="none">No weekly off</option>
               <option value="sunday">Sunday</option>
               <option value="saturday">Saturday</option>
               <option value="both">Saturday + Sunday</option>
             </select>
+            <p className="text-xs text-slate-400">Days excluded from attendance calculation</p>
           </div>
-          <div className="space-y-1">
-            <Label>Overtime after (hrs)</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-600">Overtime after (hrs)</Label>
             <Input
               type="number"
               value={settings.otThreshold}
               onChange={(e) => setSettings({ ...settings, otThreshold: Number(e.target.value) })}
+              className="h-10 rounded-xl"
             />
+            <p className="text-xs text-slate-400">Hours worked beyond this are counted as OT</p>
           </div>
         </div>
-      </div>
+      </Section>
 
-      <div className={section}>
-        <div className={heading}>
-          <Bell className="h-4 w-4 text-slate-400" />
-          Notification Settings
-        </div>
-        <div className="space-y-1">
-          <Label>Alert after X consecutive absences</Label>
+      <Section
+        icon={Bell}
+        title="Notification Settings"
+        desc="Set thresholds for automated attendance alerts"
+      >
+        <div className="max-w-xs space-y-1.5">
+          <Label className="text-xs font-semibold text-slate-600">Alert after X consecutive absences</Label>
           <Input
             type="number"
             min="1"
             value={settings.absenceAlertDays}
             onChange={(e) => setSettings({ ...settings, absenceAlertDays: Number(e.target.value) })}
-            className="w-32"
+            className="h-10 w-32 rounded-xl"
           />
+          <p className="text-xs text-slate-400">Trigger a warning when a labour is absent for this many days in a row</p>
         </div>
-      </div>
+      </Section>
 
-      <div className={section}>
-        <div className={heading}>
-          <Database className="h-4 w-4 text-slate-400" />
-          Data Sync
-        </div>
-        <p className="text-sm text-slate-600">
-          Records created by the mobile app are flagged <code className="rounded bg-slate-100 px-1 text-xs">isSynced=false</code> until acknowledged.
-        </p>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Unsynced Records</p>
-            <p className="mt-1 text-2xl font-semibold text-slate-950">
-              {loadingSync ? '…' : unsyncedCount}
+      <Section
+        icon={Database}
+        title="Data Sync"
+        desc="Records from the mobile app are queued until acknowledged by the admin panel"
+      >
+        <div className="flex flex-wrap items-center gap-5">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-4 text-center">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Unsynced Records</p>
+            <p className="mt-2 text-4xl font-bold text-slate-900">
+              {loadingSync ? <span className="text-slate-300">…</span> : unsyncedCount}
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleForceSync}
-            disabled={syncing || loadingSync}
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Syncing…' : 'Force Sync All'}
-          </Button>
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">
+              Records flagged as <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-mono text-slate-700">isSynced=false</code> in Firestore.
+            </p>
+            <Button
+              variant="outline"
+              onClick={handleForceSync}
+              disabled={syncing || loadingSync || unsyncedCount === 0}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing…' : 'Force Sync All'}
+            </Button>
+          </div>
         </div>
-      </div>
+      </Section>
 
       <div className="flex justify-end">
-        <Button onClick={handleSave} className="bg-blue-600 text-white hover:bg-blue-700 px-8">
-          Save Settings
+        <Button
+          onClick={handleSave}
+          className="gap-2 px-8 text-sm font-semibold text-white"
+          style={{ background: saved ? '#16A34A' : '#2563EB' }}
+        >
+          {saved ? (
+            <><CheckCircle className="h-4 w-4" /> Saved!</>
+          ) : (
+            'Save Settings'
+          )}
         </Button>
       </div>
+
+      <p className="text-center text-xs text-slate-400">Developed by Tanvir Patel</p>
     </div>
   );
 }

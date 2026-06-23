@@ -433,27 +433,26 @@ export default function Attendance() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Attendance</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {dayName} · {labours.length} labour{labours.length !== 1 ? 's' : ''} · {records.length} marked · {pendingLabours.length} pending
-          </p>
+      {/* Date picker + context bar */}
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">{dayName}</span>
+          <span className="ml-3 text-slate-400">{labours.length} labours · {records.length} marked · <span className={pendingLabours.length > 0 ? 'text-amber-600 font-semibold' : 'text-green-600 font-semibold'}>{pendingLabours.length} pending</span></span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setDate(shiftDate(date, -1))} className="h-10 w-10 p-0"><ChevronLeft className="h-4 w-4" /></Button>
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-slate-500" />
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-10 w-44" />
+          <Button variant="outline" onClick={() => setDate(shiftDate(date, -1))} className="h-9 w-9 p-0 rounded-lg"><ChevronLeft className="h-4 w-4" /></Button>
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <Calendar className="h-4 w-4 text-slate-400" />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent text-sm font-medium text-slate-900 outline-none" />
           </div>
-          <Button variant="outline" onClick={() => setDate(shiftDate(date, 1))} className="h-10 w-10 p-0"><ChevronRight className="h-4 w-4" /></Button>
+          <Button variant="outline" onClick={() => setDate(shiftDate(date, 1))} className="h-9 w-9 p-0 rounded-lg"><ChevronRight className="h-4 w-4" /></Button>
           {date !== todayKey() && (
-            <Button variant="outline" onClick={() => setDate(todayKey())} className="h-10 px-3 text-xs">Today</Button>
+            <Button variant="outline" onClick={() => setDate(todayKey())} className="h-9 px-3 text-xs rounded-lg text-blue-600 border-blue-200 hover:bg-blue-50">Today</Button>
           )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or phone…" className="h-10 w-48 pl-9" />

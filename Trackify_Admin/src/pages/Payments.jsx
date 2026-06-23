@@ -151,19 +151,15 @@ export default function Payments() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Payments</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {payments.length} payment{payments.length === 1 ? '' : 's'} · Total{' '}
-            <span className="font-semibold text-slate-900">{formatCurrency(totals.total)}</span>
-          </p>
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-600">
+          <span className="font-bold text-slate-900">{payments.length}</span> payment{payments.length === 1 ? '' : 's'} · Total <span className="font-bold text-slate-900">{formatCurrency(totals.total)}</span>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport} className="gap-2">
+          <Button variant="outline" onClick={handleExport} className="gap-2 h-9 rounded-lg text-sm">
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-          <Button onClick={openAdd} className="gap-2 bg-blue-600 text-white hover:bg-blue-700">
+          <Button onClick={openAdd} className="gap-2 text-white h-9 rounded-lg text-sm" style={{ background: '#2563EB' }}>
             <Plus className="h-4 w-4" /> Add Payment
           </Button>
         </div>

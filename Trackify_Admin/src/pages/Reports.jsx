@@ -321,10 +321,6 @@ export default function Reports() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Reports</h2>
-        <p className="mt-1 text-sm text-slate-500">Generate reports — monthly salary, site-wise payroll, per-labour history, and overall summaries.</p>
-      </div>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200/70 bg-white/90 p-1 shadow-sm">
         {TABS.map((t) => (

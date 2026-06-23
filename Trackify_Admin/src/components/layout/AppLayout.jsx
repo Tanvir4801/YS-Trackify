@@ -7,14 +7,14 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)] text-slate-900">
+    <div className="flex min-h-screen" style={{ background: '#F8FAFC' }}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <div
-        className="flex-1 transition-all duration-200"
+        className="flex flex-1 flex-col transition-all duration-300"
         style={{ paddingLeft: collapsed ? '4rem' : '16rem' }}
       >
         <Header />
-        <main className="min-h-[calc(100vh-4rem)] px-6 py-6 lg:px-8">
+        <main className="flex-1 px-6 py-6 lg:px-8">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Calculator, Download, CheckCircle } from 'lucide-react';
+import { Download, CheckCircle, Calculator, Wallet, TrendingDown, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../store/authStore';
 import { useLabours } from '../hooks/useLabours';
@@ -21,6 +21,25 @@ function monthBounds(month, year) {
   const lastDay = new Date(year, month, 0).getDate();
   const end = `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
   return { start, end };
+}
+
+function SummaryCard({ label, value, sub, color = '#2563EB', icon: Icon }) {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
+          <p className="mt-2 text-2xl font-bold" style={{ color }}>{value}</p>
+          {sub && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
+        </div>
+        {Icon && (
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: color + '15' }}>
+            <Icon className="h-5 w-5" style={{ color }} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function Payroll() {
@@ -58,33 +77,22 @@ export default function Payroll() {
       ]);
 
       const advByLabour = new Map();
-      payments
-        .filter((p) => p.type === 'advance')
-        .forEach((p) => advByLabour.set(p.labourId, (advByLabour.get(p.labourId) || 0) + (p.amount || 0)));
+      payments.filter((p) => p.type === 'advance').forEach((p) =>
+        advByLabour.set(p.labourId, (advByLabour.get(p.labourId) || 0) + (p.amount || 0)),
+      );
 
       const rows = labours.map((l) => {
         const recs = attendance.filter((r) => r.labourId === l.id);
         const present = recs.filter((r) => r.status === 'present').length;
-        const half = recs.filter((r) => r.status === 'half').length;
-        const absent = recs.filter((r) => r.status === 'absent').length;
+        const half    = recs.filter((r) => r.status === 'half').length;
+        const absent  = recs.filter((r) => r.status === 'absent').length;
         const otHours = recs.reduce((s, r) => s + (Number(r.overtimeHours) || 0), 0);
         const totalDays = present + half * 0.5;
         const dailyWage = Number(l.dailyWage) || 0;
-        const otRate = Number(l.overtimeWagePerHour) || 0;
-        const gross = totalDays * dailyWage + otHours * otRate;
-        const advances = advByLabour.get(l.id) || 0;
-        return {
-          labourId: l.id,
-          name: l.name,
-          present,
-          half,
-          absent,
-          otHours,
-          totalDays,
-          gross,
-          advances,
-          net: gross - advances,
-        };
+        const otRate    = Number(l.overtimeWagePerHour) || 0;
+        const gross     = totalDays * dailyWage + otHours * otRate;
+        const advances  = advByLabour.get(l.id) || 0;
+        return { labourId: l.id, name: l.name, present, half, absent, otHours, totalDays, gross, advances, net: gross - advances };
       });
 
       setReport(rows);
@@ -100,27 +108,16 @@ export default function Payroll() {
   };
 
   const totals = useMemo(
-    () =>
-      report.reduce(
-        (acc, r) => ({ gross: acc.gross + r.gross, advances: acc.advances + r.advances, net: acc.net + r.net }),
-        { gross: 0, advances: 0, net: 0 },
-      ),
+    () => report.reduce((acc, r) => ({ gross: acc.gross + r.gross, advances: acc.advances + r.advances, net: acc.net + r.net }), { gross: 0, advances: 0, net: 0 }),
     [report],
   );
 
   const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
 
   const toggleAll = () => {
-    setSelected((prev) =>
-      prev.size === report.length ? new Set() : new Set(report.map((r) => r.labourId)),
-    );
+    setSelected((prev) => prev.size === report.length ? new Set() : new Set(report.map((r) => r.labourId)));
   };
 
   const markAsPaid = async () => {
@@ -135,13 +132,8 @@ export default function Payroll() {
           const row = report.find((r) => r.labourId === labourId);
           if (!row || row.net <= 0) return null;
           return addPayment({
-            scopeId: writeScope,
-            supervisorId: writeScope,
-            contractorId: scopeId,
-            labourId,
-            type: 'salary',
-            amount: Math.round(row.net),
-            date: dateStr,
+            scopeId: writeScope, supervisorId: writeScope, contractorId: scopeId, labourId,
+            type: 'salary', amount: Math.round(row.net), date: dateStr,
             notes: `Auto-generated salary for ${MONTHS[month - 1]} ${year}`,
           });
         }).filter(Boolean),
@@ -161,124 +153,115 @@ export default function Payroll() {
   const handleExport = () => {
     if (report.length === 0) return;
     exportCSV(`Payroll_${MONTHS[month - 1]}_${year}.csv`, report.map((r) => ({
-      Name: r.name,
-      'Days Present': r.present,
-      'Half Days': r.half,
-      'Days Absent': r.absent,
-      'OT Hours': r.otHours,
-      'Total Days': r.totalDays,
-      Gross: Math.round(r.gross),
-      Advances: Math.round(r.advances),
-      Net: Math.round(r.net),
+      Name: r.name, 'Days Present': r.present, 'Half Days': r.half, 'Days Absent': r.absent,
+      'OT Hours': r.otHours, 'Total Days': r.totalDays, Gross: Math.round(r.gross),
+      Advances: Math.round(r.advances), Net: Math.round(r.net),
     })));
     toast.success('CSV downloaded');
   };
 
+  const selectClass = "h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Payroll Calculator</h2>
-          <p className="mt-1 text-sm text-slate-500">Calculate monthly salary and mark as paid in bulk.</p>
+      {/* Controls */}
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+        <p className="mb-4 text-xs font-bold uppercase tracking-wide text-slate-400">Select Period</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-600">Month</Label>
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className={selectClass}>
+              {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-600">Year</Label>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={selectClass}>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <Button onClick={handleGenerate} disabled={running} className="gap-2 text-white h-10 px-5" style={{ background: '#2563EB' }}>
+            <Calculator className="h-4 w-4" /> {running ? 'Calculating…' : 'Calculate Payroll'}
+          </Button>
+          {loaded && (
+            <>
+              <Button variant="outline" onClick={handleExport} className="gap-2 h-10">
+                <Download className="h-4 w-4" /> Export CSV
+              </Button>
+              <Button
+                onClick={markAsPaid}
+                disabled={paying || selected.size === 0}
+                className="gap-2 text-white h-10"
+                style={{ background: '#16A34A' }}
+              >
+                <CheckCircle className="h-4 w-4" />
+                {paying ? 'Processing…' : `Mark ${selected.size > 0 ? selected.size : ''} as Paid`}
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
-        <div className="space-y-1">
-          <Label>Month</Label>
-          <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
-            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <Label>Year</Label>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <Button onClick={handleGenerate} disabled={running} className="gap-2 bg-blue-600 text-white hover:bg-blue-700">
-          <Calculator className="h-4 w-4" /> {running ? 'Calculating…' : 'Calculate Payroll'}
-        </Button>
-        {loaded && (
-          <>
-            <Button variant="outline" onClick={handleExport} className="gap-2">
-              <Download className="h-4 w-4" /> Export CSV
-            </Button>
-            <Button
-              onClick={markAsPaid}
-              disabled={paying || selected.size === 0}
-              className="gap-2 bg-green-600 text-white hover:bg-green-700"
-            >
-              <CheckCircle className="h-4 w-4" />
-              {paying ? 'Processing…' : `Mark ${selected.size > 0 ? selected.size : ''} as Paid`}
-            </Button>
-          </>
-        )}
-      </div>
-
+      {/* Summary cards */}
       {loaded && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Gross</p>
-            <p className="mt-1 text-xl font-semibold text-slate-950">{formatCurrency(totals.gross)}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Advances</p>
-            <p className="mt-1 text-xl font-semibold text-slate-950">{formatCurrency(totals.advances)}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Payable</p>
-            <p className="mt-1 text-xl font-semibold text-green-700">{formatCurrency(totals.net)}</p>
-          </div>
+          <SummaryCard label="Total Gross"     value={formatCurrency(totals.gross)}    icon={Wallet}      color="#2563EB" sub={`${MONTHS[month-1]} ${year}`} />
+          <SummaryCard label="Total Advances"  value={formatCurrency(totals.advances)} icon={TrendingDown} color="#D97706" sub="deducted from salary" />
+          <SummaryCard label="Net Payable"     value={formatCurrency(totals.net)}      icon={TrendingUp}  color="#16A34A" sub="after deductions" />
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200/70 bg-white/90 shadow-sm">
+      {/* Table */}
+      <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm overflow-hidden">
         {running ? (
-          <LoadingSpinner label="Calculating payroll…" />
+          <div className="py-12"><LoadingSpinner label="Calculating payroll…" /></div>
         ) : !loaded ? (
-          <EmptyState icon={Calculator} title="No payroll generated" description="Select a month and click Calculate Payroll." />
+          <EmptyState icon={Calculator} title="No payroll generated" description="Select a month and year, then click Calculate Payroll." />
         ) : report.length === 0 ? (
-          <EmptyState icon={Calculator} title="No labours found" description="Add labours first." />
+          <EmptyState icon={Calculator} title="No labours found" description="Add labours first to generate payroll." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+              <thead className="border-b border-slate-100 bg-slate-50/50">
                 <tr>
-                  <th className="px-4 py-3">
+                  <th className="w-10 px-4 py-3">
                     <input type="checkbox" checked={selected.size === report.length && report.length > 0} onChange={toggleAll} className="rounded border-slate-300" />
                   </th>
-                  <th className="px-4 py-3">Labour</th>
-                  <th className="px-4 py-3 text-right">Days</th>
-                  <th className="px-4 py-3 text-right">OT Hrs</th>
-                  <th className="px-4 py-3 text-right">Gross</th>
-                  <th className="px-4 py-3 text-right">Advances</th>
-                  <th className="px-4 py-3 text-right">Net</th>
+                  {['Labour', 'Days', 'OT Hrs', 'Gross', 'Advances', 'Net'].map((h, i) => (
+                    <th key={h} className={`px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-400 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {report.map((r) => (
-                  <tr key={r.labourId} className={`border-b border-slate-100 last:border-b-0 transition ${selected.has(r.labourId) ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
-                    <td className="px-4 py-3">
+                  <tr key={r.labourId} className={`border-b border-slate-50 last:border-b-0 transition ${selected.has(r.labourId) ? 'bg-blue-50/60' : 'hover:bg-slate-50/60'}`}>
+                    <td className="px-4 py-3.5">
                       <input type="checkbox" checked={selected.has(r.labourId)} onChange={() => toggleSelect(r.labourId)} className="rounded border-slate-300" />
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{r.name}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{r.totalDays}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{r.otHours}</td>
-                    <td className="px-4 py-3 text-right text-slate-900">{formatCurrency(r.gross)}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(r.advances)}</td>
-                    <td className={`px-4 py-3 text-right font-semibold ${r.net < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                          {(r.name || '?')[0].toUpperCase()}
+                        </div>
+                        <span className="font-semibold text-slate-900">{r.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 text-right text-slate-700">{r.totalDays}</td>
+                    <td className="px-4 py-3.5 text-right text-slate-700">{r.otHours}</td>
+                    <td className="px-4 py-3.5 text-right font-semibold text-slate-900">{formatCurrency(r.gross)}</td>
+                    <td className="px-4 py-3.5 text-right text-amber-700">{formatCurrency(r.advances)}</td>
+                    <td className={`px-4 py-3.5 text-right font-bold ${r.net < 0 ? 'text-red-600' : 'text-green-700'}`}>
                       {formatCurrency(r.net)}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-900">
-                  <td className="px-4 py-3" colSpan={4}>Totals</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(totals.gross)}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(totals.advances)}</td>
-                  <td className="px-4 py-3 text-right text-green-700">{formatCurrency(totals.net)}</td>
+                <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-slate-900">
+                  <td className="px-4 py-3.5" colSpan={4}>Totals</td>
+                  <td className="px-4 py-3.5 text-right">{formatCurrency(totals.gross)}</td>
+                  <td className="px-4 py-3.5 text-right text-amber-700">{formatCurrency(totals.advances)}</td>
+                  <td className="px-4 py-3.5 text-right text-green-700">{formatCurrency(totals.net)}</td>
                 </tr>
               </tfoot>
             </table>

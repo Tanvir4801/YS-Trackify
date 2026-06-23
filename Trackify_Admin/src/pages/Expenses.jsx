@@ -130,10 +130,9 @@ export default function Expenses() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Allowances &amp; Expenses</h2>
-          <p className="mt-1 text-sm text-slate-500">Site-wise and labour-wise daily allowance breakdown</p>
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-600">
+          Labour-wise and day-wise breakdown of daily allowances for <span className="font-bold text-slate-900">{MONTH_NAMES[month]} {year}</span>
         </div>
         <div className="flex items-center gap-2">
           <button

@@ -3,22 +3,42 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users as UsersIcon, HardHat, ClipboardList, Wallet,
   FileText, Users2, Calculator, UserCheck, Settings, ChevronLeft, ChevronRight,
-  Building2, Receipt,
+  Building2, Receipt, Zap,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
-const ALL_LINKS = [
-  { to: '/dashboard',   label: 'Dashboard',   icon: LayoutDashboard, roles: ['super_admin', 'contractor'] },
-  { to: '/sites',       label: 'Sites',        icon: Building2,       roles: ['super_admin', 'contractor'] },
-  { to: '/labours',     label: 'Labours',      icon: HardHat,         roles: ['super_admin', 'contractor'] },
-  { to: '/attendance',  label: 'Attendance',   icon: ClipboardList,   roles: ['super_admin', 'contractor', 'supervisor'] },
-  { to: '/payroll',     label: 'Payroll',      icon: Calculator,      roles: ['super_admin', 'contractor'] },
-  { to: '/payments',    label: 'Payments',     icon: Wallet,          roles: ['super_admin', 'contractor'] },
-  { to: '/expenses',    label: 'Expenses',     icon: Receipt,         roles: ['super_admin', 'contractor'] },
-  { to: '/reports',     label: 'Reports',      icon: FileText,        roles: ['super_admin', 'contractor'] },
-  { to: '/supervisors', label: 'Supervisors',  icon: UserCheck,       roles: ['super_admin', 'contractor'] },
-  { to: '/users',       label: 'Users',        icon: UsersIcon,       roles: ['super_admin', 'contractor'] },
-  { to: '/settings',    label: 'Settings',     icon: Settings,        roles: ['super_admin', 'contractor'] },
+const GROUPS = [
+  {
+    label: 'WORKFORCE',
+    links: [
+      { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, roles: ['super_admin', 'contractor'] },
+      { to: '/attendance', label: 'Attendance',  icon: ClipboardList,   roles: ['super_admin', 'contractor', 'supervisor'] },
+      { to: '/labours',    label: 'Labours',     icon: HardHat,         roles: ['super_admin', 'contractor', 'supervisor'] },
+      { to: '/payroll',    label: 'Payroll',     icon: Calculator,      roles: ['super_admin', 'contractor'] },
+      { to: '/payments',   label: 'Payments',    icon: Wallet,          roles: ['super_admin', 'contractor'] },
+    ],
+  },
+  {
+    label: 'OPERATIONS',
+    links: [
+      { to: '/sites',    label: 'Sites',    icon: Building2, roles: ['super_admin', 'contractor'] },
+      { to: '/expenses', label: 'Expenses', icon: Receipt,   roles: ['super_admin', 'contractor'] },
+    ],
+  },
+  {
+    label: 'ANALYTICS',
+    links: [
+      { to: '/reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'contractor'] },
+    ],
+  },
+  {
+    label: 'ADMINISTRATION',
+    links: [
+      { to: '/supervisors', label: 'Supervisors', icon: UserCheck,  roles: ['super_admin', 'contractor'] },
+      { to: '/users',       label: 'Users',       icon: UsersIcon,  roles: ['super_admin', 'contractor'] },
+      { to: '/settings',    label: 'Settings',    icon: Settings,   roles: ['super_admin', 'contractor'] },
+    ],
+  },
 ];
 
 const SUPERVISOR_LINKS = [
@@ -26,83 +46,171 @@ const SUPERVISOR_LINKS = [
   { to: '/labours',    label: 'My Labours', icon: Users2 },
 ];
 
+function getRoleBadgeColor(role) {
+  switch (role) {
+    case 'super_admin': return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
+    case 'contractor':  return 'bg-blue-500/20 text-blue-300 border border-blue-500/30';
+    case 'supervisor':  return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+    default:            return 'bg-slate-700 text-slate-300';
+  }
+}
+
+function getRoleLabel(role) {
+  switch (role) {
+    case 'super_admin': return 'Super Admin';
+    case 'contractor':  return 'Contractor';
+    case 'supervisor':  return 'Supervisor';
+    default:            return role || '';
+  }
+}
+
 export default function Sidebar({ collapsed, onToggle }) {
-  const role = useAuthStore((s) => s.role);
-  const name = useAuthStore((s) => s.name);
+  const role  = useAuthStore((s) => s.role);
+  const name  = useAuthStore((s) => s.name);
   const email = useAuthStore((s) => s.email);
 
-  const links =
-    role === 'supervisor'
-      ? SUPERVISOR_LINKS
-      : ALL_LINKS.filter((l) => !role || l.roles.includes(role));
+  const isSupervisor = role === 'supervisor';
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-white/60 bg-slate-950/95 text-white shadow-[12px_0_48px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-all duration-200 ${
-        collapsed ? 'w-16 px-2 py-5' : 'w-64 px-4 py-5'
+      className={`fixed left-0 top-0 z-30 flex h-screen flex-col text-white shadow-2xl transition-all duration-300 ${
+        collapsed ? 'w-16' : 'w-64'
       }`}
+      style={{ background: 'linear-gradient(180deg, #0B1020 0%, #0d1526 100%)', borderRight: '1px solid rgba(255,255,255,0.06)' }}
     >
-      {!collapsed && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-300">Trackify</p>
-          <div className="mt-2 text-lg font-semibold">Admin Panel</div>
-          <p className="mt-1 text-sm leading-6 text-slate-300">Workforce workspace</p>
-        </div>
-      )}
-      {collapsed && (
-        <div className="mb-3 flex justify-center">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">T</div>
-        </div>
-      )}
+      {/* Brand Header */}
+      <div className={`flex-shrink-0 ${collapsed ? 'px-3 py-5' : 'px-5 py-5'}`}>
+        {collapsed ? (
+          <div className="flex justify-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-600/30">
+              <Zap className="h-4 w-4 text-white" />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-600/30">
+                <Zap className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold tracking-widest text-white uppercase" style={{ letterSpacing: '0.15em' }}>TRACKIFY</p>
+                <p className="text-[10px] text-slate-400 font-medium" style={{ letterSpacing: '0.05em' }}>Workforce Management</p>
+              </div>
+            </div>
+            {role && (
+              <div className="mt-3">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${getRoleBadgeColor(role)}`}>
+                  {getRoleLabel(role)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      <nav className="mt-4 flex-1 space-y-1 overflow-y-auto">
-        {links.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            end
-            title={collapsed ? link.label : undefined}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-                collapsed ? 'justify-center' : ''
-              } ${
-                isActive
-                  ? 'bg-white text-slate-950 shadow-lg'
-                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
-              }`
-            }
-          >
-            <link.icon className="h-4 w-4 shrink-0" />
-            {!collapsed && link.label}
-          </NavLink>
-        ))}
+      <div className="mx-3 h-px bg-white/5" />
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto py-3" style={{ scrollbarWidth: 'none' }}>
+        {isSupervisor ? (
+          <div className={`px-2 space-y-0.5`}>
+            {SUPERVISOR_LINKS.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end
+                title={collapsed ? link.label : undefined}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+                    collapsed ? 'justify-center px-0' : ''
+                  } ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+                      : 'text-slate-400 hover:bg-white/6 hover:text-white'
+                  }`
+                }
+              >
+                <link.icon className="h-4 w-4 shrink-0" />
+                {!collapsed && <span>{link.label}</span>}
+              </NavLink>
+            ))}
+          </div>
+        ) : (
+          GROUPS.map((group) => {
+            const visibleLinks = group.links.filter((l) => !role || l.roles.includes(role));
+            if (visibleLinks.length === 0) return null;
+            return (
+              <div key={group.label} className="mb-2">
+                {!collapsed && (
+                  <p className="px-5 pb-1 pt-3 text-[10px] font-bold tracking-widest text-slate-600">{group.label}</p>
+                )}
+                <div className="px-2 space-y-0.5">
+                  {visibleLinks.map((link) => (
+                    <NavLink
+                      key={link.to}
+                      to={link.to}
+                      end
+                      title={collapsed ? link.label : undefined}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+                          collapsed ? 'justify-center px-0' : ''
+                        } ${
+                          isActive
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+                            : 'text-slate-400 hover:bg-white/6 hover:text-white'
+                        }`
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <link.icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                          {!collapsed && <span>{link.label}</span>}
+                          {!collapsed && isActive && (
+                            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/60" />
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )}
       </nav>
 
+      <div className="mx-3 h-px bg-white/5" />
+
+      {/* Profile footer */}
       {!collapsed && name && (
-        <div className="mt-4 border-t border-white/10 pt-4">
-          <div className="flex items-center gap-3 rounded-xl px-3 py-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold">
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-3 rounded-xl bg-white/4 px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow">
               {(name[0] || '?').toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">{name}</p>
-              <p className="truncate text-xs text-slate-400">{email}</p>
+              <p className="truncate text-sm font-semibold text-white">{name}</p>
+              <p className="truncate text-xs text-slate-500">{email}</p>
             </div>
           </div>
+          <p className="mt-2.5 text-center text-[10px] text-slate-600">Developed by Tanvir Patel</p>
         </div>
       )}
 
-      <button
-        onClick={onToggle}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="mt-2 flex w-full items-center justify-center rounded-xl py-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
-      >
-        {collapsed ? <ChevronRight className="h-4 w-4" /> : (
-          <span className="flex items-center gap-2 text-xs">
-            <ChevronLeft className="h-4 w-4" /> Collapse
-          </span>
-        )}
-      </button>
+      {/* Collapse toggle */}
+      <div className="px-3 pb-4">
+        <button
+          onClick={onToggle}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="flex w-full items-center justify-center rounded-xl py-2.5 text-slate-500 transition-all hover:bg-white/6 hover:text-slate-300"
+          style={{ background: 'transparent' }}
+        >
+          {collapsed
+            ? <ChevronRight className="h-4 w-4" />
+            : <span className="flex items-center gap-2 text-xs font-medium"><ChevronLeft className="h-4 w-4" /> Collapse</span>
+          }
+        </button>
+      </div>
     </aside>
   );
 }

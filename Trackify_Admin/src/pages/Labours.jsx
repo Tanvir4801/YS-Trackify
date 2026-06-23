@@ -341,16 +341,11 @@ export default function Labours() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-            Labours
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {labours.filter((l) => l.isActive !== false).length} active · Daily wage liability:{' '}
-            <span className="font-semibold">{formatCurrency(totalWage)}</span>/day
-          </p>
+      {/* Header bar */}
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-600">
+          <span className="font-bold text-slate-900">{labours.filter((l) => l.isActive !== false).length}</span> active labours ·
+          Daily wage liability: <span className="font-bold text-slate-900">{formatCurrency(totalWage)}</span>/day
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -358,7 +353,7 @@ export default function Labours() {
             onClick={bulkDownloadQR}
             disabled={bulkDownloading}
             title={selected.size > 0 ? `Download QR for ${selected.size} selected` : 'Download QR for all active labours'}
-            className="gap-2 text-slate-700"
+            className="gap-2 text-slate-700 h-9 rounded-lg text-sm"
           >
             <Download className="h-4 w-4" />
             {bulkDownloading ? 'Generating…' : selected.size > 0 ? `QR (${selected.size})` : 'Bulk QR'}
@@ -366,7 +361,8 @@ export default function Labours() {
           {!isSupervisor && (
             <Button
               onClick={openAdd}
-              className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
+              className="gap-2 text-white h-9 rounded-lg text-sm"
+              style={{ background: '#2563EB' }}
             >
               <Plus className="h-4 w-4" /> Add Labour
             </Button>
