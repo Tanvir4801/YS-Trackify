@@ -32,18 +32,23 @@ class SitesService {
     if (contractorId.isEmpty) return _localSites();
 
     try {
+      // Avoid orderBy so no composite index is required — sort client-side.
       final snap = await _col(contractorId)
           .where('contractorId', isEqualTo: contractorId)
-          .where('isActive', isEqualTo: true)
-          .orderBy('name')
           .get();
 
-      final sites = snap.docs.map(SiteModel.fromFirestore).toList();
+      final sites = snap.docs
+          .map(SiteModel.fromFirestore)
+          .where((s) => s.isActive)
+          .toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+
       for (final s in sites) {
         await _box.put(s.id, s);
       }
       return sites;
     } catch (e) {
+      debugPrint('fetchSites error (falling back to local): $e');
       return _localSites();
     }
   }
@@ -127,11 +132,14 @@ class SitesService {
     final contractorId = _contractorId();
     if (contractorId.isEmpty) return Stream.value(_localSites());
 
+    // No orderBy — avoids composite index requirement; sort client-side.
     return _col(contractorId)
         .where('contractorId', isEqualTo: contractorId)
-        .where('isActive', isEqualTo: true)
-        .orderBy('name')
         .snapshots()
-        .map((snap) => snap.docs.map(SiteModel.fromFirestore).toList());
+        .map((snap) => snap.docs
+            .map(SiteModel.fromFirestore)
+            .where((s) => s.isActive)
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name)));
   }
 }
