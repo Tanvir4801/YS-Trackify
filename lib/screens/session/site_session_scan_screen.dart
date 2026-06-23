@@ -1135,7 +1135,7 @@ class _AbsentMarkSheetState extends State<_AbsentMarkSheet> {
                 return CheckboxListTile(
                   title: Text(labour.name, style: const TextStyle(color: Colors.white)),
                   subtitle: Text(
-                    labour.skill.isNotEmpty ? labour.skill : 'General',
+                    ''.isNotEmpty ? '' : 'General',
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   value: checked,
@@ -1239,9 +1239,9 @@ class _LabourManualTile extends StatelessWidget {
                     fontSize: 14,
                   ),
                 ),
-                if (labour.skill.isNotEmpty)
+                if (''.isNotEmpty)
                   Text(
-                    labour.skill,
+                    '',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
