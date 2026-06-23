@@ -90,22 +90,53 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
   Future<void> _loadLabours() async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final contractorId = SessionService.instance.contractorId ?? uid;
-    final box = Hive.box<Labour>(Labour.boxName);
-    var labours = box.values
-        .where((l) => l.isActive && !l.isTemporary &&
-            (l.supervisorId == uid || l.contractorId == contractorId))
-        .toList();
+
+    // Try Hive cache first
+    List<Labour> labours = [];
+    try {
+      final box = Hive.box<Labour>(Labour.boxName);
+      labours = box.values
+          .where((l) => l.isActive && !l.isTemporary &&
+              (l.supervisorId == uid || l.contractorId == contractorId))
+          .toList();
+    } catch (_) {}
+
     if (labours.isEmpty) {
       try {
-        final snap = await _db
+        // Primary: fetch by supervisorId
+        final bySupSnap = await _db
             .collection('labours')
             .where('supervisorId', isEqualTo: uid)
             .where('isActive', isEqualTo: true)
             .get();
-        labours = snap.docs.map((d) => Labour.fromFirestore(d)).toList();
-        for (final l in labours) await box.put(l.id, l);
-      } catch (_) {}
+        final Map<String, Labour> map = {
+          for (final d in bySupSnap.docs) d.id: Labour.fromFirestore(d)
+        };
+
+        // Fallback: fetch by contractorId (covers labours added by contractor admin)
+        if (map.isEmpty && contractorId != uid) {
+          final byCtSnap = await _db
+              .collection('labours')
+              .where('contractorId', isEqualTo: contractorId)
+              .where('isActive', isEqualTo: true)
+              .get();
+          for (final d in byCtSnap.docs) {
+            map.putIfAbsent(d.id, () => Labour.fromFirestore(d));
+          }
+        }
+
+        labours = map.values.toList();
+
+        // Cache into Hive
+        try {
+          final box = Hive.box<Labour>(Labour.boxName);
+          for (final l in labours) await box.put(l.id, l);
+        } catch (_) {}
+      } catch (e) {
+        debugPrint('_loadLabours Firestore error: $e');
+      }
     }
+
     labours.sort((a, b) => a.name.compareTo(b.name));
     if (mounted) setState(() => _allLabours = labours);
   }

@@ -19,7 +19,6 @@ import '../main.dart';
 import 'attendance_screen.dart';
 import 'dashboard_screen.dart';
 import 'reports_screen.dart';
-import 'scanner/scanner_screen.dart';
 import 'settings/app_info_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -38,7 +37,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     DashboardScreen(),
     AttendanceScreen(),
     ReportsScreen(),
-    ScannerScreen(),
   ];
 
   @override
@@ -101,7 +99,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       context.tr('supervisorDashboard'),
       context.tr('attendance'),
       context.tr('reports'),
-      'Scan Attendance',
     ];
 
     return Scaffold(
@@ -149,7 +146,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           context.tr('dashboard'),
           context.tr('attendance'),
           context.tr('reports'),
-          'Scanner',
         ],
       ),
     );
@@ -206,14 +202,12 @@ class _PremiumNavBar extends StatelessWidget {
     Icons.dashboard_outlined,
     Icons.fact_check_outlined,
     Icons.bar_chart_outlined,
-    Icons.qr_code_scanner_outlined,
   ];
 
   static const _activeIcons = [
     Icons.dashboard_rounded,
     Icons.fact_check_rounded,
     Icons.bar_chart_rounded,
-    Icons.qr_code_scanner_rounded,
   ];
 
   @override
@@ -236,7 +230,7 @@ class _PremiumNavBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Row(
             children: List.generate(
-                4,
+                3,
                 (i) => _NavItem(
                       index: i,
                       currentIndex: currentIndex,
