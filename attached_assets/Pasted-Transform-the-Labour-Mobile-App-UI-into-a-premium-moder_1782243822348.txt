@@ -1,0 +1,281 @@
+Transform the Labour Mobile App UI into a premium modern workforce application designed specifically for construction workers and site labour management.
+
+IMPORTANT:
+
+Do NOT change any business logic, Firebase collections, APIs, attendance calculations, payroll calculations, reports, navigation flow, or authentication.
+UI/UX improvements only.
+DESIGN DIRECTION:
+
+Construction Workforce + Modern Fintech feel.
+Similar quality level to Cred, Razorpay, Notion Mobile, and Linear.
+Soft industrial theme with premium cards.
+Clean, professional, trustworthy appearance.
+Focus on earnings and attendance visibility.
+GLOBAL THEME:
+
+Background:
+
+Replace plain light background with subtle construction-inspired gradient.
+Use very light concrete texture effect.
+Colors:
+Primary: #0F766E
+Secondary: #14B8A6
+Success: #22C55E
+Warning: #F59E0B
+Danger: #EF4444
+Surface: #FFFFFF
+Background: #F5F7F9
+Typography:
+
+Use Inter.
+Larger headings.
+Better spacing.
+Consistent font weights.
+Cards:
+
+Border radius 24px.
+Soft shadows.
+Glassmorphism effect on hero cards.
+Premium elevation hierarchy.
+BOTTOM NAVIGATION:
+
+Floating pill navigation.
+Blur background.
+Animated tab selection.
+Better active indicator.
+Icons slightly larger.
+DASHBOARD SCREEN
+
+Replace current top card with premium hero card.
+
+Hero Card:
+
+Circular profile image.
+Labour name.
+Site name.
+Attendance status.
+Current month earnings.
+Today’s earning.
+Example:
+
+Ramesh Patel
+Site A
+
+Present Today
+
+Month Earnings: ₹18,400
+Today’s Wage: ₹600
+
+Add quick stats row:
+
+Present Days
+Absent Days
+Overtime Hours
+Net Salary
+
+Use colorful metric cards.
+
+NEW EARNINGS SECTION
+
+Create dedicated Earnings Summary.
+
+Show:
+
+Gross Salary
+Overtime Earnings
+Allowances
+Advance Deduction
+Net Payable
+
+Use modern finance cards.
+
+Example:
+
+Gross Salary ₹18,000
+
+ 
+
+Overtime ₹2,400
+
+ 
+
+Allowances ₹1,200
+
+ 
+
+Advance -₹1,000
+
+Net Payable       ₹20,600
+
+Highlight Net Payable.
+
+OVERTIME MODULE
+
+Add visible overtime card.
+
+Show:
+
+Total OT Hours
+OT Rate
+OT Earnings
+
+Example:
+
+12 Hours
+₹80/hr
+₹960 Earned
+
+Display with lightning icon.
+
+ALLOWANCE SECTION
+
+Create separate section.
+
+Show:
+
+Tea Allowance
+Breakfast
+Lunch
+Petrol
+Other Extras
+
+Display total allowance earned.
+
+Use attractive chips and mini cards.
+
+QR SCREEN IMPROVEMENTS
+
+Current screen feels empty.
+
+Improve:
+
+Large animated QR card.
+Countdown ring around QR.
+Glassmorphism card.
+Construction worker illustration.
+Status indicator:
+
+Ready for Scan
+Waiting for Supervisor
+
+Add:
+
+Today’s Attendance Status
+Today’s Wage
+Last Scan Time
+
+Below QR:
+
+Safety note card.
+
+ATTENDANCE SCREEN
+
+Improve monthly summary.
+
+Top row:
+
+Worked Days
+Present
+Half Day
+Absent
+
+Add:
+
+Overtime Hours
+Attendance Percentage
+
+Below:
+
+Timeline view.
+
+Example:
+
+23 Jun
+Present
+QR Scan
+08:12 AM
+
+22 Jun
+Present
+Manual
+
+21 Jun
+Half Day
+
+Use colored timeline indicators.
+
+REPORT SCREEN
+
+Current report screen lacks financial insights.
+
+Add:
+
+Monthly Earnings Chart
+Attendance Trend Chart
+Overtime Trend Chart
+
+Summary cards:
+
+Gross Salary
+OT Earnings
+Allowances
+Advances
+Net Payable
+
+Add salary breakdown donut chart.
+
+NEW LABOUR FEATURES
+
+Add:
+
+Salary Progress Card
+“₹18,400 earned this month”
+Next Payment Estimate
+“Expected payment on 30 June”
+Attendance Streak
+“14 Days Continuous Present”
+Overtime Tracker
+Achievement Badges
+Perfect Attendance
+7 Day Streak
+30 Day Streak
+Overtime Champion
+Site Information Card
+Recent Payments History
+Advance History
+MICRO ANIMATIONS
+
+Add:
+
+Card hover animations.
+Counter animations.
+QR refresh animation.
+Smooth page transitions.
+Loading skeletons.
+EMPTY STATES
+
+Replace blank screens.
+
+Use:
+
+Construction illustrations.
+Helpful messages.
+Call-to-action buttons.
+
+PREMIUM FINISH
+
+Every screen should feel:
+
+Modern
+Clean
+Construction-focused
+Salary-focused
+Mobile-first
+Premium startup quality
+Target quality:
+“Jio Financial + Cred + Workforce Management App”
+
+Do not modify backend logic.
+Do not modify Firestore structure.
+Do not modify calculations.
+UI/UX enhancement only.

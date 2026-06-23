@@ -39,48 +39,49 @@ class PaymentHistoryScreen extends StatelessWidget {
           }
         }).fold<double>(0, (sum, p) => sum + p.amount);
 
-        final remainingAmount = (labour.advanceAmount - totalPaid)
-            .clamp(0, double.infinity)
-            .toDouble();
+        final salaryTotal = payments
+            .where((p) => p.amount >= labour.dailyWage)
+            .fold<double>(0, (sum, p) => sum + p.amount);
+        final advanceTotal = payments
+            .where((p) => p.amount < labour.dailyWage)
+            .fold<double>(0, (sum, p) => sum + p.amount);
 
         if (payments.isEmpty) {
           return SafeArea(
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.all(32),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      height: 82,
-                      width: 82,
+                      width: 88,
+                      height: 88,
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.10),
-                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(26),
                       ),
-                      child: Icon(
-                        Icons.receipt_long_outlined,
-                        size: 42,
-                        color: AppColors.primary.withValues(alpha: 0.58),
-                      ),
+                      child: const Icon(Icons.receipt_long_rounded,
+                          size: 42, color: Colors.white),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No payments yet',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color:
-                                AppColors.textPrimary.withValues(alpha: 0.82),
-                          ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'No Payments Yet',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                        color: Color(0xFF0F172A),
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'Payment entries will show up here once added.',
+                    const Text(
+                      'Your salary and advance payments will appear here once processed.',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color:
-                                AppColors.textPrimary.withValues(alpha: 0.50),
-                          ),
+                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14, height: 1.5),
                     ),
                   ],
                 ),
@@ -91,78 +92,57 @@ class PaymentHistoryScreen extends StatelessWidget {
 
         return SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _SummaryCard(
-                        title: 'Total Paid',
-                        value: '₹${totalPaid.toStringAsFixed(0)}',
-                        icon: Icons.account_balance_wallet_outlined,
-                        color: const Color(0xFF2E7D32),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _SummaryCard(
-                        title: 'This Month',
-                        value: '₹${thisMonthTotal.toStringAsFixed(0)}',
-                        icon: Icons.calendar_month_outlined,
-                        color: const Color(0xFF1565C0),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _SummaryCard(
-                  title: 'Remaining Amount',
-                  value: '₹${remainingAmount.toStringAsFixed(0)}',
-                  icon: Icons.hourglass_bottom_outlined,
-                  color: const Color(0xFFAD1457),
+                // ── Hero Summary Card ──────────────────────────────────
+                _HeroSummaryCard(
+                  totalPaid: totalPaid,
+                  thisMonthTotal: thisMonthTotal,
+                  salaryTotal: salaryTotal,
+                  advanceTotal: advanceTotal,
                 ),
                 const SizedBox(height: 20),
-                Row(
+
+                // ── Section Header ─────────────────────────────────────
+                const Row(
                   children: [
-                    Icon(
-                      Icons.history_edu_outlined,
-                      size: 21,
-                      color: AppColors.textPrimary.withValues(alpha: 0.80),
-                    ),
-                    const SizedBox(width: 8),
+                    Icon(Icons.history_rounded, size: 18, color: Color(0xFF64748B)),
+                    SizedBox(width: 8),
                     Text(
-                      'Payment History',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
-                          ),
+                      'TRANSACTION HISTORY',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF94A3B8),
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                ...payments.map((payment) {
+
+                // ── Payment Tiles ──────────────────────────────────────
+                ...payments.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final payment = entry.value;
                   DateTime? date;
-                  try {
-                    date = DateTime.parse(payment.date);
-                  } catch (_) {
-                    date = null;
-                  }
+                  try { date = DateTime.parse(payment.date); } catch (_) {}
 
                   final fullDate = date != null
                       ? DateFormat('dd MMM yyyy').format(date)
                       : payment.date;
-
-                  final paymentType =
-                      payment.amount >= labour.dailyWage ? 'Salary' : 'Advance';
+                  final isSalary = payment.amount >= labour.dailyWage;
 
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.only(bottom: 10),
                     child: _PaymentTile(
                       fullDate: fullDate,
                       amount: payment.amount,
-                      paymentType: paymentType,
+                      isSalary: isSalary,
+                      index: idx,
+                      total: payments.length,
                     ),
                   );
                 }),
@@ -175,161 +155,235 @@ class PaymentHistoryScreen extends StatelessWidget {
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.color,
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero Summary Card
+// ─────────────────────────────────────────────────────────────────────────────
+class _HeroSummaryCard extends StatelessWidget {
+  const _HeroSummaryCard({
+    required this.totalPaid,
+    required this.thisMonthTotal,
+    required this.salaryTotal,
+    required this.advanceTotal,
   });
 
-  final String title;
+  final double totalPaid;
+  final double thisMonthTotal;
+  final double salaryTotal;
+  final double advanceTotal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F766E), Color(0xFF0D9488), Color(0xFF14B8A6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F766E).withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Payment Overview',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '₹${totalPaid.toStringAsFixed(0)}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 36,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Total Received',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            const Divider(color: Colors.white12, thickness: 1),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(child: _HeroStat(
+                  label: 'This Month',
+                  value: '₹${thisMonthTotal.toStringAsFixed(0)}',
+                  icon: Icons.calendar_today_rounded,
+                  color: const Color(0xFF7DD3FC),
+                )),
+                const SizedBox(width: 16),
+                Expanded(child: _HeroStat(
+                  label: 'Salary',
+                  value: '₹${salaryTotal.toStringAsFixed(0)}',
+                  icon: Icons.payments_rounded,
+                  color: const Color(0xFF86EFAC),
+                )),
+                const SizedBox(width: 16),
+                Expanded(child: _HeroStat(
+                  label: 'Advances',
+                  value: '₹${advanceTotal.toStringAsFixed(0)}',
+                  icon: Icons.arrow_upward_rounded,
+                  color: const Color(0xFFFDE68A),
+                )),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  const _HeroStat({required this.label, required this.value, required this.icon, required this.color});
+  final String label;
   final String value;
   final IconData icon;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.16)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary.withValues(alpha: 0.74),
-                      ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: color,
-                ),
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 14)),
+        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 10, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Payment Tile
+// ─────────────────────────────────────────────────────────────────────────────
 class _PaymentTile extends StatelessWidget {
   const _PaymentTile({
     required this.fullDate,
     required this.amount,
-    required this.paymentType,
+    required this.isSalary,
+    required this.index,
+    required this.total,
   });
 
   final String fullDate;
   final double amount;
-  final String paymentType;
+  final bool isSalary;
+  final int index;
+  final int total;
 
   @override
   Widget build(BuildContext context) {
+    final typeColor  = isSalary ? const Color(0xFF0F766E) : const Color(0xFFF59E0B);
+    final typeBg     = isSalary ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB);
+    final typeLabel  = isSalary ? 'Salary' : 'Advance';
+    final typeIcon   = isSalary ? Icons.payments_rounded : Icons.trending_up_rounded;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.grey.withValues(alpha: 0.12),
-          width: 1,
+        borderRadius: BorderRadius.circular(18),
+        border: Border(
+          left: BorderSide(color: typeColor, width: 4),
         ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: typeColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(typeIcon, color: typeColor, size: 22),
             ),
-            child: const Icon(
-              Icons.payments_outlined,
-              size: 18,
-              color: Colors.green,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Payment Received',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    fullDate,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: typeBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      typeLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: typeColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  'Payment Received',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
+                  '+₹${amount.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                    color: typeColor,
+                  ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
-                  fullDate,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary.withValues(alpha: 0.58),
-                      ),
-                ),
-                const SizedBox(height: 7),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1976D2).withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    paymentType,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1976D2),
-                        ),
-                  ),
+                  '#${(total - index).toString().padLeft(3, '0')}',
+                  style: const TextStyle(fontSize: 10, color: Color(0xFFCBD5E1), fontWeight: FontWeight.w600),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '₹${amount.toStringAsFixed(0)}',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: Colors.green,
-                ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
