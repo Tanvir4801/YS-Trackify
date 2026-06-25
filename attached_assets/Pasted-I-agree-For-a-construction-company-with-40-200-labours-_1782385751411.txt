@@ -1,0 +1,326 @@
+I agree. For a construction company with 40–200 labours, the current report card is too tall. A supervisor doesn’t want to scroll through 50 half-screen cards just to check wages.
+
+A much more premium UX is to make compact expandable cards.
+
+Replit Prompt
+
+You are a senior Flutter UI/UX designer (Apple + Linear + Notion quality). Redesign ONLY the UI of the Reports screen. DO NOT change any business logic, Firestore queries, providers, controllers, models, calculations, navigation, state management, exports, backup logic, or data fetching.
+
+Goal:
+Create a premium construction-management experience that scales to 40–200 labour records without excessive scrolling.
+
+⸻
+
+GENERAL STYLE
+
+Theme:
+• White background
+• Construction accent (#0EA47A)
+• Gold highlights (#F6B500)
+• Soft grey cards
+• Large rounded corners (18-22)
+• Very subtle shadows
+• Premium spacing
+• SF Pro / Inter typography
+
+Animations:
+• Fade
+• Expand
+• Hero-like transitions
+• 180ms animation only
+
+⸻
+
+TOP BAR
+
+Keep:
+
+* Reports title
+* Export
+* Backup
+
+Improve:
+
+* Search bar
+* Month selector
+* Filter chips
+
+Filter chips:
+
+All
+Present
+Absent
+Half Day
+Highest Wage
+Lowest Wage
+
+Each chip has modern pill design.
+
+⸻
+
+CHANGE CARD LAYOUT
+
+Current cards are too large.
+
+Replace with compact cards.
+
+Each labour should initially occupy only around 130-150 px height.
+
+Layout:
+
+⸻
+
+Avatar
+
+R
+
+Ramesh
+
+Site: Doldha
+
+₹500/day
+
+Workdays 25
+
+Final ₹13,400
+
+Present 23
+
+Half 2
+
+Absent 0
+
+small status pill
+
+▼
+
+⸻
+
+Below that:
+
+Three tiny coloured chips
+
+P 23
+
+H 2
+
+A 0
+
+Below:
+
+Green amount
+
+₹13,400
+
+Right side:
+
+Expand arrow
+
+⸻
+
+EXPANDABLE DETAILS
+
+Only when user taps card.
+
+Expand smoothly.
+
+Expanded section shows:
+
+Attendance
+
+Present
+
+Half
+
+Absent
+
+Working Days
+
+Earnings
+
+Base Pay
+
+Overtime
+
+Bonus
+
+Allowances
+
+Deductions
+
+Advance
+
+Fine
+
+Net Pay
+
+Export Individual Report button
+
+Print button
+
+Share button
+
+Collapse button
+
+Default state remains collapsed.
+
+⸻
+
+CARD COLORS
+
+Instead of huge sections use small badges.
+
+Green
+Present
+
+Orange
+Half
+
+Red
+Absent
+
+Blue
+Overtime
+
+Purple
+Bonus
+
+Grey
+Advance
+
+Green amount chip for Final Pay.
+
+⸻
+
+FAST SCANNING
+
+Supervisor should instantly see:
+
+Name
+
+Site
+
+Daily wage
+
+Final salary
+
+Attendance
+
+Nothing else initially.
+
+All details hidden inside expansion.
+
+⸻
+
+BOTTOM SUMMARY
+
+Sticky bottom summary card.
+
+Shows:
+
+Total Workers
+
+Present
+
+Absent
+
+Total Salary
+
+Total Advance
+
+Net Payroll
+
+Always visible while scrolling.
+
+⸻
+
+SEARCH
+
+Searching should animate.
+
+Matched card gets slight glow.
+
+⸻
+
+EMPTY STATE
+
+Premium illustration.
+
+“No reports found”
+
+⸻
+
+MICRO INTERACTIONS
+
+Ripple effect
+
+Card lift on tap
+
+Animated progress bar
+
+Animated amount counter
+
+Smooth expand animation
+
+⸻
+
+RESPONSIVE
+
+Must look beautiful for:
+
+5 labour
+
+25 labour
+
+50 labour
+
+100 labour
+
+200 labour
+
+Avoid long scrolling by making every card compact.
+
+⸻
+
+IMPORTANT
+
+DO NOT:
+
+Change any Firestore query
+
+Change provider
+
+Change report calculations
+
+Change export logic
+
+Change backup
+
+Change attendance logic
+
+Change navigation
+
+Change business logic
+
+Change data model
+
+Only redesign widgets and layouts.
+
+Return production-ready Flutter code.
+
+I would also add these premium touches:
+
+* Monthly payroll summary pinned at the top (e.g., Total Workers, Total Payroll, Avg Wage, Present %).
+* Tiny circular attendance ring around each avatar showing attendance percentage.
+* Colored salary indicator:
+    * 🟢 Full salary
+    * 🟡 Salary with deductions
+    * 🔴 High deductions
+* One-tap swipe actions on each card:
+    * Share PDF
+    * Export Excel
+    * View Details
+* Sticky A–Z alphabetical index when there are many workers, making it easy to jump to names.
+* Performance sorting (Highest Wage, Lowest Wage, Most Overtime, Most Absent) with animated chips.
+
+This approach reduces each labour card from roughly 350–450 px tall to about 130–150 px, so a supervisor can see 5–6 workers on one screen instead of only 2, making the app feel much more like a professional ERP system used by construction companies.

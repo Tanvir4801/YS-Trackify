@@ -1,0 +1,489 @@
+PREMIUM REPORTS SCREEN UI/UX REDESIGN (Flutter Only)
+
+You are a Senior Flutter UI/UX Engineer specializing in premium enterprise ERP applications.
+
+Your task is to redesign ONLY the Reports screen of my Flutter construction labour management application.
+
+⚠️ IMPORTANT
+
+DO NOT change:
+
+* Firestore queries
+* Firebase logic
+* Providers
+* Models
+* Calculations
+* Attendance logic
+* Export Excel logic
+* Backup logic
+* Business logic
+* State management
+* Navigation
+* Existing functions
+* Variable names
+* APIs
+* Data fetching
+
+Only redesign the UI while keeping every functionality exactly the same.
+
+⸻
+
+Goal
+
+The application may contain
+
+• 10 labour
+• 25 labour
+• 50 labour
+• 100 labour
+• 200+ labour
+
+Current report cards are too tall.
+
+Supervisor has to scroll forever.
+
+Redesign the screen so that maximum information is visible with minimum scrolling.
+
+The app should feel like:
+
+• Linear
+• Notion
+• Stripe Dashboard
+• Apple
+• Premium Construction ERP
+
+⸻
+
+THEME
+
+Construction Luxury Theme
+
+Background
+
+Pure White
+
+Cards
+
+Light Grey
+
+Accent
+
+Construction Green
+
+Accent Secondary
+
+Golden Yellow
+
+Radius
+
+22
+
+Padding
+
+18-22
+
+Very soft shadows
+
+Premium typography
+
+⸻
+
+HEADER
+
+Reports
+
+Below it show
+
+Current Month
+
+Search Bar
+
+Filter Chips
+
+Filters
+
+All
+
+Present
+
+Absent
+
+Half Day
+
+Highest Salary
+
+Lowest Salary
+
+Highest Overtime
+
+Pending Advance
+
+⸻
+
+SUMMARY CARD
+
+Instead of directly showing reports
+
+First show one premium payroll summary card.
+
+Inside show
+
+Total Workers
+
+Total Payroll
+
+Present
+
+Absent
+
+Average Wage
+
+Total Overtime
+
+Total Advance
+
+Net Payroll
+
+Beautiful 2-column layout.
+
+⸻
+
+REPORT CARD
+
+Instead of current giant card
+
+Create compact premium cards.
+
+Each card height
+
+130-150 pixels only.
+
+Layout
+
+⸻
+
+○ Avatar
+
+R
+
+Name
+
+Ramesh
+
+Site
+
+Doldha
+
+₹500/day
+
+⸻
+
+Present 24
+
+Half 1
+
+Absent 0
+
+⸻
+
+Net Salary
+
+₹13,400
+
+⸻
+
+▼ Expand
+
+⸻
+
+Everything should fit inside one compact card.
+
+Supervisor should see
+
+5-6 workers on one screen.
+
+⸻
+
+STATUS CHIPS
+
+Replace huge coloured containers.
+
+Use premium pills.
+
+Green
+
+P 24
+
+Orange
+
+H 1
+
+Red
+
+A 0
+
+Blue
+
+OT ₹900
+
+Grey
+
+ADV ₹300
+
+Tiny rounded badges.
+
+⸻
+
+SALARY
+
+Large green amount
+
+₹13,400
+
+Below
+
+Paid
+
+or
+
+Pending
+
+with tiny badge.
+
+⸻
+
+EXPANDABLE DETAILS
+
+Only after tapping card.
+
+Smooth expansion animation.
+
+Expanded section shows
+
+Attendance
+
+Present
+
+Half
+
+Absent
+
+Workdays
+
+Base Salary
+
+Overtime
+
+Bonus
+
+Allowances
+
+Advance
+
+Deductions
+
+Fine
+
+Net Salary
+
+Payment Status
+
+Remarks
+
+Buttons
+
+Export PDF
+
+Share
+
+Print
+
+Collapse
+
+Default state must remain collapsed.
+
+⸻
+
+CARD ANIMATION
+
+On tap
+
+Card lifts slightly.
+
+Expand smoothly.
+
+Arrow rotates.
+
+Amount animates.
+
+⸻
+
+SEARCH
+
+Typing
+
+Instant filter.
+
+Matched cards glow slightly.
+
+⸻
+
+SORTING
+
+Allow sorting
+
+Highest Salary
+
+Lowest Salary
+
+Highest Overtime
+
+Most Present
+
+Most Absent
+
+Alphabetical
+
+Newest
+
+Oldest
+
+⸻
+
+QUICK ACTIONS
+
+Each card
+
+Swipe Left
+
+Export PDF
+
+Swipe Right
+
+Share
+
+Long Press
+
+View Full Report
+
+⸻
+
+PAY STATUS
+
+Green Badge
+
+Paid
+
+Yellow
+
+Pending
+
+Red
+
+Issue
+
+⸻
+
+PERFORMANCE INDICATOR
+
+Tiny circular progress around avatar.
+
+Shows attendance percentage.
+
+95%
+
+Green
+
+75%
+
+Orange
+
+Below
+
+Red
+
+⸻
+
+STICKY FOOTER
+
+At bottom while scrolling
+
+Always visible
+
+Workers
+
+Payroll
+
+Net Pay
+
+Present %
+
+This updates automatically.
+
+⸻
+
+EMPTY STATE
+
+Premium illustration.
+
+“No reports available”
+
+⸻
+
+LOADING
+
+Replace spinner.
+
+Use skeleton shimmer cards.
+
+⸻
+
+RESPONSIVE
+
+Looks premium on
+
+Phone
+
+Tablet
+
+Large screens
+
+⸻
+
+MICRO INTERACTIONS
+
+Smooth fade
+
+Scale animation
+
+Animated counters
+
+Hero transitions
+
+Premium shadows
+
+Apple-like scrolling
+
+⸻
+
+DESIGN LANGUAGE
+
+Minimal
+
+Luxury
+
+Professional
+
+Construction ERP
+
+No unnecessary colours.
+
+No oversized containers.
+
+No huge empty spaces.
+
+Maximum information density while remaining beautiful.
+
+Every card should feel premium and enterprise-level.
+
+Return complete production-ready Flutter UI code without changing any existing business logic or backend functionality.
