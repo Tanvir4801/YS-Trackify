@@ -21,7 +21,7 @@
     "firebase": "^10.14.1",
     "framer-motion": "^12.41.0",
     "jszip": "^3.10.1",
-    "lucide-react": "^1.11.0",
+    "lucide-react": "^0.447.0",
     "qrcode": "^1.5.4",
     "radix-ui": "^1.4.3",
     "react": "^18.2.0",

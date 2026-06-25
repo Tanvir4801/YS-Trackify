@@ -1,0 +1,623 @@
+You are acting as a senior QA engineer doing a final production 
+readiness audit on my Flutter app "Trackify V2" (Labour Attendance 
+SaaS) and its companion Next.js admin panel before official launch.
+
+Go through EVERY phase below systematically. For each item:
+1. Find the actual code responsible
+2. Test the real behavior (trace the logic, don't assume)
+3. Report PASS or FAIL with exact reason
+4. If FAIL — fix it immediately and show the corrected file
+5. Move to next item only after current one is verified
+
+DO NOT skip any phase. DO NOT mark something PASS without 
+actually checking the code.
+
+=============================================================
+PHASE 1 — AUTHENTICATION AUDIT
+=============================================================
+
+## Test 1.1 — Supervisor OTP login
+- Open app fresh (no cached session)
+- Enter supervisor phone → Send OTP → verify real SMS received
+- Enter correct OTP → must land on Supervisor Dashboard
+- Enter wrong OTP → must show clear error, NOT crash
+- Check: does AuthService create users/{uid} doc if missing?
+
+## Test 1.2 — Labour phone-only login  
+- Enter labour's registered phone (no password/OTP)
+- Must land on Labour Dashboard directly
+- Enter UNREGISTERED phone → must show 
+  "Mobile number not registered. Contact your supervisor."
+  NOT a generic error or blank screen
+
+## Test 1.3 — Session persistence
+- Login → force close app → reopen
+- Must auto-login to correct role WITHOUT re-entering OTP
+- Check SharedPreferences caching logic in SplashScreen
+
+## Test 1.4 — Logout flow
+- Tap logout → confirm dialog appears
+- Confirm → must clear ALL cached data (SharedPreferences + 
+  FirebaseAuth.signOut())
+- Must navigate to login screen with NO way to back-button 
+  into previous session
+- Verify: Navigator uses pushNamedAndRemoveUntil, not just push
+
+## Test 1.5 — Role-based routing
+- Supervisor must NEVER see Labour screens and vice versa
+- Check every route guard — search for any hardcoded role checks
+  that might be bypassed
+
+FIND AND FIX any issues in: auth_service.dart, splash_screen.dart,
+login_screen.dart before proceeding to Phase 2.
+
+=============================================================
+PHASE 2 — MULTI-CONTRACTOR ISOLATION AUDIT
+=============================================================
+
+## Test 2.1 — Data leakage check
+- Login as YS Construction supervisor
+- Note exact labour names/count visible
+- Logout → Login as MG Construction supervisor  
+- Verify ZERO overlap — MG must not see any YS labour
+- Run this exact query manually and verify in code:
+```dart
+  // This query MUST only return labours where 
+  // supervisorId OR contractorId matches CURRENT logged in uid
+```
+
+## Test 2.2 — Attendance isolation
+- Mark attendance as YS supervisor
+- Switch to MG supervisor
+- MG's attendance screen must show ZERO YS attendance records
+- Check every Firestore query has proper where() filters —
+  flag any query missing supervisorId/contractorId filter
+
+## Test 2.3 — Admin panel contractor filter
+- Open admin panel → select "YS Construction" from dropdown
+- Verify ONLY YS data shows in every table (labours, 
+  attendance, payments, reports)
+- Switch dropdown to "MG Construction"
+- Verify data completely changes — if it doesn't, the filter
+  is broken, FIX the query in that service file
+
+## Test 2.4 — Sites isolation
+- YS sites (Site A, B) must not appear for MG supervisor
+- Check sites collection queries filter by contractorId
+
+FIND AND FIX any cross-contamination bugs before Phase 3.
+
+=============================================================
+PHASE 3 — REAL-TIME FIRESTORE SYNC AUDIT (App ↔ Web)
+=============================================================
+
+## Test 3.1 — App write → Web read (live)
+- Keep admin panel open in browser on Labours page
+- In Flutter app, add a new labour
+- WITHOUT refreshing the browser, verify the new labour 
+  appears within 2-3 seconds (onSnapshot must be used, 
+  not getDocs one-time fetch)
+- If it requires manual refresh — FIND every getDocs() call
+  that should be onSnapshot() and FIX it
+
+## Test 3.2 — Web write → App read (live)
+- Keep Flutter app open on Labour screen
+- In admin panel, edit a labour's daily wage
+- Verify the change reflects in the app within a few seconds
+  without app restart
+
+## Test 3.3 — Attendance real-time
+- Open admin panel Attendance page for today
+- In Flutter app, mark a labour present via Scanner
+- Verify admin panel updates live with the new record
+
+## Test 3.4 — Dashboard real-time stats
+- Open Flutter Dashboard, note "Present Today" count
+- In another device/emulator, mark another labour present
+- Original dashboard must update count WITHOUT manual refresh
+- Check DashboardProvider has active StreamSubscription, 
+  not a one-time Future
+
+## Test 3.5 — Listener cleanup (memory leak check)
+- Check EVERY StreamSubscription has matching .cancel() 
+  in dispose()
+- Search codebase for "StreamSubscription" and verify each 
+  has a corresponding cancel call
+- Flag any provider/widget missing this — memory leaks 
+  crash apps after extended use
+
+FIND AND FIX any one-time-fetch-instead-of-stream bugs.
+
+=============================================================
+PHASE 4 — MULTI-SITE ATTENDANCE LOGIC AUDIT
+=============================================================
+
+## Test 4.1 — Pending pool correctness
+- Create 2 sites: Site A, Site B
+- Mark 5 of 10 labours present at Site A
+- Switch to Site B
+- Verify EXACTLY the remaining 5 labours show as pending
+  (not 10, not 0 — exactly 5)
+- Trace the code: does it query TODAY's attendance across 
+  ALL sites before filtering the labour list?
+
+## Test 4.2 — Already-marked safety net
+- After marking at Site A, check "Already Marked Today" 
+  section shows correct site name per labour
+- Tap to edit — must allow reassigning site or status
+
+## Test 4.3 — Temporary labour flow
+- Add a temp labour mid-attendance-session at Site B
+- Verify they get type: 'temporary' in Firestore
+- Verify they do NOT appear in tomorrow's regular 40-labour 
+  pending pool
+- Verify they DO appear in today's site report and payroll audit
+
+## Test 4.4 — Remark field persistence
+- Add a remark to a labour's attendance
+- Navigate away and back — remark must persist
+- Check remark appears in: labour profile timeline, 
+  site report, exported CSV
+
+## Test 4.5 — Wage snapshot accuracy
+- Mark attendance for a labour with current wage ₹500
+- Go to admin panel, change that labour's wage to ₹600
+- Go back to the ALREADY-MARKED attendance record's report
+- Verify it still calculates with ₹500 (the snapshot), 
+  not the new ₹600 — this proves historical accuracy works
+
+FIND AND FIX any pool-filtering or snapshot bugs.
+
+=============================================================
+PHASE 5 — OFFLINE MODE AUDIT (Critical for construction sites)
+=============================================================
+
+## Test 5.1 — Offline scan queueing
+- Turn on Airplane Mode
+- Scan a labour QR code
+- Verify: shows "marked offline, will sync" message
+- Verify: saved to Hive pending_attendance box
+
+## Test 5.2 — Auto-sync on reconnect
+- With offline scan pending, turn OFF Airplane Mode
+- WITHOUT tapping any sync button, wait 5-10 seconds
+- Verify: pending count badge disappears automatically
+- Check: Connectivity listener actually triggers sync — 
+  if not, FIX the auto-sync subscription
+
+## Test 5.3 — No duplicate after sync
+- Scan same labour while offline
+- Sync
+- Verify Firestore has EXACTLY ONE attendance record, not two
+- Check duplicate-check logic runs even for offline-synced records
+
+## Test 5.4 — Offline attendance marking (manual)
+- Airplane mode ON
+- Manually mark attendance via Attendance screen (not scanner)
+- Verify Hive saves it immediately, UI updates instantly
+- Reconnect → verify it syncs to Firestore
+
+## Test 5.5 — App restart while offline
+- Mark attendance offline
+- Force-close and reopen app (still offline)
+- Verify the marked status is still shown correctly
+  (reads from Hive, not lost)
+
+## Test 5.6 — Multiple pending records sync correctly
+- Go offline, scan 5 different labours
+- Reconnect
+- Verify ALL 5 sync, not just the first one
+- Check sync loop doesn't break/stop after first failure
+
+FIND AND FIX any data-loss risk in offline handling — 
+this is the MOST CRITICAL phase since construction sites 
+often have poor connectivity.
+
+=============================================================
+PHASE 6 — PAYROLL MATH VERIFICATION
+=============================================================
+
+## Test 6.1 — Manual calculation cross-check
+Pick one labour. Manually calculate using a calculator:
+Daily Wage: ₹500
+Days Present: 20
+Half Days: 2
+OT Hours: 6 total
+OT Rate: ₹75/hr
+
+Expected Gross = (20 × 500) + (2 × 0.5 × 500) + (6 × 75)
+= 10000 + 500 + 450
+= ₹10,950
+
+- Go to Reports screen for this labour
+
+- Verify the app shows EXACTLY ₹10,950
+
+- If different — find calculation bug in reports_service 
+
+  and FIX the formula
+
+
+
+## Test 6.2 — Advance deduction accuracy
+
+- Add an advance payment of ₹1,000 for the same labour
+
+- Verify Net Payable = Gross - Advance = ₹10,950 - ₹1,000 = ₹9,950
+
+- Check this matches EXACTLY across: app Reports, Labour's own
+
+  Report tab, and admin panel Payroll page
+
+
+
+## Test 6.3 — Half day calculation
+
+- Mark a labour half day for 3 days, present for 17 days,
+
+  in a 20-day month, daily wage ₹400
+
+- Expected: (17 × 400) + (3 × 0.5 × 400) = 6800 + 600 = ₹7,400
+
+- Verify all 3 places (app, labour view, admin) show same number
+
+
+
+## Test 6.4 — Site-wise total accuracy
+
+- Mark attendance for 3 labours at Site A (wages: 500, 600, 700)
+
+- Calculate manually: total Site A payout for the day = ₹1,800
+
+- Check admin panel Site Report shows exactly ₹1,800 for that day
+
+
+
+## Test 6.5 — Temp labour included in totals
+
+- Add a temp labour with wage ₹300, mark present
+
+- Verify overall site total INCLUDES this ₹300
+
+- Verify it's labeled separately in the "Temporary Labour" 
+
+  audit section, not silently merged with regular total
+
+
+
+## Test 6.6 — Currency formatting consistency
+
+- Check ₹ symbol used everywhere (not "Rs" in some places, 
+
+  "₹" in others)
+
+- Check Indian number format used: ₹1,23,456 not ₹123,456
+
+- Fix any inconsistent formatting found
+
+
+
+FIND AND FIX any payroll calculation mismatch — 
+
+this is MONEY, it must be 100% correct before launch.
+
+
+
+=============================================================
+
+PHASE 7 — PRODUCTION HARDENING
+
+=============================================================
+
+
+
+## Test 7.1 — Firestore Security Rules final check
+
+- Try to read/write Firestore directly via Firebase Console 
+
+  while logged out — should be blocked appropriately per rules
+
+- Verify supervisor A cannot write to supervisor B's labours
+
+  (test by temporarily modifying a request in code to use 
+
+  wrong supervisorId — should fail with permission-denied)
+
+- Confirm rules match exactly what's deployed:
+
+```bash
+
+  firebase deploy --only firestore:rules
+
+```
+
+
+
+## Test 7.2 — Firestore Indexes
+
+- Check Firebase Console → Firestore → Indexes
+
+- Run every complex query (date range + where combos) and 
+
+  verify NO "missing index" errors appear in console
+
+- If any appear, create the index immediately and document 
+
+  it in firestore.indexes.json
+
+
+
+## Test 7.3 — Crash safety — null/empty checks
+
+- Test app behavior when:
+
+  - Labour has no phone number set
+
+  - Attendance record missing overtimeHours field
+
+  - Site has no name set
+
+  - Network completely unavailable on app first launch
+
+- App must show graceful error/empty state, NEVER a 
+
+  red screen of death or silent crash
+
+
+
+## Test 7.4 — Loading states everywhere
+
+- Every screen that fetches data must show shimmer/spinner 
+
+  while loading — never a blank white screen
+
+- Check all screens: Dashboard, Labour list, Attendance, 
+
+  Reports, Scanner, Profile
+
+
+
+## Test 7.5 — Error messages are user-friendly
+
+- Search code for any raw exception.toString() shown to user
+
+- Replace with friendly messages: 
+
+  "Something went wrong. Please try again." 
+
+  instead of "FirebaseException: [firestore/unavailable]..."
+
+
+
+## Test 7.6 — App icon, name, splash screen
+
+- Verify app name shows "Trackify" not "flutter_app" 
+
+  on phone home screen
+
+- Verify custom app icon is set (not default Flutter icon)
+
+- Verify splash screen shows branded logo, not blank/default
+
+
+
+## Test 7.7 — Release build test
+
+Run actual release build, not debug:
+
+```bash
+
+flutter build apk --release
+
+```
+
+Install the release APK on a real device and test:
+
+- Login flow works
+
+- QR scan works  
+
+- Offline mode works
+
+- No debug banner visible
+
+- App doesn't crash on launch
+
+
+
+## Test 7.8 — Admin panel production build
+
+```bash
+
+npm run build
+
+```
+
+- Verify build completes with zero errors
+
+- Test the production build locally:
+
+```bash
+
+  npm run start
+
+```
+
+- Verify Firebase env variables load correctly in production
+
+
+
+## Test 7.9 — Performance check
+
+- Open Labour list with 40+ labours — should load in under 2 seconds
+
+- Scroll through long attendance history — should be smooth, 
+
+  no jank/stutter
+
+- If slow, check for unnecessary rebuilds or missing pagination
+
+
+
+## Test 7.10 — Final Firebase plan check
+
+- Confirm Firebase project is on Spark (free) plan if 
+
+  Cloud Functions were removed
+
+- Confirm no billing alerts or unexpected charges in 
+
+  Firebase Console → Usage and Billing
+
+
+
+=============================================================
+
+FINAL SIGN-OFF CHECKLIST
+
+=============================================================
+
+
+
+Only mark the app PRODUCTION READY when ALL of these are TRUE:
+
+
+
+AUTH
+
+[ ] Supervisor OTP login works end to end
+
+[ ] Labour phone login works end to end  
+
+[ ] Session persists across app restarts
+
+[ ] Logout clears everything properly
+
+
+
+MULTI-CONTRACTOR
+
+[ ] Zero data leakage between YS and MG
+
+[ ] Admin panel contractor filter actually filters
+
+
+
+REAL-TIME SYNC
+
+[ ] App writes appear in web within seconds, no refresh needed
+
+[ ] Web writes appear in app within seconds, no restart needed
+
+[ ] All StreamSubscriptions properly cancelled in dispose()
+
+
+
+MULTI-SITE
+
+[ ] Pending pool correctly excludes already-marked labours
+
+[ ] Temp labours work and appear in audit reports
+
+[ ] Wage snapshots protect historical accuracy
+
+
+
+OFFLINE
+
+[ ] Scans queue properly when offline
+
+[ ] Auto-sync triggers on reconnect without manual button
+
+[ ] Zero duplicate records after sync
+
+[ ] Zero data loss in any offline scenario tested
+
+
+
+PAYROLL
+
+[ ] Every calculation manually verified correct
+
+[ ] Numbers match exactly across app, labour view, and admin
+
+[ ] Currency formatting consistent everywhere
+
+
+
+PRODUCTION HARDENING
+
+[ ] Security rules tested and deployed
+
+[ ] All required indexes created
+
+[ ] No crashes on edge cases (null/empty data)
+
+[ ] Loading states on every screen
+
+[ ] User-friendly error messages only
+
+[ ] Branded app icon, name, splash screen
+
+[ ] Release APK tested on real device
+
+[ ] Admin panel production build tested
+
+[ ] Performance acceptable with real data volume
+
+[ ] Firebase billing confirmed safe
+
+
+
+=============================================================
+
+REPORT FORMAT
+
+=============================================================
+
+
+
+After completing all phases, give me a summary table:
+
+
+
+| Phase | Tests Run | Passed | Failed | Fixed |
+
+|-------|-----------|--------|--------|-------|
+
+| 1. Auth | 5 | X | X | X |
+
+| 2. Multi-contractor | 4 | X | X | X |
+
+| 3. Real-time sync | 5 | X | X | X |
+
+| 4. Multi-site | 5 | X | X | X |
+
+| 5. Offline | 6 | X | X | X |
+
+| 6. Payroll | 6 | X | X | X |
+
+| 7. Production | 10 | X | X | X |
+
+
+
+For every FAILED test, show:
+
+1. What was wrong
+
+2. The exact file and code that caused it  
+
+3. The fix applied
+
+4. Confirmation it now passes
+
+
+
+Do not tell me "everything looks good" without actually 
+
+tracing through the code for each test. I am about to launch 
+
+this with real contractors and real workers depending on 
+
+accurate payroll — be thorough and skeptical, not optimistic.
+
