@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../core/theme/app_colors.dart';
 import '../services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -11,180 +13,187 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _fadeAnimation;
-  late final Animation<Offset> _titleSlideAnimation;
-  late final Animation<double> _logoScaleAnimation;
+  late final AnimationController _ctrl;
+  late final Animation<double> _logoScale;
+  late final Animation<double> _logoOpacity;
+  late final Animation<double> _textOpacity;
+  late final Animation<Offset> _textSlide;
+  late final Animation<double> _footerOpacity;
 
   @override
   void initState() {
     super.initState();
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ));
 
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2500),
-    );
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000));
 
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    );
+    _logoScale   = Tween<double>(begin: 0.6, end: 1.0).animate(
+        CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.5, curve: Curves.easeOutBack)));
+    _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.4, curve: Curves.easeOut)));
+    _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _ctrl, curve: const Interval(0.35, 0.7, curve: Curves.easeOut)));
+    _textSlide   = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero).animate(
+        CurvedAnimation(parent: _ctrl, curve: const Interval(0.35, 0.7, curve: Curves.easeOutCubic)));
+    _footerOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _ctrl, curve: const Interval(0.65, 1.0, curve: Curves.easeOut)));
 
-    _titleSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.35),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
-      ),
-    );
-
-    _logoScaleAnimation = Tween<double>(
-      begin: 0.88,
-      end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeOutBack),
-      ),
-    );
-
-    _controller.forward();
-
+    _ctrl.forward();
     _checkAuth();
   }
 
   Future<void> _checkAuth() async {
-    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    await Future<void>.delayed(const Duration(milliseconds: 1700));
     final result = await AuthService().checkCurrentUser();
-
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ));
     if (result == null || !result.success) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (r) => false);
       return;
     }
-
     if (result.role == 'supervisor' || result.role == 'admin') {
-      Navigator.of(context).pushNamedAndRemoveUntil('/supervisor-home', (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil('/supervisor-home', (r) => false);
       return;
     }
-
     if (result.role == 'labour') {
-      Navigator.of(context).pushNamedAndRemoveUntil('/labour-home', (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil('/labour-home', (r) => false);
       return;
     }
-
-    Navigator.of(context).pushNamedAndRemoveUntil('/unauthorized', (route) => false);
+    Navigator.of(context).pushNamedAndRemoveUntil('/unauthorized', (r) => false);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFF7FBFF),
-              Color(0xFFE8F2FF),
-            ],
+            colors: [AppColors.navy, Color(0xFF15203A), Color(0xFF0A1020)],
           ),
         ),
         child: SafeArea(
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (context, child) {
-              return FadeTransition(
-                opacity: _fadeAnimation,
-                child: child,
-              );
-            },
-            child: Stack(
-              children: [
-                Align(
-                  alignment: Alignment.center,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ScaleTransition(
-                          scale: _logoScaleAnimation,
+          child: Stack(
+            children: [
+              // Decorative glow orbs
+              Positioned(top: -100, right: -80,
+                child: Container(width: 280, height: 280,
+                  decoration: BoxDecoration(shape: BoxShape.circle,
+                    color: AppColors.gold.withValues(alpha: 0.06)))),
+              Positioned(bottom: 60, left: -80,
+                child: Container(width: 200, height: 200,
+                  decoration: BoxDecoration(shape: BoxShape.circle,
+                    color: AppColors.goldLight.withValues(alpha: 0.04)))),
+
+              // Main content
+              Center(
+                child: AnimatedBuilder(
+                  animation: _ctrl,
+                  builder: (_, __) => Column(mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Logo icon
+                      FadeTransition(
+                        opacity: _logoOpacity,
+                        child: ScaleTransition(
+                          scale: _logoScale,
                           child: Container(
-                            width: 96,
-                            height: 96,
+                            width: 100, height: 100,
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(24),
+                              gradient: LinearGradient(
+                                colors: [AppColors.navyLight, AppColors.navy.withValues(alpha: 0.9)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(28),
+                              border: Border.all(color: AppColors.gold.withValues(alpha: 0.45), width: 1.5),
                               boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 10),
-                                ),
+                                BoxShadow(color: AppColors.gold.withValues(alpha: 0.3),
+                                  blurRadius: 36, offset: const Offset(0, 14)),
+                                BoxShadow(color: Colors.black.withValues(alpha: 0.5),
+                                  blurRadius: 24, offset: const Offset(0, 8)),
                               ],
                             ),
-                            child: const Icon(
-                              Icons.track_changes_rounded,
-                              size: 46,
-                              color: Color(0xFF0B57D0),
-                            ),
+                            child: const Icon(Icons.track_changes_rounded, size: 50, color: AppColors.gold),
                           ),
                         ),
-                        const SizedBox(height: 28),
-                        SlideTransition(
-                          position: _titleSlideAnimation,
-                          child: Text(
-                            'Trackify',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.2,
-                              color: const Color(0xFF0F172A),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'From Site to System',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: const Color(0xFF334155),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    child: Text(
-                      'Developed by Tanvir_Patel',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
                       ),
+                      const SizedBox(height: 32),
+
+                      // Title + subtitle
+                      SlideTransition(
+                        position: _textSlide,
+                        child: FadeTransition(
+                          opacity: _textOpacity,
+                          child: Column(children: [
+                            const Text('TRACKIFY',
+                              style: TextStyle(color: Colors.white, fontSize: 32,
+                                fontWeight: FontWeight.w900, letterSpacing: 5)),
+                            const SizedBox(height: 8),
+                            Text('From Site to System',
+                              style: TextStyle(
+                                color: AppColors.gold.withValues(alpha: 0.75),
+                                fontSize: 13, fontWeight: FontWeight.w500, letterSpacing: 1.5)),
+                          ]),
+                        ),
+                      ),
+                      const SizedBox(height: 52),
+
+                      // Pulsing dots loader
+                      FadeTransition(
+                        opacity: _footerOpacity,
+                        child: Row(mainAxisSize: MainAxisSize.min,
+                          children: List.generate(3, (i) => AnimatedBuilder(
+                            animation: _ctrl,
+                            builder: (_, __) {
+                              final phase = ((_ctrl.value * 3) - i).clamp(0.0, 1.0);
+                              final pulse = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+                              return Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                width: 7 + pulse * 3,
+                                height: 7 + pulse * 3,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppColors.gold.withValues(alpha: 0.35 + pulse * 0.65),
+                                ),
+                              );
+                            },
+                          ))),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Footer credit
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: AnimatedBuilder(
+                  animation: _footerOpacity,
+                  builder: (_, __) => Opacity(
+                    opacity: _footerOpacity.value,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Text('YS Construction · Developed by Tanvir Patel',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.28),
+                          fontSize: 11, letterSpacing: 0.4)),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
