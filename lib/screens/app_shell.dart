@@ -80,7 +80,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
-      debugPrint('🔄 App resumed — reconnecting streams');
       _startLabourStream();
     }
   }
@@ -95,44 +94,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final titles = [
-      context.tr('supervisorDashboard'),
-      context.tr('attendance'),
-      context.tr('reports'),
-    ];
-
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(titles[_currentIndex]),
-        backgroundColor: AppColors.surface,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.border),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'About',
-            onPressed: () {
-              HapticUtils.light();
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AppInfoScreen()),
-              );
-            },
-            icon: const Icon(Icons.info_outline_rounded,
-                color: AppColors.textSecondary),
-          ),
-          IconButton(
-            tooltip: context.tr('logout'),
-            onPressed: _confirmLogout,
-            icon: const Icon(Icons.logout_outlined,
-                color: AppColors.textSecondary),
-          ),
-        ],
-      ),
+      backgroundColor: AppColors.cream,
+      extendBody: false,
       body: ConnectivityBanner(
         child: IndexedStack(index: _currentIndex, children: _screens),
       ),
@@ -147,6 +111,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           context.tr('attendance'),
           context.tr('reports'),
         ],
+        onSettings: () {
+          HapticUtils.light();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AppInfoScreen()),
+          );
+        },
+        onLogout: _confirmLogout,
       ),
     );
   }
@@ -187,25 +158,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 }
 
+// ── Premium Dark-Pill Navigation Bar ──────────────────────────────────────────
+
 class _PremiumNavBar extends StatelessWidget {
   const _PremiumNavBar({
     required this.currentIndex,
     required this.onTap,
     required this.labels,
+    required this.onSettings,
+    required this.onLogout,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
   final List<String> labels;
+  final VoidCallback onSettings;
+  final VoidCallback onLogout;
 
   static const _icons = [
-    Icons.dashboard_outlined,
+    Icons.grid_view_rounded,
     Icons.fact_check_outlined,
     Icons.bar_chart_outlined,
   ];
 
   static const _activeIcons = [
-    Icons.dashboard_rounded,
+    Icons.grid_view_rounded,
     Icons.fact_check_rounded,
     Icons.bar_chart_rounded,
   ];
@@ -213,32 +190,38 @@ class _PremiumNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: const Border(top: BorderSide(color: AppColors.border)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
+            color: Color(0x14000000),
+            blurRadius: 16,
+            offset: Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(
-            children: List.generate(
+            children: [
+              ...List.generate(
                 3,
                 (i) => _NavItem(
-                      index: i,
-                      currentIndex: currentIndex,
-                      icon: _icons[i],
-                      activeIcon: _activeIcons[i],
-                      label: labels[i],
-                      onTap: onTap,
-                    )),
+                  index: i,
+                  currentIndex: currentIndex,
+                  icon: _icons[i],
+                  activeIcon: _activeIcons[i],
+                  label: labels[i],
+                  onTap: onTap,
+                ),
+              ),
+              // Settings icon
+              _IconAction(icon: Icons.info_outline_rounded, onTap: onSettings),
+              // Logout icon
+              _IconAction(icon: Icons.logout_outlined, onTap: onLogout),
+            ],
           ),
         ),
       ),
@@ -273,10 +256,9 @@ class _NavItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color:
-                selected ? AppColors.primarySurface : Colors.transparent,
+            color: selected ? AppColors.navy : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
@@ -287,10 +269,8 @@ class _NavItem extends StatelessWidget {
                 child: Icon(
                   selected ? activeIcon : icon,
                   key: ValueKey(selected),
-                  color: selected
-                      ? AppColors.primary
-                      : AppColors.textTertiary,
-                  size: 22,
+                  color: selected ? AppColors.gold : AppColors.textTertiary,
+                  size: 21,
                 ),
               ),
               const SizedBox(height: 3),
@@ -302,14 +282,30 @@ class _NavItem extends StatelessWidget {
                   fontSize: 10,
                   fontWeight:
                       selected ? FontWeight.w700 : FontWeight.w400,
-                  color: selected
-                      ? AppColors.primary
-                      : AppColors.textTertiary,
+                  color: selected ? Colors.white : AppColors.textTertiary,
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _IconAction extends StatelessWidget {
+  const _IconAction({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+        child: Icon(icon, size: 20, color: AppColors.textTertiary),
       ),
     );
   }

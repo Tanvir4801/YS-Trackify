@@ -10,12 +10,12 @@ import '../models/labour_report_summary.dart';
 import '../providers/report_provider.dart';
 
 // ─── Colour constants ────────────────────────────────────────────────────────
-const _kGreen  = Color(0xFF0F766E);
-const _kGold   = Color(0xFFF59E0B);
+const _kGreen  = Color(0xFF22C55E);
+const _kGold   = Color(0xFFD4A437);
 const _kRed    = Color(0xFFEF4444);
 const _kOrange = Color(0xFFF97316);
-const _kBlue   = Color(0xFF2563EB);
-const _kBg     = Color(0xFFF8FAFC);
+const _kBlue   = Color(0xFF3B82F6);
+const _kBg     = Color(0xFFF8F7F3);
 const _kCard   = Color(0xFFFFFFFF);
 
 // ─── Sort options ─────────────────────────────────────────────────────────────

@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/theme/app_colors.dart';
-import '../core/theme/app_text_styles.dart';
 import '../models/attendance_session_model.dart';
 import '../models/site_model.dart';
 import '../providers/dashboard_provider.dart';
@@ -17,7 +16,10 @@ import '../providers/sites_provider.dart';
 import '../screens/scanner/session_scanner_screen.dart';
 import '../services/attendance_session_service.dart';
 import '../services/session_service.dart';
-import '../widgets/stat_card.dart';
+import '../widgets/animations/bouncy_tap.dart';
+import '../widgets/animations/count_up_number.dart';
+import '../widgets/animations/pulse_badge.dart';
+import '../widgets/animations/staggered_list.dart';
 import '../widgets/week_attendance_strip.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -245,12 +247,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  // ── Start / resume session ───────────────────────────────────────────────────
   Future<void> _onSiteTap(SiteModel site, AttendanceSession? session) async {
     if (session != null && session.isCompleted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${site.name} session is complete for today.'),
         behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.navy,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
       return;
@@ -260,7 +262,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (session != null && session.isActive) {
       if (session.supervisorId != uid) {
-        // Different supervisor's session - view only notice
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -279,7 +280,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
         return;
       }
-      // Resume my own session
       if (!mounted) return;
       Navigator.push(
         context,
@@ -290,7 +290,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    // Start new session
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -304,7 +303,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 style: TextStyle(color: AppColors.textSecondary)),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.navy),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Start'),
           ),
@@ -354,45 +353,224 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Consumer<SiteDataProvider>(
       builder: (context, data, _) {
-        return SafeArea(
-          child: RefreshIndicator(
-            color: AppColors.primary,
-            onRefresh: () async {
-              _loadContractorName();
-              _startStreams();
-              final contractorId = SessionService.instance.contractorId ??
-                  FirebaseAuth.instance.currentUser?.uid ?? '';
-              if (contractorId.isNotEmpty) {
-                context.read<SiteDataProvider>().startLabourStream(contractorId);
-                context.read<SitesProvider>().load();
-              }
-              await Future.delayed(const Duration(milliseconds: 800));
-            },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(),
-                  _buildStatGrid(),
-                  _buildSiteSessionCards(),
-                  _buildWeekStrip(),
-                  _buildWageSection(data),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+        return RefreshIndicator(
+          color: AppColors.gold,
+          onRefresh: () async {
+            _loadContractorName();
+            _startStreams();
+            final contractorId = SessionService.instance.contractorId ??
+                FirebaseAuth.instance.currentUser?.uid ?? '';
+            if (contractorId.isNotEmpty) {
+              context.read<SiteDataProvider>().startLabourStream(contractorId);
+              context.read<SitesProvider>().load();
+            }
+            await Future.delayed(const Duration(milliseconds: 800));
+          },
+          child: ListView(
+            padding: EdgeInsets.zero,
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              _buildHero(),
+              const SizedBox(height: 20),
+              _buildOverviewGrid(),
+              const SizedBox(height: 24),
+              _buildSiteSessionCards(),
+              _buildWeekStrip(),
+              _buildWageSection(data),
+              const SizedBox(height: 32),
+            ],
           ),
         );
       },
     );
   }
 
-  // ── Site session cards ───────────────────────────────────────────────────────
+  // ── Dark navy hero header ─────────────────────────────────────────────────
+
+  Widget _buildHero() {
+    final now = DateTime.now();
+    final hour = now.hour;
+    final greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+    final emoji = hour < 12 ? '🌤' : hour < 17 ? '👋' : '🌙';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 60, 20, 28),
+      decoration: const BoxDecoration(
+        color: AppColors.navy,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text('$greeting  $emoji',
+                      style: const TextStyle(
+                          color: AppColors.textOnDarkMuted, fontSize: 14)),
+                ]),
+                const SizedBox(height: 4),
+                Text(
+                  _contractorName.isEmpty ? 'Loading…' : _contractorName,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formattedToday(),
+                  style: const TextStyle(
+                      color: AppColors.textOnDarkMuted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.gold,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.business_rounded,
+                color: AppColors.navy, size: 24),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 2×2 stat overview ─────────────────────────────────────────────────────
+
+  Widget _buildOverviewGrid() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Today's Overview",
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: StaggeredFadeIn(
+                index: 0,
+                child: _overviewCard(
+                  icon: Icons.groups_rounded,
+                  iconColor: AppColors.blue,
+                  iconBg: AppColors.blueBg,
+                  label: 'Total Labour',
+                  value: _totalLabours,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StaggeredFadeIn(
+                index: 1,
+                child: _overviewCard(
+                  icon: Icons.check_circle_rounded,
+                  iconColor: AppColors.present,
+                  iconBg: AppColors.presentSurface,
+                  label: 'Present Today',
+                  value: _presentToday,
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: StaggeredFadeIn(
+                index: 2,
+                child: _overviewCard(
+                  icon: Icons.cancel_rounded,
+                  iconColor: AppColors.absent,
+                  iconBg: AppColors.absentSurface,
+                  label: 'Absent Today',
+                  value: _absentToday,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StaggeredFadeIn(
+                index: 3,
+                child: _overviewCard(
+                  icon: Icons.timelapse_rounded,
+                  iconColor: AppColors.halfDay,
+                  iconBg: AppColors.halfSurface,
+                  label: 'Half Day',
+                  value: _halfDayToday,
+                ),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _overviewCard({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required String label,
+    required int value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: iconBg, borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: iconColor, size: 18),
+          ),
+          const SizedBox(height: 10),
+          CountUpNumber(
+            value: value,
+            style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.5),
+          ),
+          const SizedBox(height: 2),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textTertiary)),
+        ],
+      ),
+    );
+  }
+
+  // ── Today's Sites ─────────────────────────────────────────────────────────
+
   Widget _buildSiteSessionCards() {
     return Consumer<SitesProvider>(
       builder: (context, sitesProvider, _) {
@@ -400,37 +578,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (sites.isEmpty) return const SizedBox.shrink();
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("Today's Sites", style: AppTextStyles.headingMedium),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.primarySurface,
-                      borderRadius: BorderRadius.circular(8),
+                  Row(children: [
+                    const Text("Today's Sites",
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: AppColors.surfaceMuted,
+                          borderRadius: BorderRadius.circular(10)),
+                      child: Text('${sites.length}',
+                          style: const TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700)),
                     ),
-                    child: Text('${sites.length}',
-                        style: const TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
-                  ),
+                  ]),
                 ],
               ),
               const SizedBox(height: 12),
-              ...sites.map((site) {
+              ...sites.asMap().entries.map((e) {
+                final i = e.key;
+                final site = e.value;
                 final session = _todaySessions
                     .cast<AttendanceSession?>()
                     .firstWhere((s) => s!.siteId == site.id, orElse: () => null);
-                return _SiteSessionCard(
-                  site: site,
-                  session: session,
-                  onTap: () => _onSiteTap(site, session),
+                return StaggeredFadeIn(
+                  index: i + 4,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _SiteSessionCard(
+                      site: site,
+                      session: session,
+                      onTap: () => _onSiteTap(site, session),
+                    ),
+                  ),
                 );
               }),
             ],
@@ -440,99 +629,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    final now = DateTime.now();
-    final greeting = now.hour < 12 ? 'Good Morning'
-        : now.hour < 17 ? 'Good Afternoon' : 'Good Evening';
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(greeting, style: AppTextStyles.caption.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5)),
-                const SizedBox(height: 4),
-                Text(_contractorName, style: AppTextStyles.displayMedium,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()),
-                    style: AppTextStyles.bodyMedium),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.primary, AppColors.primaryLight],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.3),
-                  blurRadius: 12, offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.track_changes_rounded,
-                color: Colors.white, size: 28),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatGrid() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Today's Overview", style: AppTextStyles.headingMedium),
-          const SizedBox(height: 12),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.2,
-            children: [
-              StatCard(title: 'Total Labour', value: '$_totalLabours',
-                  icon: Icons.people_alt_rounded, color: AppColors.accent),
-              StatCard(title: 'Present Today', value: '$_presentToday',
-                  icon: Icons.check_circle_rounded, color: AppColors.present),
-              StatCard(title: 'Absent Today', value: '$_absentToday',
-                  icon: Icons.cancel_rounded, color: AppColors.absent),
-              StatCard(title: 'Half Day', value: '$_halfDayToday',
-                  icon: Icons.timelapse_rounded, color: AppColors.halfDay),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // ── Week Strip ────────────────────────────────────────────────────────────
 
   Widget _buildWeekStrip() {
     return Consumer<DashboardProvider>(
       builder: (context, dash, _) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Last 7 Days', style: AppTextStyles.headingMedium),
+            const Text('Last 7 Days',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             WeekAttendanceStrip(attendanceByDate: dash.weekAttendance),
           ],
@@ -541,29 +648,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // ── Wage Snapshot ─────────────────────────────────────────────────────────
+
   Widget _buildWageSection(SiteDataProvider data) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Wage Snapshot', style: AppTextStyles.headingMedium),
+          const Text('Wage Snapshot',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
-          _buildWageCard(label: 'Today', amount: _todayWages,
-              icon: Icons.today_rounded, color: const Color(0xFF0891B2),
-              subtitle: 'Based on attendance'),
+          _wageCard(
+              label: 'Today',
+              amount: _todayWages,
+              icon: Icons.today_rounded,
+              color: const Color(0xFF0891B2),
+              subtitle: 'Based on today\'s attendance'),
           const SizedBox(height: 10),
-          _buildWageCard(label: 'This Week', amount: data.weekWageTotal,
-              icon: Icons.date_range_rounded, color: const Color(0xFF7C3AED)),
+          _wageCard(
+              label: 'This Week',
+              amount: data.weekWageTotal,
+              icon: Icons.date_range_rounded,
+              color: AppColors.gold),
           const SizedBox(height: 10),
-          _buildWageCard(label: 'This Month', amount: data.monthWageTotal,
-              icon: Icons.calendar_month_rounded, color: AppColors.present),
+          _wageCard(
+              label: 'This Month',
+              amount: data.monthWageTotal,
+              icon: Icons.calendar_month_rounded,
+              color: AppColors.present),
         ],
       ),
     );
   }
 
-  Widget _buildWageCard({
+  Widget _wageCard({
     required String label,
     required double amount,
     required IconData icon,
@@ -576,10 +695,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 8, offset: const Offset(0, 2)),
-        ],
       ),
       child: Row(
         children: [
@@ -596,10 +711,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: AppTextStyles.caption),
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
-                  Text(subtitle, style: AppTextStyles.caption),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textTertiary)),
                 ],
               ],
             ),
@@ -611,8 +732,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             builder: (ctx, val, _) => Text(
               '₹${val.toStringAsFixed(0)}',
               style: TextStyle(
-                color: color, fontSize: 22,
-                fontWeight: FontWeight.w800, letterSpacing: -0.5,
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
               ),
             ),
           ),
@@ -620,9 +743,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  String _formattedToday() {
+    final now = DateTime.now();
+    const days = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+      'Friday', 'Saturday', 'Sunday'
+    ];
+    const months = [
+      '', 'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return '${days[now.weekday - 1]}, ${now.day} ${months[now.month]} ${now.year}';
+  }
 }
 
-// ── Site session card ─────────────────────────────────────────────────────────
+// ── Site session card ──────────────────────────────────────────────────────────
+
 class _SiteSessionCard extends StatelessWidget {
   const _SiteSessionCard({
     required this.site,
@@ -637,103 +776,89 @@ class _SiteSessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = session?.status;
-    final isActive    = status == SessionStatus.active;
+    final isActive = status == SessionStatus.active;
     final isCompleted = status == SessionStatus.completed;
-    final isPending   = session == null;
+    final isPending = session == null;
 
-    Color badgeColor;
-    String badgeLabel;
-    IconData badgeIcon;
-    Color cardBorderColor;
-
+    Widget badge;
     if (isPending) {
-      badgeColor = AppColors.halfDay;
-      badgeLabel = 'PENDING';
-      badgeIcon  = Icons.schedule_rounded;
-      cardBorderColor = AppColors.border;
+      badge = PulseBadge(
+        label: 'PENDING',
+        color: AppColors.goldDark,
+        bgColor: AppColors.goldLight.withValues(alpha: 0.28),
+      );
     } else if (isActive) {
-      badgeColor = AppColors.accent;
-      badgeLabel = 'IN PROGRESS';
-      badgeIcon  = Icons.play_circle_rounded;
-      cardBorderColor = AppColors.accent;
+      badge = PulseBadge(
+        label: 'IN PROGRESS',
+        color: AppColors.present,
+        bgColor: AppColors.presentSurface,
+      );
     } else {
-      badgeColor = AppColors.present;
-      badgeLabel = 'COMPLETE';
-      badgeIcon  = Icons.check_circle_rounded;
-      cardBorderColor = AppColors.present;
+      badge = const Icon(Icons.check_circle_rounded,
+          color: AppColors.present, size: 20);
     }
 
-    return GestureDetector(
+    return BouncyTap(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isActive ? cardBorderColor : AppColors.border,
+            color: isActive
+                ? AppColors.present.withValues(alpha: 0.4)
+                : AppColors.border,
             width: isActive ? 1.5 : 1,
           ),
           boxShadow: [
             if (isActive)
               BoxShadow(
-                color: AppColors.accent.withValues(alpha: 0.1),
-                blurRadius: 12, offset: const Offset(0, 4),
+                color: AppColors.present.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
           ],
         ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: badgeColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(Icons.location_on_rounded, color: badgeColor, size: 20),
+        child: Row(children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.goldLight.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(site.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: AppColors.textPrimary)),
-                  const SizedBox(height: 3),
-                  if (session != null)
-                    Text('${session!.markedCount} marked today',
-                        style: AppTextStyles.caption)
-                  else
-                    Text('Tap to start session', style: AppTextStyles.caption),
-                ],
-              ),
+            child: const Icon(Icons.location_on_rounded,
+                color: AppColors.goldDark, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(site.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: AppColors.textPrimary)),
+                const SizedBox(height: 2),
+                Text(
+                  session != null
+                      ? '${session!.markedCount} marked today'
+                      : isCompleted
+                          ? 'Completed'
+                          : 'Tap to start session',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textTertiary),
+                ),
+              ],
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: badgeColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(badgeIcon, color: badgeColor, size: 12),
-                  const SizedBox(width: 4),
-                  Text(badgeLabel,
-                      style: TextStyle(
-                          color: badgeColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5)),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+          badge,
+          const SizedBox(width: 6),
+          const Icon(Icons.chevron_right_rounded,
+              color: AppColors.textTertiary, size: 18),
+        ]),
       ),
     );
   }

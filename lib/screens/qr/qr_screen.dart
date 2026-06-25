@@ -222,24 +222,32 @@ class _QRScreenState extends State<QRScreen> with SingleTickerProviderStateMixin
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: const Color(0xFF10141C),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.2)),
+              border: Border.all(
+                  color: const Color(0xFFD4A437).withValues(alpha: 0.3)),
             ),
             child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.shield_outlined, color: Color(0xFF2563EB), size: 22),
+                Icon(Icons.shield_outlined, color: Color(0xFFD4A437), size: 22),
                 SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Security Notice', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF1E40AF), fontSize: 13)),
+                      Text('Security Notice',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFD4A437),
+                              fontSize: 13)),
                       SizedBox(height: 4),
                       Text(
                         'Show this QR to your supervisor for attendance. Only supervisors can scan. Never share your QR code with others.',
-                        style: TextStyle(color: Color(0xFF2563EB), fontSize: 12, height: 1.5),
+                        style: TextStyle(
+                            color: Color(0xFFB8BCC4),
+                            fontSize: 12,
+                            height: 1.5),
                       ),
                     ],
                   ),
@@ -294,25 +302,30 @@ class _QRCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Header
+          // Header — navy identity card
           Container(
             padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            decoration: const BoxDecoration(
+              color: Color(0xFF10141C),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  child: Text(
-                    labourName.isNotEmpty ? labourName[0].toUpperCase() : 'L',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD4A437),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Text(
+                      labourName.isNotEmpty ? labourName[0].toUpperCase() : 'L',
+                      style: const TextStyle(
+                          color: Color(0xFF10141C),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -322,11 +335,14 @@ class _QRCard extends StatelessWidget {
                     children: [
                       Text(
                         labourName,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16),
                       ),
-                      Text(
+                      const Text(
                         'Attendance QR Code',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 12),
+                        style: TextStyle(color: Color(0xFFB8BCC4), fontSize: 12),
                       ),
                     ],
                   ),
@@ -336,10 +352,11 @@ class _QRCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: const Color(0xFFD4A437).withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                    child: const Icon(Icons.refresh_rounded,
+                        color: Color(0xFFD4A437), size: 18),
                   ),
                 ),
               ],
@@ -358,9 +375,9 @@ class _QRCard extends StatelessWidget {
                   child: CircularProgressIndicator(
                     value: progress,
                     strokeWidth: 5,
-                    backgroundColor: const Color(0xFFE2E8F0),
+                    backgroundColor: const Color(0xFFE7E5DE),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      isUrgent ? const Color(0xFFEF4444) : const Color(0xFF0F766E),
+                      isUrgent ? const Color(0xFFEF4444) : const Color(0xFFD4A437),
                     ),
                     strokeCap: StrokeCap.round,
                   ),
@@ -433,7 +450,7 @@ class _QRCard extends StatelessWidget {
                     minHeight: 6,
                     backgroundColor: const Color(0xFFE2E8F0),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      isUrgent ? const Color(0xFFEF4444) : const Color(0xFF0F766E),
+                      isUrgent ? const Color(0xFFEF4444) : const Color(0xFFD4A437),
                     ),
                   ),
                 ),
