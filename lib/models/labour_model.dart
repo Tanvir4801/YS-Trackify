@@ -94,6 +94,15 @@ class Labour extends HiveObject {
     };
   }
 
+  factory Labour.empty() => Labour(
+        id: '',
+        supervisorId: '',
+        name: '',
+        phone: '',
+        dailyWage: 0,
+        joiningDate: DateTime(2000),
+      );
+
   factory Labour.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final typeStr = (data['type'] as String?) ?? 'regular';

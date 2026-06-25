@@ -23,6 +23,14 @@ class Labour {
 
   double get overtimePay => extraHours * overtimeRate;
 
+  factory Labour.empty() => Labour(
+        id: '',
+        name: '',
+        role: '',
+        dailyWage: 0,
+        phoneNumber: '',
+      );
+
   Labour copyWith({
     String? id,
     String? name,

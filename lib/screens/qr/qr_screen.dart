@@ -468,7 +468,7 @@ class _MissingCard extends StatelessWidget {
               color: const Color(0xFFEF4444).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Icon(Icons.qr_code_off_rounded, color: Color(0xFFEF4444), size: 34),
+            child: const Icon(Icons.crop_free_rounded, color: Color(0xFFEF4444), size: 34),
           ),
           const SizedBox(height: 16),
           const Text(
