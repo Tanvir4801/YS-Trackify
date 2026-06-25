@@ -14,9 +14,8 @@ class SessionsService {
     final c = SessionService.instance.contractorId;
     return (c != null && c.isNotEmpty) ? c : uid;
   }
-  String get _supervisorName =>
-      SessionService.instance.appUser?.name ?? uid;
-
+String get _supervisorName =>
+    _auth.currentUser?.displayName ?? uid;
   String _today() {
     final n = DateTime.now();
     return '${n.year}-'

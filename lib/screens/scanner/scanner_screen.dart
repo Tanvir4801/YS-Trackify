@@ -148,6 +148,8 @@ class _ScannerScreenState extends State<ScannerScreen>
     final result = await _scannerService.processScanWithType(
       rawToken: rawValue,
       status: selectedType,
+      siteId: '',
+      sessionId: '',
     );
 
     if (!mounted) return;

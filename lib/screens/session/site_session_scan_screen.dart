@@ -469,12 +469,18 @@ class _SiteSessionScanScreenState extends State<SiteSessionScanScreen>
     for (final labourId in labourIds) {
       if (_markedToday.containsKey(labourId)) continue;
       final labour = _labours.firstWhere(
-        (l) => l.id == labourId,
-        orElse: () => Labour(
-          id: labourId, name: labourId, phone: '', skill: '',
-          dailyWage: 0, supervisorId: _uid, contractorId: contractorId,
-        ),
-      );
+  (l) => l.id == labourId,
+  orElse: () => Labour(
+    id: labourId,
+    name: labourId,
+    phone: '',
+    dailyWage: 0,
+    supervisorId: _uid,
+    contractorId: contractorId,
+    joiningDate: DateTime.now(),
+  ),
+);
+      
       final nestedRef = FirestorePaths.attendanceRecordRef(contractorId, today, labourId);
       batch.set(nestedRef, {
         'labourId':      labourId,

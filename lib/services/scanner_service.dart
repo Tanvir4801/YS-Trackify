@@ -145,7 +145,7 @@ class ScannerService {
   // ── Main scan entry point (used by scanner_screen) ─────────────────────────
 
   Future<ScanResult> processScan(String rawToken) async {
-    return processScanWithType(rawToken: rawToken, status: 'present');
+    return processScanWithType(rawToken: rawToken, status: 'present', siteId: '',sessionId: '',);
   }
 
   // ── Scan with explicit attendance type ──────────────────────────────────────
@@ -153,6 +153,9 @@ class ScannerService {
   Future<ScanResult> processScanWithType({
     required String rawToken,
     required String status,
+    required String siteId,
+    required String sessionId,
+    
   }) async {
     if (supervisorId.isEmpty) {
       return ScanResult(

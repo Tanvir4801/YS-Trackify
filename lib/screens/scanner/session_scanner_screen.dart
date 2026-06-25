@@ -321,9 +321,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
         'markedVia':    markedVia,
         'markedAt':     FieldValue.serverTimestamp(),
         'wageAtTime': _allLabours
-            .firstWhere((l) => l.id == labourId,
-                orElse: () => _allLabours.isNotEmpty ? _allLabours.first : Labour.empty())
-            .dailyWage,
+    .where((l) => l.id == labourId)
+    .map((l) => l.dailyWage)
+    .firstOrNull ?? 0,
       }, SetOptions(merge: true));
 
       // Date-level metadata doc
