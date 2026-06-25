@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/theme/app_colors.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
 import '../widgets/offline_banner.dart';
@@ -342,45 +344,114 @@ class _LabourHomeScreenState extends State<LabourHomeScreen> {
       ),
     ];
 
+    const _navItems = [
+      (Icons.qr_code_2_outlined,   Icons.qr_code_2_rounded,   'My QR'),
+      (Icons.dashboard_outlined,   Icons.dashboard_rounded,    'Dashboard'),
+      (Icons.fact_check_outlined,  Icons.fact_check_rounded,   'Attendance'),
+      (Icons.bar_chart_outlined,   Icons.bar_chart_rounded,    'Report'),
+    ];
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          session.userName,
-          style: const TextStyle(fontWeight: FontWeight.w700),
+      backgroundColor: AppColors.cream,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.navy, AppColors.navyLight],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.person_rounded, size: 18, color: AppColors.gold),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(session.userName,
+                          style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700,
+                            color: Colors.white, letterSpacing: -0.2)),
+                        const Text('Labour Account',
+                          style: TextStyle(fontSize: 11, color: AppColors.textOnDarkMuted)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.logout_rounded, size: 20, color: AppColors.textOnDarkMuted),
+                    onPressed: _logout,
+                    tooltip: 'Logout',
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
-        ],
       ),
       body: ConnectivityBanner(
         child: IndexedStack(index: _tabIndex, children: tabs),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tabIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _tabIndex = index),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.qr_code_2_outlined),
-            selectedIcon: Icon(Icons.qr_code_2_rounded),
-            label: 'My QR',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: const Border(top: BorderSide(color: AppColors.border, width: 1)),
+          boxShadow: [BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12, offset: const Offset(0, -2))],
+        ),
+        child: SafeArea(
+          child: SizedBox(
+            height: 60,
+            child: Row(
+              children: List.generate(_navItems.length, (i) {
+                final (icon, selIcon, label) = _navItems[i];
+                final sel = _tabIndex == i;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () { HapticFeedback.selectionClick(); setState(() => _tabIndex = i); },
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(sel ? selIcon : icon,
+                            size: 22,
+                            color: sel ? AppColors.navy : AppColors.textTertiary),
+                          const SizedBox(height: 3),
+                          Text(label,
+                            style: TextStyle(
+                              fontSize: 10, fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+                              color: sel ? AppColors.navy : AppColors.textTertiary)),
+                          const SizedBox(height: 4),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            height: 3, width: sel ? 18 : 0,
+                            decoration: BoxDecoration(
+                              color: AppColors.gold,
+                              borderRadius: BorderRadius.circular(2))),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check_rounded),
-            label: 'Attendance',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart_rounded),
-            label: 'Report',
-          ),
-        ],
+        ),
       ),
     );
   }

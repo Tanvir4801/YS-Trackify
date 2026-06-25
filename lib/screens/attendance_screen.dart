@@ -12,6 +12,7 @@ import '../models/labour_model.dart';
 import '../models/site_model.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/sites_provider.dart';
+import '../widgets/animations/bouncy_tap.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/shimmer_loader.dart';
 
@@ -382,11 +383,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.primarySurface,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           children: [
@@ -395,42 +396,36 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 HapticUtils.light();
                 setState(() { _selectedSiteId = null; _searchController.clear(); });
               },
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
-              ),
+              child: const Icon(Icons.chevron_left, size: 20, color: AppColors.textSecondary),
             ),
-            const SizedBox(width: 10),
-            const Icon(Icons.location_on_rounded, size: 15, color: AppColors.primary),
-            const SizedBox(width: 5),
+            const SizedBox(width: 6),
+            const Icon(Icons.location_on_rounded, size: 16, color: AppColors.goldDark),
+            const SizedBox(width: 6),
             Expanded(
               child: Text(
                 site?.name ?? _selectedSiteId ?? '',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            GestureDetector(
+            BouncyTap(
               onTap: () {
                 HapticUtils.light();
                 _showAllowanceSheet(data, sites);
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.goldLight.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.monetization_on_rounded, size: 13, color: Colors.white),
+                    Icon(Icons.payments_outlined, size: 13, color: AppColors.goldDark),
                     SizedBox(width: 4),
-                    Text('Allowances', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                    Text('Allowances', style: TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.goldDark)),
                   ],
                 ),
               ),
@@ -467,23 +462,26 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Widget _buildTempLabourButton(AttendanceProvider data) {
-    return GestureDetector(
+    return BouncyTap(
       onTap: () { HapticUtils.light(); _showAddTempLabourDialog(data); },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 13),
         decoration: BoxDecoration(
-          color: Colors.purple.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.purple.shade200),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFA855F7), Color(0xFFD946EF)]),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(
+            color: const Color(0xFFA855F7).withValues(alpha: 0.3),
+            blurRadius: 12, offset: const Offset(0, 4))],
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: const Row(mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.person_add_alt_1_rounded, size: 16, color: Colors.purple.shade700),
-            const SizedBox(width: 8),
-            Text('+ Add Temp Labour', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.purple.shade700)),
-          ],
-        ),
+            Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 17),
+            SizedBox(width: 8),
+            Text('+ Add Temp Labour', style: TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+          ]),
       ),
     );
   }

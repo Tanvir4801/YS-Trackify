@@ -100,13 +100,13 @@ export default function Payroll() {
         const advances  = advByLabour.get(l.id) || 0;
         const salaryPaid = salByLabour.get(l.id) || 0;
         const totalPaid  = advances + salaryPaid;
-        const net        = Math.max(0, gross - totalPaid);
+        const net        = gross - totalPaid;
         return {
           labourId: l.id, name: l.name,
           present, half, absent, otHours, totalDays,
           gross, advances, salaryPaid, totalPaid,
           net,
-          isPaid: salaryPaid >= gross && gross > 0,
+          isPaid: gross > 0 && net <= 0,
         };
       });
 
@@ -150,7 +150,7 @@ export default function Payroll() {
 
     const eligible = Array.from(selected).filter((labourId) => {
       const row = report.find((r) => r.labourId === labourId);
-      return row && row.net > 0;
+      return row && !row.isPaid;
     });
 
     if (eligible.length === 0) {
@@ -168,7 +168,7 @@ export default function Payroll() {
           const row = report.find((r) => r.labourId === labourId);
           return addPayment({
             scopeId: writeScope, supervisorId: writeScope, contractorId: scopeId, labourId,
-            type: 'salary', amount: Math.round(row.net), date: dateStr,
+            type: 'salary', amount: Math.max(0, Math.round(row.net)), date: dateStr,
             notes: `Auto-generated salary for ${MONTHS[month - 1]} ${year}`,
           });
         }),
@@ -305,8 +305,12 @@ export default function Payroll() {
                     <td className="px-4 py-3.5 text-right font-semibold text-slate-900">{formatCurrency(r.gross)}</td>
                     <td className="px-4 py-3.5 text-right text-amber-700">{r.advances > 0 ? formatCurrency(r.advances) : <span className="text-slate-300">—</span>}</td>
                     <td className="px-4 py-3.5 text-right text-green-700 font-semibold">{r.salaryPaid > 0 ? formatCurrency(r.salaryPaid) : <span className="text-slate-300">—</span>}</td>
-                    <td className={`px-4 py-3.5 text-right font-bold ${r.net === 0 ? 'text-green-600' : r.net < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-                      {r.net === 0 ? <span className="text-green-600">₹0</span> : formatCurrency(r.net)}
+                    <td className={`px-4 py-3.5 text-right font-bold ${r.net <= 0 ? (r.net < 0 ? 'text-orange-600' : 'text-green-600') : 'text-slate-900'}`}>
+                      {r.net <= 0
+                        ? <span className={r.net < 0 ? 'text-orange-600' : 'text-green-600'}>
+                            {r.net < 0 ? `+${formatCurrency(Math.abs(r.net))} overpaid` : '✓ Paid'}
+                          </span>
+                        : formatCurrency(r.net)}
                     </td>
                   </tr>
                 ))}
@@ -317,7 +321,7 @@ export default function Payroll() {
                   <td className="px-4 py-3.5 text-right">{formatCurrency(totals.gross)}</td>
                   <td className="px-4 py-3.5 text-right text-amber-700">{formatCurrency(totals.advances)}</td>
                   <td className="px-4 py-3.5 text-right text-green-700">{formatCurrency(totals.salaryPaid)}</td>
-                  <td className={`px-4 py-3.5 text-right ${totals.net === 0 ? 'text-green-600' : 'text-slate-900'}`}>{formatCurrency(totals.net)}</td>
+                  <td className={`px-4 py-3.5 text-right ${totals.net <= 0 ? 'text-green-600' : 'text-slate-900'}`}>{formatCurrency(totals.net)}</td>
                 </tr>
               </tfoot>
             </table>
