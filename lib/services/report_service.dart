@@ -52,26 +52,31 @@ class ReportService {
     try {
       final ids = <String>{};
 
+      // Query by supervisorId only (no date range) → no composite index needed.
+      // Filter by month client-side to avoid failed-precondition index errors.
       final attSnap = await _db
           .collection('attendance')
           .where('supervisorId', isEqualTo: supervisorId)
-          .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-          .where('date', isLessThanOrEqualTo: '$monthStr-31')
           .get();
       for (final doc in attSnap.docs) {
+        final data = doc.data();
+        final date = (data['date'] as String?) ?? '';
+        if (!date.startsWith(monthStr)) continue;
         final att = Attendance.fromFirestore(doc);
         await _attendanceBox.put(att.id, att);
         ids.add(att.id);
       }
 
       if (contractorId.isNotEmpty) {
+        // Query by contractorId only → single-field index, always works.
         final contractorSnap = await _db
             .collection('attendance')
             .where('contractorId', isEqualTo: contractorId)
-            .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-            .where('date', isLessThanOrEqualTo: '$monthStr-31')
             .get();
         for (final doc in contractorSnap.docs) {
+          final data = doc.data();
+          final date = (data['date'] as String?) ?? '';
+          if (!date.startsWith(monthStr)) continue;
           final att = Attendance.fromFirestore(doc);
           if (ids.add(att.id)) {
             await _attendanceBox.put(att.id, att);
@@ -112,17 +117,38 @@ class ReportService {
         }
       }
 
+      // Payments: query by supervisorId only, filter by month client-side.
+      // Avoids composite index requirement (supervisorId + date range).
       final startDate = DateTime(year, month, 1);
       final endDate   = DateTime(year, month + 1, 0, 23, 59, 59);
-      final paySnap = await _db
+
+      Future<void> _storePaySnap(QuerySnapshot<Map<String, dynamic>> snap) async {
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final rawDate = data['date'];
+          DateTime? dt;
+          if (rawDate is Timestamp) dt = rawDate.toDate();
+          if (rawDate is DateTime)  dt = rawDate;
+          if (rawDate is String)    dt = DateTime.tryParse(rawDate);
+          if (dt == null) continue;
+          if (dt.isBefore(startDate) || dt.isAfter(endDate)) continue;
+          final pay = Payment.fromFirestore(doc);
+          await _paymentBox.put(pay.id, pay);
+        }
+      }
+
+      final paySnapSup = await _db
           .collection('payments')
           .where('supervisorId', isEqualTo: supervisorId)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate))
-          .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endDate))
           .get();
-      for (final doc in paySnap.docs) {
-        final pay = Payment.fromFirestore(doc);
-        await _paymentBox.put(pay.id, pay);
+      await _storePaySnap(paySnapSup);
+
+      if (contractorId.isNotEmpty && contractorId != supervisorId) {
+        final paySnapCon = await _db
+            .collection('payments')
+            .where('contractorId', isEqualTo: contractorId)
+            .get();
+        await _storePaySnap(paySnapCon);
       }
 
       debugPrint('Fetched data for $monthStr (attendance=${ids.length})');

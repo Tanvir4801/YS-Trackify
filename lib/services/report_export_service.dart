@@ -276,16 +276,26 @@ class ReportExportService {
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
                         pw.Container(
-                          width: 48, height: 48,
+                          padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
                           decoration: pw.BoxDecoration(
                             color: _gold,
                             borderRadius: pw.BorderRadius.circular(12)),
                           alignment: pw.Alignment.center,
-                          child: pw.Text(
-                            labourName.isNotEmpty
-                                ? labourName[0].toUpperCase() : 'L',
-                            style: pw.TextStyle(
-                              font: bold, fontSize: 22, color: _navy)),
+                          child: pw.Column(
+                            mainAxisAlignment: pw.MainAxisAlignment.center,
+                            children: [
+                              pw.Text('TOTAL',
+                                style: pw.TextStyle(
+                                  font: bold, fontSize: 7,
+                                  color: _navy, letterSpacing: 1)),
+                              pw.SizedBox(height: 2),
+                              pw.Text(
+                                '₹${netPayable.toStringAsFixed(0)}',
+                                style: pw.TextStyle(
+                                  font: bold, fontSize: 13, color: _navy)),
+                            ],
+                          ),
                         ),
                       ],
                     ),

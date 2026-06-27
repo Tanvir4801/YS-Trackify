@@ -260,18 +260,20 @@ class LabourService {
   /// falls back to supervisorId string.
   Stream<List<Labour>> labourStream() {
     final uid = _requireUid();
+    // No orderBy — avoids composite index (supervisorRef + isActive + name).
+    // Sort client-side instead.
     return _db
         .collection('labours')
         .where('supervisorRef', isEqualTo: _db.doc('users/$uid'))
         .where('isActive', isEqualTo: true)
-        .orderBy('name')
         .snapshots()
         .map((snap) {
           final labours = snap.docs.map((d) {
             final l = Labour.fromFirestore(d);
-            l.supervisorId = uid; // ensure local field is populated
+            l.supervisorId = uid;
             return l;
-          }).toList();
+          }).toList()
+            ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
           debugPrint('🔴 labourStream: ${labours.length} labours');
           return labours;
         });
@@ -283,18 +285,20 @@ class LabourService {
     final uid = _requireUid();
     final contractorId = _contractorScope(uid);
 
+    // No orderBy — avoids composite index (contractorId + isActive + name).
+    // Sort client-side instead.
     return _db
         .collection('labours')
         .where('contractorId', isEqualTo: contractorId)
         .where('isActive', isEqualTo: true)
-        .orderBy('name')
         .snapshots()
         .map((snap) {
           final labours = snap.docs.map((d) {
             final l = Labour.fromFirestore(d);
             l.supervisorId = uid;
             return l;
-          }).toList();
+          }).toList()
+            ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
           debugPrint('🔴 labourStreamByContractor: ${labours.length} labours');
           return labours;
         });

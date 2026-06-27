@@ -364,23 +364,28 @@ export async function updateAttendanceAllowances(id, {
 }
 
 // ── getAttendanceRange ──────────────────────────────────────────────────────
+// Query by contractorId only (single-field index — always available).
+// Date range and supervisorId filtering done client-side to avoid composite
+// index requirements that cause failed-precondition errors.
 
 export async function getAttendanceRange(scopeId, startDate, endDate, labourId, isSupervisor = false, supervisorId = null) {
   if (!startDate || !endDate || !scopeId) return [];
-  const base = [where('date', '>=', startDate), where('date', '<=', endDate)];
-  if (labourId) base.push(where('labourId', '==', labourId));
-  if (isSupervisor && supervisorId) {
-    base.push(where('supervisorId', '==', supervisorId));
-    base.push(where('contractorId', '==', scopeId));
-  } else {
-    base.push(where('contractorId', '==', scopeId));
-  }
 
-  const snap = await getDocs(query(collection(db, 'attendance'), ...base));
+  const snap = await getDocs(
+    query(collection(db, 'attendance'), where('contractorId', '==', scopeId))
+  );
+
   const map = new Map();
   snap.docs.forEach((d) => {
     const rec = snapToDoc(d);
-    if (rec.labourId) map.set(`${rec.labourId}_${rec.date}`, rec);
+    if (!rec.labourId || !rec.date) return;
+    // Client-side date filter
+    if (rec.date < startDate || rec.date > endDate) return;
+    // Client-side labourId filter
+    if (labourId && rec.labourId !== labourId) return;
+    // Client-side supervisorId filter
+    if (isSupervisor && supervisorId && rec.supervisorId && rec.supervisorId !== supervisorId) return;
+    map.set(`${rec.labourId}_${rec.date}`, rec);
   });
   return Array.from(map.values());
 }
