@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../core/localization/app_text.dart';
 import '../core/theme/app_colors.dart';
 import '../models/labour_report_summary.dart';
 import '../providers/report_provider.dart';
@@ -525,14 +524,14 @@ class _SummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF0B4F47), Color(0xFF0F766E), Color(0xFF14B8A6)],
+          colors: [AppColors.navy, AppColors.navyLight, Color(0xFF2A3348)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: _kGreen.withValues(alpha: 0.35),
+            color: AppColors.navy.withValues(alpha: 0.35),
             blurRadius: 20, offset: const Offset(0, 8),
           ),
         ],
@@ -550,19 +549,19 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              _SumChip(label: 'Workers',   value: '$totalWorkers',              icon: Icons.groups_rounded,               color: const Color(0xFFBFDBFE)),
-              _SumChip(label: 'Payroll',   value: '₹${fmt.format(totalPayroll)}', icon: Icons.account_balance_wallet_rounded, color: const Color(0xFF86EFAC)),
-              _SumChip(label: 'Present',   value: '$totalPresent',              icon: Icons.check_circle_rounded,         color: const Color(0xFF86EFAC)),
-              _SumChip(label: 'Absent',    value: '$totalAbsent',              icon: Icons.cancel_rounded,               color: const Color(0xFFFCA5A5)),
+              _SumChip(label: 'Workers',   value: '$totalWorkers',              icon: Icons.groups_rounded,               color: AppColors.goldLight),
+              _SumChip(label: 'Payroll',   value: '₹${fmt.format(totalPayroll)}', icon: Icons.account_balance_wallet_rounded, color: AppColors.present),
+              _SumChip(label: 'Present',   value: '$totalPresent',              icon: Icons.check_circle_rounded,         color: AppColors.present),
+              _SumChip(label: 'Absent',    value: '$totalAbsent',              icon: Icons.cancel_rounded,               color: AppColors.absent),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              _SumChip(label: 'Avg Wage',  value: '₹${fmt.format(avgWage)}',    icon: Icons.trending_up_rounded,          color: const Color(0xFFFDE68A)),
-              _SumChip(label: 'OT Hrs',   value: totalOT.toStringAsFixed(1),   icon: Icons.bolt_rounded,                 color: const Color(0xFFFDE68A)),
-              _SumChip(label: 'Advance',  value: '₹${fmt.format(totalAdvance)}',icon: Icons.arrow_upward_rounded,         color: const Color(0xFFFCA5A5)),
-              _SumChip(label: 'Net Pay',  value: '₹${fmt.format(netPayroll)}',  icon: Icons.verified_rounded,             color: const Color(0xFF86EFAC)),
+              _SumChip(label: 'Avg Wage',  value: '₹${fmt.format(avgWage)}',    icon: Icons.trending_up_rounded,          color: AppColors.gold),
+              _SumChip(label: 'OT Hrs',   value: totalOT.toStringAsFixed(1),   icon: Icons.bolt_rounded,                 color: AppColors.gold),
+              _SumChip(label: 'Advance',  value: '₹${fmt.format(totalAdvance)}',icon: Icons.arrow_upward_rounded,         color: AppColors.absent),
+              _SumChip(label: 'Net Pay',  value: '₹${fmt.format(netPayroll)}',  icon: Icons.verified_rounded,             color: AppColors.present),
             ],
           ),
         ],

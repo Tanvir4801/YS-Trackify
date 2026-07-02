@@ -232,6 +232,7 @@ class ScannerService {
     final contractorId = _contractorId;
     final supId        = supervisorId;
     final supRef       = FirestorePaths.userRef(supId);
+    final wageAtTime    = await _getLabourWage(labourId);
 
     try {
       // Write to nested path (new multi-tenant model)
@@ -246,6 +247,7 @@ class ScannerService {
         'date':          today,
         'status':        status,
         'overtimeHours': 0,
+        'wageAtTime':    wageAtTime,
         'markedVia':     'qr',
         'markedAt':      FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -275,6 +277,7 @@ class ScannerService {
             'date':          today,
             'status':        status,
             'overtimeHours': 0,
+            'wageAtTime':    wageAtTime,
             'markedVia':     'qr',
             'isSynced':      true,
             'syncedAt':      FieldValue.serverTimestamp(),
@@ -306,7 +309,8 @@ class ScannerService {
   Future<ScanResult> _markOffline(String labourId,
       {String? labourName, String status = 'present'}) async {
     final name = labourName ?? await _getLabourName(labourId);
-    _saveToHive(labourId, status, labourName: name, isSynced: false);
+    final wageAtTime = await _getLabourWage(labourId);
+    _saveToHive(labourId, status, labourName: name, isSynced: false, wageAtTime: wageAtTime);
     final label = status == 'half' ? 'Half Day' : 'Present';
     return ScanResult(
         success:    true,
@@ -383,6 +387,7 @@ class ScannerService {
             'date':          date,
             'status':        status,
             'overtimeHours': record['overtimeHours'] ?? 0,
+            'wageAtTime':    (record['wageAtTime'] as num?)?.toDouble() ?? 0,
             'markedVia':     'offline_qr',
             'markedAt':      FieldValue.serverTimestamp(),
             'offlineSync':   true,
@@ -399,6 +404,7 @@ class ScannerService {
           'date':          date,
           'status':        status,
           'overtimeHours': record['overtimeHours'] ?? 0,
+          'wageAtTime':    (record['wageAtTime'] as num?)?.toDouble() ?? 0,
           'markedVia':     'offline_qr',
           'isSynced':      true,
           'syncedAt':      FieldValue.serverTimestamp(),
@@ -435,7 +441,7 @@ class ScannerService {
   }
 
   void _saveToHive(String labourId, String status,
-      {String? labourName, required bool isSynced}) {
+      {String? labourName, required bool isSynced, double wageAtTime = 0}) {
     try {
       final box   = Hive.box('pending_attendance');
       final today = _todayString();
@@ -446,6 +452,7 @@ class ScannerService {
         'contractorId': _contractorId,
         'date':         today,
         'status':       status,
+        'wageAtTime':   wageAtTime,
         'isSynced':     isSynced,
         'scannedAt':    DateTime.now().toIso8601String(),
       });
@@ -468,6 +475,27 @@ class ScannerService {
       if (doc.exists) return doc.data()?['name'] as String? ?? labourId;
     } catch (_) {}
     return labourId;
+  }
+
+  // Historical wage snapshot: same rationale as manual markAttendance —
+  // record the labour's current daily wage at scan-time so future wage
+  // changes never retroactively distort past salary/report calculations.
+  Future<double> _getLabourWage(String labourId) async {
+    try {
+      final box    = Hive.box<Labour>(Labour.boxName);
+      final labour = box.get(labourId) ??
+          box.values.cast<Labour?>().firstWhere(
+              (l) => l?.firestoreId == labourId,
+              orElse: () => null);
+      if (labour != null && labour.dailyWage > 0) return labour.dailyWage;
+    } catch (_) {}
+    try {
+      final doc = await _db.collection('labours').doc(labourId).get();
+      if (doc.exists) {
+        return (doc.data()?['dailyWage'] as num?)?.toDouble() ?? 0;
+      }
+    } catch (_) {}
+    return 0;
   }
 
   String _todayString() {
