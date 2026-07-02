@@ -110,6 +110,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final contractorId = SessionService.instance.contractorId ?? uid;
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
+    context.read<DashboardProvider>().startListening(contractorId: contractorId);
+
     _labourSub?.cancel();
     _labourSub = _db
         .collection('labours')

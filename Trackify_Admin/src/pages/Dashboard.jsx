@@ -14,7 +14,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../store/authStore';
 import { useLabours } from '../hooks/useLabours';
 import { getAttendanceRange, subscribeAttendanceByDate } from '../lib/services/attendance.service';
-import { getPayments } from '../lib/services/payments.service';
+import { subscribePayments } from '../lib/services/payments.service';
 import { useSupervisors } from '../hooks/useSupervisors';
 
 import { todayKey, toDateKey, formatCurrency, exportCSV } from '../lib/utils';
@@ -191,11 +191,22 @@ export default function Dashboard() {
   }, [scopeId, days14Start, today, days14]);
 
   useEffect(() => {
-    getPayments(scopeId, { startDate: monthStart, endDate: today })
-      .then(setMonthPayments)
-      .catch(console.error)
-      .finally(() => setLoadingPay(false));
-  }, [scopeId, monthStart, today]);
+    if (!scopeId && role !== 'super_admin') {
+      setMonthPayments([]);
+      setLoadingPay(false);
+      return undefined;
+    }
+    setLoadingPay(true);
+    const unsub = subscribePayments(
+      scopeId,
+      (rows) => {
+        setMonthPayments(rows);
+        setLoadingPay(false);
+      },
+      { startDate: monthStart, endDate: today },
+    );
+    return () => unsub();
+  }, [scopeId, monthStart, today, role]);
 
   const todayCounts = useMemo(() => {
     const s = { present: 0, absent: 0, half: 0, totalOT: 0 };

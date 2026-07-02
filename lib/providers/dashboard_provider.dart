@@ -26,18 +26,37 @@ class DashboardProvider extends ChangeNotifier {
   Map<String, Map<String, int>> weekAttendance = {};
 
   bool _isListening = false;
+  String? _listeningContractorId;
 
-  void startListening() {
-    if (_isListening) {
-      return;
-    }
+  Map<String, Map<String, dynamic>> _supervisorAttendanceDocs = {};
+  Map<String, Map<String, dynamic>> _contractorAttendanceDocs = {};
 
+  /// Starts merged supervisorId + contractorId real-time listeners.
+  ///
+  /// Attendance/labour docs may be scoped by either `supervisorId` (the
+  /// creating user) or `contractorId` (the team the user belongs to) — a
+  /// team member's own uid often differs from their contractorId, so a
+  /// listener that only filters by `supervisorId` silently misses records
+  /// created under the shared contractor scope. Both scopes are merged here
+  /// so the week strip always matches the counts shown elsewhere on the
+  /// dashboard (which already merge both scopes locally).
+  void startListening({String? contractorId}) {
     final uid = _auth.currentUser?.uid;
     if (uid == null || uid.isEmpty) {
       return;
     }
 
+    if (_isListening && _listeningContractorId == contractorId) {
+      return;
+    }
+
+    _attendanceSub?.cancel();
+    _labourSub?.cancel();
     _isListening = true;
+    _listeningContractorId = contractorId;
+
+    final resolvedContractorId =
+        (contractorId != null && contractorId.isNotEmpty) ? contractorId : uid;
 
     _labourSub = _firestore
         .collection('labours')
@@ -54,40 +73,59 @@ class DashboardProvider extends ChangeNotifier {
         .where('supervisorId', isEqualTo: uid)
         .snapshots()
         .listen((snap) {
-      final today = _todayString();
-      var p = 0;
-      var a = 0;
-      var h = 0;
+      _supervisorAttendanceDocs = {for (final doc in snap.docs) doc.id: doc.data()};
+      _recomputeAttendanceTotals();
+    });
 
-      final weekMap = <String, Map<String, int>>{};
-      final last7 = _last7Days();
+    if (resolvedContractorId != uid) {
+      _firestore
+          .collection('attendance')
+          .where('contractorId', isEqualTo: resolvedContractorId)
+          .snapshots()
+          .listen((snap) {
+        _contractorAttendanceDocs = {for (final doc in snap.docs) doc.id: doc.data()};
+        _recomputeAttendanceTotals();
+      });
+    }
+  }
 
-      for (final doc in snap.docs) {
-        final data = doc.data();
-        final status = (data['status'] as String?) ?? '';
-        final dateRaw = data['date'];
-        final date = _extractDate(dateRaw);
+  void _recomputeAttendanceTotals() {
+    final merged = <String, Map<String, dynamic>>{}
+      ..addAll(_supervisorAttendanceDocs)
+      ..addAll(_contractorAttendanceDocs);
 
-        if (date == today) {
-          if (status == 'present') p += 1;
-          else if (status == 'absent') a += 1;
-          else if (status == 'half') h += 1;
-        }
+    final today = _todayString();
+    var p = 0;
+    var a = 0;
+    var h = 0;
 
-        if (last7.contains(date)) {
-          weekMap.putIfAbsent(date, () => {'present': 0, 'absent': 0, 'half': 0});
-          if (status == 'present') weekMap[date]!['present'] = (weekMap[date]!['present']! + 1);
-          else if (status == 'absent') weekMap[date]!['absent'] = (weekMap[date]!['absent']! + 1);
-          else if (status == 'half') weekMap[date]!['half'] = (weekMap[date]!['half']! + 1);
-        }
+    final weekMap = <String, Map<String, int>>{};
+    final last7 = _last7Days();
+
+    for (final data in merged.values) {
+      final status = (data['status'] as String?) ?? '';
+      final dateRaw = data['date'];
+      final date = _extractDate(dateRaw);
+
+      if (date == today) {
+        if (status == 'present') p += 1;
+        else if (status == 'absent') a += 1;
+        else if (status == 'half') h += 1;
       }
 
-      presentToday = p;
-      absentToday = a;
-      halfToday = h;
-      weekAttendance = weekMap;
-      notifyListeners();
-    });
+      if (last7.contains(date)) {
+        weekMap.putIfAbsent(date, () => {'present': 0, 'absent': 0, 'half': 0});
+        if (status == 'present') weekMap[date]!['present'] = (weekMap[date]!['present']! + 1);
+        else if (status == 'absent') weekMap[date]!['absent'] = (weekMap[date]!['absent']! + 1);
+        else if (status == 'half') weekMap[date]!['half'] = (weekMap[date]!['half']! + 1);
+      }
+    }
+
+    presentToday = p;
+    absentToday = a;
+    halfToday = h;
+    weekAttendance = weekMap;
+    notifyListeners();
   }
 
   String _todayString() {
