@@ -225,9 +225,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  Text(r.labourName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white)),
+                  Flexible(
+                    child: Text(r.labourName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white)),
+                  ),
                   if (r.isTemp) ...[
                     const SizedBox(width: 6),
                     Container(
