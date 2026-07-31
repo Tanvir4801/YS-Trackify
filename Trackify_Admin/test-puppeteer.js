@@ -11,7 +11,7 @@ const puppeteer = require('puppeteer-core');
     page.on('requestfailed', request =>
       console.log('REQUEST FAILED:', request.url(), request.failure().errorText)
     );
-    await page.goto('https://ys-trackify-pnvpm0t58-tanvirrpatel4801-5669s-projects.vercel.app/', { waitUntil: 'networkidle0' });
+    await page.goto('http://localhost:5003', { waitUntil: 'networkidle0' });
     const bodyHTML = await page.evaluate(() => document.body.innerHTML);
     console.log('BODY HTML:', bodyHTML.substring(0, 500));
     await browser.close();
