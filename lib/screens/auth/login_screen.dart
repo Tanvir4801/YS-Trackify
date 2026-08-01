@@ -59,6 +59,30 @@ class _LoginScreenState extends State<LoginScreen>
     });
   }
 
+  Future<void> _forgotPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your email address first to reset password.');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    final result = await _authService.sendPasswordResetEmail(email);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      if (!result.success) {
+        _errorMessage = result.errorMessage;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Password reset email sent! Check your inbox.')),
+        );
+      }
+    });
+  }
+
   Future<void> _submit() async {
     final isSupervisor = _mode == _LoginMode.supervisor;
     final formKey = isSupervisor ? _supervisorFormKey : _labourFormKey;
@@ -346,6 +370,23 @@ class _LoginScreenState extends State<LoginScreen>
               }
               return null;
             },
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _forgotPassword,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.gold,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(50, 30),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Forgot Password?',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
           ),
         ],
       ),

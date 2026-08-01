@@ -61,6 +61,31 @@ service cloud.firestore {
       allow write: if isAuth();
     }
 
+    match /clients/{docId} { allow read, write: if isAuth(); }
+    match /projects/{docId} { allow read, write: if isAuth(); }
+    match /payment_milestones/{docId} { allow read, write: if isAuth(); }
+    match /client_payments/{docId} { allow read, write: if isAuth(); }
+    match /project_documents/{docId} { allow read, write: if isAuth(); }
+
+    match /sites/{siteId} {
+      allow read: if isAuth();
+      allow write: if isAuth();
+    }
+
+    match /materialPurchases/{contractorId}/purchases/{docId} {
+      allow read, write: if isAuth() && (request.auth.uid != null);
+    }
+    match /siteExpenses/{contractorId}/expenses/{docId} {
+      allow read, write: if isAuth() && (request.auth.uid != null);
+    }
+    match /suppliers/{contractorId}/records/{docId} {
+      allow read, write: if isAuth() && (request.auth.uid != null);
+    }
+    match /projects/{docId} { allow read, write: if isAuth(); }
+    match /payment_milestones/{docId} { allow read, write: if isAuth(); }
+    match /client_payments/{docId} { allow read, write: if isAuth(); }
+    match /project_documents/{docId} { allow read, write: if isAuth(); }
+
     match /temp_labour_entries/{entryId} {
       allow read: if isAuth();
       allow write: if isAuth();

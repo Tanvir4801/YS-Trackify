@@ -176,14 +176,27 @@ function tqs(teamId, first = true) {
 // ═════════════════════════════════════════════════════════════════════════════
 // FUNCTION 1: vercelGetProjectFull
 // Returns: project info + latest 20 deployments + domains (one round trip each)
-// Called by: DeploymentCenter.jsx every 5 seconds for the main dashboard
 // ═════════════════════════════════════════════════════════════════════════════
+
+const vercelCache = {
+  projectFull: { data: null, timestamp: 0, projectId: null }
+};
+const TTL_VERCEL_DASHBOARD = 30 * 1000; // 30 seconds
+
 exports.vercelGetProjectFull = onCall(FUNCTION_CONFIG, async (request) => {
   const uid = await requireTrackOps(request);
   enforceRateLimit(uid);
 
   const token = VERCEL_TOKEN_SECRET.value();
   const { projectId, teamId } = request.data || {};
+
+  const now = Date.now();
+  // Simple cache check matching projectId
+  if (vercelCache.projectFull.data && 
+      vercelCache.projectFull.projectId === projectId && 
+      (now - vercelCache.projectFull.timestamp < TTL_VERCEL_DASHBOARD)) {
+    return ok({ ...vercelCache.projectFull.data, fromCache: true });
+  }
 
   // Resolve project
   let project;
@@ -243,7 +256,7 @@ exports.vercelGetProjectFull = onCall(FUNCTION_CONFIG, async (request) => {
     sslExpiresAt: d.sslCertificate?.certs?.[0]?.expiresAt || null,
   }));
 
-  return ok({
+  const responseData = {
     project: {
       id: project.id,
       name: project.name,
@@ -255,7 +268,10 @@ exports.vercelGetProjectFull = onCall(FUNCTION_CONFIG, async (request) => {
     },
     deployments,
     domains,
-  });
+  };
+
+  vercelCache.projectFull = { data: responseData, timestamp: now, projectId: projectId };
+  return ok({ ...responseData, fromCache: false });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

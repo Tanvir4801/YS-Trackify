@@ -12,6 +12,16 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 3000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', 'zustand'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/functions'],
+          recharts: ['recharts'],
+          lucide: ['lucide-react'],
+        }
+      }
+    }
   },
   preview: {
     host: '0.0.0.0',

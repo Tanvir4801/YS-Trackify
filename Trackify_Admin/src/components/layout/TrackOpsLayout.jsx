@@ -4,12 +4,17 @@ import TrackOpsSidebar from './TrackOpsSidebar';
 import { useAuthStore } from '../../store/authStore';
 import { db } from '../../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useTrackOpsMonitoring } from '../../context/TrackOpsMonitoringContext';
+import { ShieldAlert, Play, Pause, PowerOff } from 'lucide-react';
 
 export default function TrackOpsLayout() {
   const role = useAuthStore((s) => s.role);
   const [time, setTime] = useState(new Date());
   const [healthData, setHealthData] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  const { monitoringEnabled, isPaused, isMonitoringActive, toggleMonitoring } = useTrackOpsMonitoring();
+  const isSuperAdmin = useAuthStore((s) => s.role === 'super_admin');
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -44,7 +49,7 @@ export default function TrackOpsLayout() {
     };
   }, []);
 
-  if (role !== 'trackops') {
+  if (role !== 'trackops' && role !== 'super_admin') {
     return <Navigate to="/" replace />;
   }
 
@@ -117,6 +122,31 @@ export default function TrackOpsLayout() {
             <div className="text-gray-400">{formattedTime}</div>
           </div>
           <div className="flex items-center space-x-6">
+            
+            {/* MASTER MONITORING TOGGLE */}
+            <div className="flex items-center space-x-3 bg-trackops-navy border border-trackops-border rounded-full px-4 py-1.5">
+              <span className="text-[10px] text-gray-400 font-bold">TRACKOPS LIVE MONITORING</span>
+              <button
+                onClick={toggleMonitoring}
+                disabled={role !== 'super_admin' && role !== 'trackops'}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${role !== 'super_admin' && role !== 'trackops' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${monitoringEnabled ? 'bg-trackops-green' : 'bg-gray-600'}`}
+              >
+                <span className={`${monitoringEnabled ? 'translate-x-5 bg-black' : 'translate-x-1 bg-white'} inline-block h-3 w-3 transform rounded-full transition-transform`} />
+              </button>
+              
+              <div className={`flex items-center text-[10px] font-bold tracking-widest px-2 py-0.5 rounded ${
+                isMonitoringActive ? 'bg-trackops-green/20 text-trackops-green' :
+                isPaused ? 'bg-trackops-amber/20 text-trackops-amber animate-pulse' :
+                'bg-gray-800 text-gray-500'
+              }`}>
+                {isMonitoringActive ? <><Play className="w-3 h-3 mr-1" /> ON</> :
+                 isPaused ? <><Pause className="w-3 h-3 mr-1" /> PAUSED</> :
+                 <><PowerOff className="w-3 h-3 mr-1" /> OFF</>}
+              </div>
+            </div>
+
+            <div className="text-gray-500">|</div>
+
             <div className={`${statusColor} flex items-center`}>
               MISSION HEALTH: {loading ? '...' : `${missionHealth.toFixed(0)}%`}
             </div>

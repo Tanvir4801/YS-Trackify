@@ -1,41 +1,43 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, limit, orderBy, where, doc } from 'firebase/firestore';
-import { Activity, Server, Users, DollarSign, CloudLightning, ShieldAlert, Smartphone, TrendingUp, HeartPulse, CheckCircle2 } from 'lucide-react';
+import { collection, onSnapshot, query, limit, orderBy, where } from 'firebase/firestore';
+import { Activity, Server, Users, DollarSign, CloudLightning, ShieldAlert, Smartphone, TrendingUp, HeartPulse, CheckCircle2, Clock } from 'lucide-react';
 import { db } from '../../lib/firebase';
+import { useTrackOpsAnalytics, useTrackOpsBilling } from '../../lib/services/trackopsQueryService';
+import FreshnessIndicator from '../../components/ui/FreshnessIndicator';
+import { useTrackOpsMonitoring } from '../../context/TrackOpsMonitoringContext';
+import CostOptimizerCard from './components/CostOptimizerCard';
+import { getDocs } from 'firebase/firestore';
 
 export default function MissionDashboard() {
   const [stats, setStats] = useState({
     onlineUsers: 0,
-    companiesActive: 0,
-    revenue: 0,
-    firebaseCost: 0,
     attendanceToday: 0,
     reportsGenerated: 0,
-    premiumContractors: 0,
-    freeContractors: 0,
     criticalErrors: 0,
     openTickets: 0,
     iosUsers: 0,
     androidUsers: 0,
-    newCompaniesThisWeek: 0,
     missionHealthScore: 100,
-  });
-
-  const [billing, setBilling] = useState({
-    costAmount: 0,
-    budgetAmount: 0,
-    currencyCode: 'USD',
   });
 
   const [feed, setFeed] = useState([]);
   const [insights, setInsights] = useState([]);
 
+  // Master Control Context
+  const { isMonitoringActive, lastStoppedAt, monitoringEnabled } = useTrackOpsMonitoring();
+  const [awaySummary, setAwaySummary] = useState(null);
+
+  // React Query for Analytics and Billing (Polled)
+  const { data: analyticsData, isFetching: isFetchingAnalytics, refetch: refetchAnalytics, dataUpdatedAt: analyticsUpdatedAt } = useTrackOpsAnalytics();
+  const { data: billingData, isFetching: isFetchingBilling, refetch: refetchBilling, dataUpdatedAt: billingUpdatedAt } = useTrackOpsBilling();
+
   useEffect(() => {
     let unsubTelemetry = () => {};
-    let unsubContractors = () => {};
     let unsubTickets = () => {};
-    let unsubLogs = () => {};
-    let unsubBilling = () => {};
+
+    if (!isMonitoringActive) {
+      return () => {};
+    }
 
     try {
       // 1. Live Users & Device Analytics from Telemetry
@@ -44,8 +46,8 @@ export default function MissionDashboard() {
       unsubTelemetry = onSnapshot(qTel, (snap) => {
         try {
           const recentUsers = new Set();
-          let ios = 0;
-          let android = 0;
+          const iosUsersSet = new Set();
+          const androidUsersSet = new Set();
           let attCount = 0;
           let repCount = 0;
           const liveFeed = [];
@@ -58,9 +60,9 @@ export default function MissionDashboard() {
               recentUsers.add(data.userId);
             }
 
-            // Device counts (only count unique sessions roughly)
-            if (data.platform?.toLowerCase().includes('ios')) ios++;
-            if (data.platform?.toLowerCase().includes('android')) android++;
+            // Device counts (only count unique users)
+            if (data.userId && data.platform?.toLowerCase().includes('ios')) iosUsersSet.add(data.userId);
+            if (data.userId && data.platform?.toLowerCase().includes('android')) androidUsersSet.add(data.userId);
 
             // Feature counts
             if (data.featureName?.toLowerCase().includes('attendance')) attCount++;
@@ -82,8 +84,8 @@ export default function MissionDashboard() {
           setStats(s => ({ 
             ...s, 
             onlineUsers: recentUsers.size, 
-            iosUsers: ios, 
-            androidUsers: android,
+            iosUsers: iosUsersSet.size, 
+            androidUsers: androidUsersSet.size,
             attendanceToday: attCount * 5, // Simulation multiplier
             reportsGenerated: repCount
           }));
@@ -91,85 +93,17 @@ export default function MissionDashboard() {
       }, (err) => {
         console.error("Telemetry Error in Dashboard:", err);
 
-      });
-
-      // 2. Company, Subscription, Revenue & Growth Analytics
-      unsubContractors = onSnapshot(collection(db, 'contractors'), (snap) => {
-        try {
-          let active = 0;
-          let premium = 0;
-          let free = 0;
-          let estRevenue = 0;
-          let newThisWeek = 0;
-          
-          const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-          snap.forEach(doc => {
-            const data = doc.data();
-            if (data.isActive !== false) active++;
-            
-            const plan = (data.plan || 'trial').toLowerCase();
-            if (plan !== 'trial' && data.isPremium === true) {
-              premium++;
-              estRevenue += (Number(data.subscriptionAmount) || 0);
-            } else {
-              free++;
-            }
-
-            if (data.createdAt && data.createdAt.toDate() > oneWeekAgo) {
-              newThisWeek++;
-            }
-          });
-          
-          setStats(s => ({ 
-            ...s, 
-            companiesActive: active, 
-            premiumContractors: premium,
-            freeContractors: free,
-            revenue: estRevenue,
-            newCompaniesThisWeek: newThisWeek,
-          }));
-        } catch(e) { console.error('MissionDashboard contractors processing error:', e); }
       }, (err) => {
-        console.error("Contractors Error in Dashboard:", err);
+        console.error("Telemetry Error in Dashboard:", err);
       });
 
-      // 3. Listen to Real-Time Billing from Google Cloud (via system_status/billing)
-      unsubBilling = onSnapshot(doc(db, 'system_status', 'billing'), (docSnap) => {
-        if (docSnap.exists()) {
-          const bData = docSnap.data();
-          setBilling({
-            costAmount: bData.costAmount || 0,
-            budgetAmount: bData.budgetAmount || 0,
-            currencyCode: bData.currencyCode || 'USD',
-          });
-        }
-      }, (err) => {
-        console.error("Billing Error:", err);
-
-      });
-
-      // 3. System Health (Open Support Tickets as a proxy for Critical Errors)
+      // 2. System Health (Open Support Tickets as a proxy for Critical Errors)
       unsubTickets = onSnapshot(query(collection(db, 'support_tickets'), where('status', 'in', ['Open', 'In Progress'])), (snap) => {
         try {
           setStats(s => ({ ...s, criticalErrors: snap.size }));
         } catch(e) { console.error('MissionDashboard tickets processing error:', e); }
       }, (err) => {
         console.error("Tickets Error in Dashboard:", err);
-
-      });
-
-      // 4. Firebase Cost Proxy
-      const qLogs = query(collection(db, 'mission_logs'), orderBy('timestamp', 'desc'), limit(100));
-      unsubLogs = onSnapshot(qLogs, (snap) => {
-        try {
-          setStats(s => ({ 
-            ...s, 
-            firebaseCost: (snap.size * 0.05).toFixed(2) // Rough estimate proxy
-          }));
-        } catch(e) { console.error('MissionDashboard logs processing error:', e); }
-      }, (err) => {
-        console.error("Logs Error in Dashboard:", err);
       });
 
     } catch(e) {
@@ -178,11 +112,28 @@ export default function MissionDashboard() {
 
     return () => {
       try { unsubTelemetry(); } catch(e) {}
-      try { unsubContractors(); } catch(e) {}
       try { unsubTickets(); } catch(e) {}
-      try { unsubLogs(); } catch(e) {}
     };
-  }, []);
+  }, [isMonitoringActive]);
+
+  // "While you were away" fetcher
+  useEffect(() => {
+    if (isMonitoringActive && lastStoppedAt && monitoringEnabled) {
+      const fetchAwayStats = async () => {
+        try {
+          const t = new Date(lastStoppedAt);
+          // Only fetch tickets to show the example "12 new support tickets"
+          const snap = await getDocs(query(collection(db, 'support_tickets'), where('createdAt', '>', t)));
+          if (!snap.empty) {
+            setAwaySummary({ tickets: snap.size });
+          }
+        } catch(e) { console.warn("Failed to fetch away stats", e); }
+      };
+      fetchAwayStats();
+    } else {
+      setAwaySummary(null);
+    }
+  }, [isMonitoringActive, lastStoppedAt, monitoringEnabled]);
 
   // Compute Mission Health Score and Owner Insights
   useEffect(() => {
@@ -202,21 +153,35 @@ export default function MissionDashboard() {
       insightsList.push({ type: 'warning', text: `Zero online users detected.`});
     }
     
-    if (stats.newCompaniesThisWeek > 0) {
-      insightsList.push({ type: 'success', text: `Growth alert: ${stats.newCompaniesThisWeek} new contractors onboarded this week.`});
+    if (analyticsData?.newCompaniesThisWeek > 0) {
+      insightsList.push({ type: 'success', text: `Growth alert: ${analyticsData.newCompaniesThisWeek} new contractors onboarded this week.`});
     }
     
-    if (stats.premiumContractors > stats.freeContractors && stats.freeContractors > 0) {
-      insightsList.push({ type: 'success', text: `Premium tier dominates the user base (${stats.premiumContractors} vs ${stats.freeContractors}).`});
+    if (analyticsData?.premiumContractors > analyticsData?.freeContractors && analyticsData?.freeContractors > 0) {
+      insightsList.push({ type: 'success', text: `Premium tier dominates the user base (${analyticsData.premiumContractors} vs ${analyticsData.freeContractors}).`});
     }
 
     setStats(s => ({ ...s, missionHealthScore: Math.min(Math.max(score, 0), 100) }));
     setInsights(insightsList);
     
-  }, [stats.criticalErrors, stats.onlineUsers, stats.newCompaniesThisWeek, stats.premiumContractors, stats.freeContractors]);
+  }, [stats.criticalErrors, stats.onlineUsers, analyticsData]);
 
   return (
     <div className="space-y-6 pb-10">
+      <CostOptimizerCard />
+      
+      {awaySummary && (
+        <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-md font-mono flex items-start gap-3">
+          <Clock className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-blue-400 font-bold uppercase text-sm mb-1">While you were away</h3>
+            <p className="text-gray-300 text-xs">
+              {awaySummary.tickets || 0} new support tickets were created.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between border-b border-trackops-border pb-4">
         <h1 className="text-2xl font-bold tracking-widest text-white uppercase flex items-center">
           <Activity className="w-6 h-6 mr-3 text-trackops-green animate-pulse" />
@@ -232,11 +197,19 @@ export default function MissionDashboard() {
         </div>
       </div>
 
+      <div className="flex justify-end mb-4">
+        <FreshnessIndicator 
+          updatedAt={analyticsUpdatedAt} 
+          isFetching={isFetchingAnalytics || isFetchingBilling} 
+          onRefresh={() => { refetchAnalytics(); refetchBilling(); }} 
+        />
+      </div>
+
       {/* Row 1: Core Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Live Users" value={stats.onlineUsers} icon={Users} color="text-trackops-green" />
-        <StatCard title="Active Companies" value={stats.companiesActive} icon={Server} color="text-trackops-steel" />
-        <StatCard title="Total Revenue" value={`₹${stats.revenue}`} icon={DollarSign} color="text-trackops-green" />
+        <StatCard title="Active Companies" value={analyticsData?.companiesActive ?? '...'} icon={Server} color="text-trackops-steel" />
+        <StatCard title="Total Revenue" value={analyticsData?.revenue !== undefined ? `₹${analyticsData.revenue}` : '...'} icon={DollarSign} color="text-trackops-green" />
         
         {/* Real-Time Billing Card */}
         <div className="bg-navy border border-white/5 rounded-xl p-5 hover:border-white/20 transition-all group">
@@ -244,18 +217,18 @@ export default function MissionDashboard() {
             <div className="p-3 rounded-lg bg-red-500/10 text-red-400 group-hover:scale-110 transition-transform">
               <CloudLightning size={24} />
             </div>
-            {billing.budgetAmount > 0 && (
-              <div className={`text-xs font-bold px-2 py-1 rounded-full ${billing.costAmount >= billing.budgetAmount ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                {((billing.costAmount / billing.budgetAmount) * 100).toFixed(0)}% Used
+            {billingData?.budgetAmount > 0 && (
+              <div className={`text-xs font-bold px-2 py-1 rounded-full ${billingData.costAmount >= billingData.budgetAmount ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                {((billingData.costAmount / billingData.budgetAmount) * 100).toFixed(0)}% Used
               </div>
             )}
           </div>
           <div className="mt-4">
-            <h3 className="text-white/50 font-medium text-sm">GCP Billing (Live)</h3>
+            <h3 className="text-white/50 font-medium text-sm">GCP Billing (Polled)</h3>
             <div className="flex items-end gap-2 mt-1">
-              <p className="text-3xl font-black text-white">{billing.currencyCode === 'INR' ? '₹' : '$'}{billing.costAmount.toFixed(2)}</p>
-              {billing.budgetAmount > 0 && (
-                <p className="text-white/40 text-sm mb-1">/ {billing.budgetAmount}</p>
+              <p className="text-3xl font-black text-white">{billingData?.currencyCode === 'INR' ? '₹' : '$'}{(billingData?.costAmount || 0).toFixed(2)}</p>
+              {billingData?.budgetAmount > 0 && (
+                <p className="text-white/40 text-sm mb-1">/ {billingData.budgetAmount}</p>
               )}
             </div>
           </div>
@@ -267,7 +240,7 @@ export default function MissionDashboard() {
         <StatCard title="Attendance Synced" value={stats.attendanceToday.toLocaleString()} icon={CheckCircle2} color="text-trackops-navy" />
         <StatCard title="Reports Exported" value={stats.reportsGenerated} icon={TrendingUp} color="text-trackops-navy" />
         <StatCard title="Unresolved Issues" value={stats.criticalErrors} icon={ShieldAlert} color={stats.criticalErrors > 0 ? "text-trackops-red animate-pulse" : "text-trackops-green"} />
-        <StatCard title="Premium Subscriptions" value={stats.premiumContractors} icon={Activity} color="text-trackops-amber" />
+        <StatCard title="Premium Subscriptions" value={analyticsData?.premiumContractors ?? '...'} icon={Activity} color="text-trackops-amber" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
@@ -366,7 +339,18 @@ function StatCard({ title, value, icon: Icon, color }) {
           <Icon className="w-4 h-4" />
         </div>
       </div>
-      <div className="text-2xl font-bold text-white font-mono">{value}</div>
+      <div className="text-2xl font-bold text-white font-mono h-8 flex items-center">
+        {value === '...' ? (
+          <div className="flex space-x-1 items-end h-5 opacity-70">
+            <div className={`w-1.5 h-3 ${color.replace('text-', 'bg-')} animate-pulse`} style={{animationDelay: '0ms'}}></div>
+            <div className={`w-1.5 h-5 ${color.replace('text-', 'bg-')} animate-pulse`} style={{animationDelay: '150ms'}}></div>
+            <div className={`w-1.5 h-4 ${color.replace('text-', 'bg-')} animate-pulse`} style={{animationDelay: '300ms'}}></div>
+            <span className="text-[9px] text-gray-500 ml-2 tracking-widest uppercase mb-0.5 animate-pulse">Awaiting Signal</span>
+          </div>
+        ) : (
+          value
+        )}
+      </div>
     </div>
   );
 }

@@ -36,9 +36,9 @@ function StatCard({ label, value, sub, icon: Icon, color = 'blue', trend }) {
     green:  { bg: 'var(--success-bg)', icon: 'var(--success)', borderLeft: 'var(--success)' },
     red:    { bg: 'var(--danger-bg)', icon: 'var(--danger)', borderLeft: 'var(--danger)' },
     amber:  { bg: 'var(--warning-bg)', icon: 'var(--warning)', borderLeft: 'var(--warning)' },
-    purple: { bg: 'rgba(139,92,246,0.1)', icon: '#8B5CF6', borderLeft: '#8B5CF6' },
-    slate:  { bg: 'var(--bg-elevated)', icon: 'var(--text-secondary)', borderLeft: 'transparent' },
-    indigo: { bg: 'rgba(99,102,241,0.1)', icon: '#6366F1', borderLeft: '#6366F1' },
+    purple: { bg: 'rgba(167, 139, 250, 0.1)', icon: '#A78BFA', borderLeft: '#A78BFA' },
+    slate:  { bg: 'var(--bg-elevated)', icon: 'var(--text-secondary)', borderLeft: '#94A3B8' },
+    indigo: { bg: 'rgba(129, 140, 248, 0.1)', icon: '#818CF8', borderLeft: '#818CF8' },
     gold:   { bg: 'var(--gold-bg)', icon: 'var(--gold)', borderLeft: 'var(--gold)' },
   };
   const c = colors[color] || colors.blue;
@@ -353,9 +353,9 @@ export default function Dashboard() {
           { label: 'Absent Today',     value: todayCounts.absent,            icon: UserX,      color: 'red',    trend: `${absentPct}% workforce` },
           { label: 'Half Day Today',   value: todayCounts.half,              icon: Activity,   color: 'amber',  sub: 'half-day records' },
           ...(todayCounts.pending > 0 ? [{ label: 'Pending (reset)',  value: todayCounts.pending, icon: RefreshCw,  color: 'amber',  sub: 'reset – needs re-marking' }] : []),
-          { label: 'Month Payroll',    value: formatCurrency(payrollSummary.total),    icon: Wallet,     color: 'gold', sub: 'this month total' },
+          { label: 'Month Payroll',    value: formatCurrency(payrollSummary.total),    icon: Wallet,     color: 'purple', sub: 'this month total' },
           { label: 'Pending Advances', value: formatCurrency(payrollSummary.advances), icon: TrendingUp, color: 'amber',  sub: 'total advances given' },
-          { label: 'Supervisors',      value: supervisors.length,            icon: Users,      color: 'slate',  sub: 'active supervisors' },
+          { label: 'Supervisors',      value: supervisors.length,            icon: Users,      color: 'indigo',  sub: 'active supervisors' },
           { label: 'OT Hours Today',   value: todayCounts.totalOT,          icon: Clock,      color: 'blue', sub: 'total overtime hrs' },
         ].slice(0, 8).map((card) => (
           <StatCard key={card.label} {...card} />

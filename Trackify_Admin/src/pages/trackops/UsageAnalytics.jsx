@@ -1,72 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
 import { BarChart2, TrendingUp, Cpu, Database, CloudLightning, Activity, AlertCircle, Users, CreditCard } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
+import { useTrackOpsAnalytics } from '../../lib/services/trackopsQueryService';
+import FreshnessIndicator from '../../components/ui/FreshnessIndicator';
 
 export default function UsageAnalytics() {
   const [activeTab, setActiveTab] = useState('features'); // features, firebase, contractors, insights
   
-  const [contractors, setContractors] = useState([]);
-  const [telemetry, setTelemetry] = useState([]);
-  const [missionLogs, setMissionLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let unsubContractors = () => {};
-    let unsubTelemetry = () => {};
-    let unsubLogs = () => {};
-
-    let loadedCount = 0;
-    const checkLoaded = () => {
-      loadedCount++;
-      if (loadedCount >= 3) setLoading(false);
-    };
-
-    try {
-      // 1. Fetch Contractors
-      unsubContractors = onSnapshot(collection(db, 'contractors'), (snapshot) => {
-        const data = [];
-        snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-        setContractors(data);
-        checkLoaded();
-      }, (err) => {
-        console.error("Contractors Error:", err);
-        checkLoaded();
-      });
-
-      // 2. Fetch Telemetry (limit to recent 500 for performance)
-      const qTel = query(collection(db, 'telemetry_events'), orderBy('timestamp', 'desc'), limit(500));
-      unsubTelemetry = onSnapshot(qTel, (snapshot) => {
-        const data = [];
-        snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-        setTelemetry(data);
-        checkLoaded();
-      }, (err) => {
-        console.error("Telemetry Error:", err);
-        checkLoaded();
-      });
-
-      // 3. Fetch Mission Logs (limit to recent 500 for Firebase activity estimates)
-      const qLogs = query(collection(db, 'mission_logs'), orderBy('timestamp', 'desc'), limit(500));
-      unsubLogs = onSnapshot(qLogs, (snapshot) => {
-        const data = [];
-        snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-        setMissionLogs(data);
-        checkLoaded();
-      }, (err) => {
-        console.error("Logs Error:", err);
-        checkLoaded();
-      });
-
-    } catch (e) {
-      console.error('UsageAnalytics listener initialization error:', e);
-      setLoading(false);
-    }
-
-    return () => {
-      try { unsubContractors(); unsubTelemetry(); unsubLogs(); } catch(e) { console.error('UsageAnalytics cleanup error:', e); }
-    };
-  }, []);
+  const { data, isLoading: loading, isFetching, refetch, dataUpdatedAt } = useTrackOpsAnalytics();
 
   return (
     <div className="space-y-6 pb-10">
@@ -76,6 +16,7 @@ export default function UsageAnalytics() {
           Analytics & Insights
         </h1>
         <div className="flex flex-wrap gap-2 font-mono text-sm">
+          <FreshnessIndicator updatedAt={dataUpdatedAt} isFetching={isFetching} onRefresh={refetch} />
           {['features', 'firebase', 'contractors', 'insights'].map(tab => (
             <button 
               key={tab}
@@ -96,10 +37,10 @@ export default function UsageAnalytics() {
           </div>
         ) : (
           <>
-            {activeTab === 'features' && <FeatureAnalytics telemetry={telemetry} />}
-            {activeTab === 'firebase' && <FirebaseAnalytics telemetry={telemetry} logs={missionLogs} />}
-            {activeTab === 'contractors' && <ContractorAnalytics contractors={contractors} />}
-            {activeTab === 'insights' && <AIInsights contractors={contractors} telemetry={telemetry} />}
+            {activeTab === 'features' && <FeatureAnalytics topFeatures={data?.topFeatures || []} />}
+            {activeTab === 'firebase' && <FirebaseAnalytics stats={data?.firebaseStats} />}
+            {activeTab === 'contractors' && <ContractorAnalytics stats={data?.contractorStats} />}
+            {activeTab === 'insights' && <AIInsights insights={data?.insightsList || []} />}
           </>
         )}
       </div>
@@ -110,28 +51,8 @@ export default function UsageAnalytics() {
 // -------------------------------------------------------------
 // Features Tab
 // -------------------------------------------------------------
-function FeatureAnalytics({ telemetry }) {
-  const featureStats = useMemo(() => {
-    const counts = {};
-    let total = 0;
-    telemetry.forEach(t => {
-      const name = t.featureName || t.screenName || t.feature; // fallback for old data
-      if (name && name !== 'Unknown' && name !== '/') {
-        counts[name] = (counts[name] || 0) + 1;
-        total++;
-      }
-    });
-
-    const arr = Object.keys(counts).map(k => ({
-      name: k,
-      rawCount: counts[k],
-      usage: total > 0 ? Math.round((counts[k] / total) * 100) : 0
-    })).sort((a, b) => b.usage - a.usage);
-
-    return arr.slice(0, 8); // Top 8 features
-  }, [telemetry]);
-
-  if (featureStats.length === 0) {
+function FeatureAnalytics({ topFeatures }) {
+  if (topFeatures.length === 0) {
     return <div className="text-gray-500 font-mono text-center py-10">No telemetry data gathered yet. Open screens in the app to generate data.</div>;
   }
 
@@ -139,7 +60,7 @@ function FeatureAnalytics({ telemetry }) {
     <div className="space-y-4 font-mono">
       <h2 className="text-trackops-green tracking-widest uppercase text-sm mb-6">Real-Time Feature Adoption</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {featureStats.map((feat) => (
+        {topFeatures.map((feat) => (
           <div key={feat.name} className="bg-trackops-card border border-trackops-border p-4 rounded group hover:border-trackops-green/50 transition-colors">
             <div className="flex justify-between items-end mb-2">
               <div className="text-gray-300 font-bold uppercase truncate max-w-[200px]" title={feat.name}>{feat.name}</div>
@@ -159,27 +80,8 @@ function FeatureAnalytics({ telemetry }) {
 // -------------------------------------------------------------
 // Firebase Tab
 // -------------------------------------------------------------
-function FirebaseAnalytics({ telemetry, logs }) {
-  const stats = useMemo(() => {
-    // Basic estimation based on recent events (since we don't have direct Google Cloud API access)
-    // Assuming 1 log = ~2 writes, 1 telemetry = ~1 write
-    // Assuming reads are 5x writes generically.
-    const recentWrites = (logs.length * 2) + telemetry.length;
-    const estimatedReads = recentWrites * 5;
-    
-    const costPer10kReads = 0.06 * 83; // approx INR
-    const costPer10kWrites = 0.18 * 83; // approx INR
-    
-    const estCost = ((estimatedReads / 10000) * costPer10kReads) + ((recentWrites / 10000) * costPer10kWrites);
-
-    return {
-      reads: (estimatedReads * 14).toLocaleString(), // Extrapolated proxy for "Monthly"
-      writes: (recentWrites * 14).toLocaleString(),
-      estMonthlyCost: Math.max(0, (estCost * 30)).toFixed(2), // highly rough proxy
-      eventsCount: telemetry.length,
-      logsCount: logs.length
-    };
-  }, [telemetry, logs]);
+function FirebaseAnalytics({ stats }) {
+  if (!stats) return null;
 
   return (
     <div className="space-y-6 font-mono">
@@ -202,46 +104,8 @@ function FirebaseAnalytics({ telemetry, logs }) {
 // -------------------------------------------------------------
 // Contractors Tab (Revenue & Subscription Logic)
 // -------------------------------------------------------------
-function ContractorAnalytics({ contractors }) {
-  const stats = useMemo(() => {
-    let totalMRR = 0;
-    let trial = 0;
-    let basic = 0;
-    let pro = 0;
-    let ent = 0;
-    let activePaid = 0;
-    let churnRisk = 0;
-
-    const now = new Date();
-
-    contractors.forEach(c => {
-      const plan = (c.plan || 'trial').toLowerCase();
-      const amount = Number(c.subscriptionAmount) || 0;
-      
-      if (plan === 'trial') trial++;
-      if (plan === 'basic') basic++;
-      if (plan === 'professional') pro++;
-      if (plan === 'enterprise') ent++;
-
-      if (plan !== 'trial' && c.isPremium === true) {
-        totalMRR += amount;
-        activePaid++;
-      }
-
-      // Basic Churn check: If expiry is within 7 days
-      if (c.subscriptionExpiryDate) {
-        try {
-          const exp = typeof c.subscriptionExpiryDate === 'string' ? new Date(c.subscriptionExpiryDate) : c.subscriptionExpiryDate.toDate();
-          const diffDays = (exp - now) / (1000 * 60 * 60 * 24);
-          if (diffDays > 0 && diffDays <= 7) churnRisk++;
-        } catch(e) {}
-      }
-    });
-
-    const avgRev = activePaid > 0 ? (totalMRR / activePaid) : 0;
-
-    return { totalMRR, trial, basic, pro, ent, activePaid, avgRev, churnRisk, total: contractors.length };
-  }, [contractors]);
+function ContractorAnalytics({ stats }) {
+  if (!stats) return null;
 
   return (
     <div className="space-y-6 font-mono">
@@ -271,50 +135,7 @@ function ContractorAnalytics({ contractors }) {
 // -------------------------------------------------------------
 // AI Insights Tab
 // -------------------------------------------------------------
-function AIInsights({ contractors, telemetry }) {
-  const insights = useMemo(() => {
-    const list = [];
-    
-    // Rule 1: Churn
-    const now = new Date();
-    let expiringSoon = 0;
-    contractors.forEach(c => {
-      if (c.subscriptionExpiryDate) {
-        try {
-          const exp = typeof c.subscriptionExpiryDate === 'string' ? new Date(c.subscriptionExpiryDate) : c.subscriptionExpiryDate.toDate();
-          const diffDays = (exp - now) / (1000 * 60 * 60 * 24);
-          if (diffDays > 0 && diffDays <= 7) expiringSoon++;
-        } catch(e) {}
-      }
-    });
-
-    if (expiringSoon > 0) {
-      list.push({ type: 'danger', text: `${expiringSoon} companies show high churn probability (expiry within 7 days). Reach out for renewal.` });
-    }
-
-    // Rule 2: Feature Adoption
-    if (telemetry.length > 0) {
-      const payrollCount = telemetry.filter(t => (t.featureName || t.feature || '').toLowerCase().includes('payroll') || (t.screenName || '').toLowerCase().includes('payroll')).length;
-      if (payrollCount === 0) {
-        list.push({ type: 'warning', text: 'No Payroll feature usage detected in recent telemetry. Consider promoting this feature.' });
-      } else if (payrollCount > (telemetry.length * 0.2)) {
-        list.push({ type: 'success', text: 'Payroll usage is highly active, representing >20% of recent events.' });
-      }
-    }
-
-    // Rule 3: Trial Conversion
-    const trials = contractors.filter(c => (c.plan || 'trial').toLowerCase() === 'trial').length;
-    if (trials > 0) {
-      list.push({ type: 'info', text: `There are ${trials} active trial accounts. Monitor their engagement closely for upsell opportunities.` });
-    }
-
-    // Default if none
-    if (list.length === 0) {
-      list.push({ type: 'success', text: 'System looks healthy. No anomalies detected.' });
-    }
-
-    return list;
-  }, [contractors, telemetry]);
+function AIInsights({ insights }) {
 
   return (
     <div className="space-y-6 font-mono">

@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle, Clock, Search, Filter, Bug, ShieldAlert, Ac
 import { db } from '../../lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import ErrorDetailsModal from './components/ErrorDetailsModal';
+import { useTrackOpsMonitoring } from '../../context/TrackOpsMonitoringContext';
 
 export default function ErrorCenter() {
   const [errors, setErrors] = useState([]);
@@ -15,8 +16,14 @@ export default function ErrorCenter() {
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [moduleFilter, setModuleFilter] = useState('ALL');
+  const { isMonitoringActive } = useTrackOpsMonitoring();
 
   useEffect(() => {
+    if (!isMonitoringActive) {
+      setLoading(false);
+      return () => {};
+    }
+
     // Listen to recent 100 errors for the dashboard
     const q = query(collection(db, 'error_logs'), orderBy('createdAt', 'desc'), limit(100));
     let unsubscribe = () => {};
@@ -30,7 +37,7 @@ export default function ErrorCenter() {
       });
     } catch(e) { console.error('ErrorCenter listener initialization error:', e); }
     return () => { try { unsubscribe(); } catch(e) {} };
-  }, []);
+  }, [isMonitoringActive]);
 
   // Analytics Calculation
   const { criticalCount, unresolvedCount, fixedToday } = useMemo(() => {
@@ -101,8 +108,11 @@ export default function ErrorCenter() {
         </h1>
         <div className="flex space-x-4 font-mono text-sm">
           <div className="flex items-center text-gray-400">
-            <span className="w-2 h-2 rounded-full bg-trackops-green animate-pulse mr-2" />
-            Live Sync Active
+            {isMonitoringActive ? (
+              <><span className="w-2 h-2 rounded-full bg-trackops-green animate-pulse mr-2" />Live Sync Active</>
+            ) : (
+              <><span className="w-2 h-2 rounded-full bg-gray-600 mr-2" />Live Sync Paused</>
+            )}
           </div>
         </div>
       </div>

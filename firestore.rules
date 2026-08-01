@@ -329,5 +329,9 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    // ── trackops_config/ ─────────────────────────────────────────────────────
+    match /trackops_config/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
   }
 }

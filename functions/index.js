@@ -15,6 +15,11 @@ exports.vercelGetDeploymentFiles   = vercelFunctions.vercelGetDeploymentFiles;
 exports.vercelRedeploy             = vercelFunctions.vercelRedeploy;
 exports.vercelGetDeploymentAnalytics = vercelFunctions.vercelGetDeploymentAnalytics;
 
+// ─── TrackOps Dashboards & Analytics ──────────────────────────────────────────
+const trackopsFunctions = require('./trackops');
+exports.trackopsGetAnalytics     = trackopsFunctions.trackopsGetAnalytics;
+exports.trackopsGetBilling       = trackopsFunctions.trackopsGetBilling;
+exports.trackopsGetPaginatedLogs = trackopsFunctions.trackopsGetPaginatedLogs;
 
 // Must match Flutter app constant.
 const QR_SALT = 'TRACKIFY_QR_SECRET_2026';

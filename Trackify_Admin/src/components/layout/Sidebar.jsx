@@ -5,7 +5,7 @@ import {
   FileText, Users2, Calculator, UserCheck, ChevronLeft, Building2, Menu,
   Settings, LogOut, ChevronRight, Compass, Receipt, Palette, LifeBuoy,
   IndianRupee, TrendingUp, CreditCard, Activity, BarChart2, UserMinus,
-  Sparkles, Zap, FlaskConical,
+  Sparkles, Zap, FlaskConical, BookOpen,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useBranding } from '../../context/BrandingContext';
@@ -70,6 +70,7 @@ const CONTRACTOR_GROUPS = [
       { to: '/sites',       label: 'Sites',    icon: Building2, roles: ['contractor', 'supervisor'] },
       { to: '/site-costs',  label: 'Site Costs', icon: Calculator, roles: ['contractor'] },
       { to: '/expenses',    label: 'Expenses', icon: Receipt,   roles: ['contractor'] },
+      { to: '/clients',     label: 'Client Ledger', icon: BookOpen, roles: ['contractor'] },
       { to: '/support-requests', label: 'Support', icon: LifeBuoy, roles: ['contractor', 'supervisor'] },
     ],
   },

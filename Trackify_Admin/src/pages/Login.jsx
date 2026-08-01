@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { Lock, Mail, HardHat, Users, TrendingUp, Shield, Compass } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { auth, db } from '../lib/firebase';
@@ -48,6 +48,23 @@ const Login = () => {
           ? 'No account with that email'
           : 'Sign in failed. Please try again.';
       toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      toast.error('Please enter your email address first to reset password');
+      return;
+    }
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      toast.success('Password reset email sent! Check your inbox.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to send reset email. Ensure your email is correct.');
     } finally {
       setLoading(false);
     }
@@ -144,7 +161,10 @@ const Login = () => {
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium uppercase tracking-widest text-text-muted mb-1.5">Password</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-medium uppercase tracking-widest text-text-muted">Password</label>
+                <button type="button" onClick={handleForgotPassword} className="text-[11px] font-medium text-gold hover:underline">Forgot password?</button>
+              </div>
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                 <Input

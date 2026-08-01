@@ -124,13 +124,13 @@ export async function generatePDF({
     autoTable(doc, {
       startY: finalY,
       body: totalsData,
-      theme: 'plain',
+      theme: 'grid',
       styles: { 
-        fontSize: 10,
-        cellPadding: { top: 3, right: 4, bottom: 3, left: 4 },
+        fontSize: 9,
+        cellPadding: 3,
       },
       columnStyles: {
-        0: { fontStyle: 'bold', textColor: '#4B5563', halign: 'right' },
+        0: { fontStyle: 'bold', textColor: '#4B5563', halign: 'right', fillColor: '#F9FAFB' },
         1: { fontStyle: 'bold', textColor: '#111827', halign: 'right', cellWidth: 40 }
       },
       margin: { left: doc.internal.pageSize.width - 100 - 14 }, // Right align table (width 100, right margin 14)
@@ -138,18 +138,27 @@ export async function generatePDF({
       didParseCell: function (data) {
         // Highlight the last row (Grand Total)
         if (data.row.index === totalsData.length - 1) {
-          data.cell.styles.fillColor = '#F3F4F6'; // Light gray background
-          data.cell.styles.textColor = '#111827'; // Dark text
-          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = themeColor;
+          data.cell.styles.textColor = '#FFFFFF';
         }
       }
     });
   }
   
-  // Footer
+  // Footer & Watermark
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
+    
+    // Watermark
+    doc.setFontSize(40);
+    doc.setTextColor(240, 240, 240); // Very light gray for watermark
+    doc.text(branding.companyName || 'Trackify', doc.internal.pageSize.width / 2, doc.internal.pageSize.height / 2, {
+      align: 'center',
+      angle: 45
+    });
+
+    // Footer text
     doc.setFontSize(8);
     doc.setTextColor('#9CA3AF');
     const footerY = doc.internal.pageSize.height - 10;

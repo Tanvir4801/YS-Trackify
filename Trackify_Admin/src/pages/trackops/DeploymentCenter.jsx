@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getApp } from 'firebase/app';
+import { useTrackOpsVercelDashboard, useTrackOpsVercelAnalytics, useTrackOpsVercelLogs, useTrackOpsVercelFiles } from '../../lib/services/trackopsQueryService';
 
 // ─── Firebase Functions SDK ───────────────────────────────────────────────────
 const _fns = getFunctions(getApp(), 'us-central1');
@@ -33,63 +34,7 @@ function callFn(name) {
   return httpsCallable(_fns, name, { timeout: 30000 });
 }
 
-// ─── useCloudFn ───────────────────────────────────────────────────────────────
-// Key design: `loading` is only TRUE on the very first fetch (when data===null).
-// All subsequent background refreshes silently update data in place —
-// no skeleton flips, no layout shifts, no scroll jumps.
-function useCloudFn(fnName, params = {}, intervalMs = 5000) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);   // true ONLY until first successful fetch
-  const [error, setError] = useState(null);
-  const [updatedAt, setUpdatedAt] = useState(null);
-  const alive = useRef(true);
-  const hasData = useRef(false);                   // tracks if we've ever received real data
-  const paramsRef = useRef(params);
-  paramsRef.current = params;
-
-  const run = useCallback(async () => {
-    if (!alive.current) return;
-    try {
-      const fn = callFn(fnName);
-      const result = await fn(paramsRef.current);
-      if (!alive.current) return;
-      if (result.data?.success) {
-        setData(result.data.data);
-        setError(null);
-        setUpdatedAt(new Date());
-        hasData.current = true;
-      } else {
-        // Don't clobber existing data on a transient error during background refresh
-        if (!hasData.current) {
-          setError(result.data?.error || 'Unknown error from Cloud Function');
-        }
-      }
-    } catch (e) {
-      if (!alive.current) return;
-      const msg = e?.details?.message || e?.message || 'Cloud Function call failed';
-      // Only show error banner if we've never had data (first load failure)
-      if (!hasData.current) setError(msg);
-    } finally {
-      // Only clear the loading spinner after the FIRST attempt — never again
-      if (alive.current && !hasData.current) {
-        setLoading(false);
-      }
-    }
-  }, [fnName]);
-
-  useEffect(() => {
-    alive.current = true;
-    hasData.current = false;
-    run();
-    const id = setInterval(run, intervalMs);
-    return () => {
-      alive.current = false;
-      clearInterval(id);
-    };
-  }, [run, intervalMs]);
-
-  return { data, loading, error, updatedAt, refresh: run };
-}
+// ─── useCloudFn (REMOVED: Replaced by React Query) ─────────────────────────────
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -521,7 +466,7 @@ function Charts({ analyticsData, loading }) {
                 {type === 'bar' ? (
                   <BarChart data={chartData}>
                     <Bar dataKey={key} fill={color} radius={[2, 2, 0, 0]} />
-                    <Tooltip {...tipStyle} />
+                    <Tooltip {...tipStyle} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
                   </BarChart>
                 ) : type === 'area' ? (
                   <AreaChart data={chartData}>
@@ -656,21 +601,19 @@ function DepHistory({ deployments, loading, prodId }) {
 
 // ─── BUILD LOGS TERMINAL ──────────────────────────────────────────────────────
 function LogsTerminal({ deploymentId }) {
-  const { data, loading, error, refresh } = useCloudFn(
-    'vercelGetDeploymentLogs',
-    { deploymentId: deploymentId || '' },
-    5000
-  );
+  const { data, isLoading: loading, error, refetch: refresh } = useTrackOpsVercelLogs(deploymentId);
 
   const [search, setSearch] = useState('');
   const [filt, setFilt] = useState('all');
   const [autoScroll, setAutoScroll] = useState(true);
-  const bottom = useRef(null);
+  const containerRef = useRef(null);
 
   const events = data?.events || [];
 
   useEffect(() => {
-    if (autoScroll) bottom.current?.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
   }, [events, autoScroll]);
 
   const shown = events.filter((ev) => {
@@ -724,7 +667,7 @@ function LogsTerminal({ deploymentId }) {
           </button>
         ))}
       </div>
-      <div className="bg-[#030712] rounded-xl border border-trackops-border/40 h-80 overflow-y-auto p-4 font-mono text-xs space-y-0.5">
+      <div ref={containerRef} className="bg-[#030712] rounded-xl border border-trackops-border/40 h-80 overflow-y-auto p-4 font-mono text-xs space-y-0.5 scroll-smooth">
         <div className="flex items-center gap-2 pb-3 mb-2 border-b border-white/5">
           <span className="w-2.5 h-2.5 rounded-full bg-trackops-red" />
           <span className="w-2.5 h-2.5 rounded-full bg-trackops-amber" />
@@ -748,7 +691,6 @@ function LogsTerminal({ deploymentId }) {
         })}
         {!loading && shown.length === 0 && events.length > 0 && <div className="text-gray-700">No entries match your filter.</div>}
         {!loading && events.length === 0 && !error && <div className="text-gray-700">No build events found for this deployment.</div>}
-        <div ref={bottom} />
       </div>
     </Glass>
   );
@@ -756,11 +698,7 @@ function LogsTerminal({ deploymentId }) {
 
 // ─── FUNCTIONS PANEL ──────────────────────────────────────────────────────────
 function FunctionsPanel({ deploymentId }) {
-  const { data, loading } = useCloudFn(
-    'vercelGetDeploymentFiles',
-    { deploymentId: deploymentId || '' },
-    60000
-  );
+  const { data, isLoading: loading } = useTrackOpsVercelFiles(deploymentId);
 
   const fns = data?.functions || [];
   const metrics = [
@@ -1112,13 +1050,12 @@ function AIRecs() {
 // MAIN PAGE EXPORT
 // ═════════════════════════════════════════════════════════════════════════════
 export default function DeploymentCenter() {
-  // Primary data — project + deployments + domains (single Cloud Function call, every 5s)
-  const { data: full, loading: fullLoading, error: fullErr, updatedAt, refresh: refreshFull } =
-    useCloudFn('vercelGetProjectFull', {}, 5000);
+  // Primary data — project + deployments + domains
+  const { data: full, isLoading: fullLoading, error: fullErr, dataUpdatedAt, refetch: refreshFull } = useTrackOpsVercelDashboard();
+  const updatedAt = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
 
-  // Analytics — chart data (separate call, every 30s)
-  const { data: analyticsData, loading: analyticsLoading, refresh: refreshAnalytics } =
-    useCloudFn('vercelGetDeploymentAnalytics', { projectId: full?.project?.id }, 30000);
+  // Analytics — chart data
+  const { data: analyticsData, isLoading: analyticsLoading, refetch: refreshAnalytics } = useTrackOpsVercelAnalytics(full?.project?.id);
 
   const project = full?.project || null;
   const deployments = full?.deployments || [];

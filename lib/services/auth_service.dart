@@ -73,6 +73,20 @@ class AuthService {
     }
   }
 
+  Future<AuthResult> sendPasswordResetEmail(String email) async {
+    final cleanEmail = email.trim();
+    if (cleanEmail.isEmpty) {
+      return AuthResult.error('Please enter your email address first.');
+    }
+    try {
+      await _auth.sendPasswordResetEmail(email: cleanEmail);
+      return AuthResult.success(uid: '', role: '', name: '');
+    } catch (e) {
+      debugPrint('sendPasswordResetEmail error: $e');
+      return AuthResult.error('Failed to send reset email. Ensure your email is correct.');
+    }
+  }
+
   Future<void> _logFailedAttempt(String email, String reason) async {
     try {
       await _db.collection('security_events').add({

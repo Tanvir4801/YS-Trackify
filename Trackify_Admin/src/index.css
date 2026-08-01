@@ -5,6 +5,7 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: dark;
   /* Primary backgrounds */
   --bg-primary:     #0A0E1A;
   --bg-secondary:   #111827;

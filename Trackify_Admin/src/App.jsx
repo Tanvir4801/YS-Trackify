@@ -10,6 +10,7 @@ import { useAuthStore } from './store/authStore';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
 import TrackOpsLayout from './components/layout/TrackOpsLayout';
+import { TrackOpsMonitoringProvider } from './context/TrackOpsMonitoringContext';
 import LabsLayout from './components/layout/LabsLayout';
 import RoleRoute from './components/shared/RoleRoute';
 import ErrorBoundary from './components/shared/ErrorBoundary';
@@ -33,6 +34,11 @@ import Sites from './pages/Sites';
 import Expenses from './pages/Expenses';
 import SiteCosts from './pages/SiteCosts';
 import TempLabours from './pages/TempLabours';
+
+// Client Ledger
+import ClientList from './pages/clients/ClientList';
+import ClientProfile from './pages/clients/ClientProfile';
+import ProjectDetails from './pages/clients/ProjectDetails';
 
 // TrackOps Pages
 import MissionDashboard from './pages/trackops/MissionDashboard';
@@ -234,18 +240,18 @@ export default function App() {
         <Route path="/login" element={<Login />} />
 
         {/* ── TrackOps Routes (/trackops/*) ────────────────────── */}
-        <Route element={<ProtectedRoute><TrackOpsLayout /></ProtectedRoute>}>
-          <Route path="/trackops/dashboard" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><MissionDashboard /></RoleRoute>} />
-          <Route path="/trackops/live-users" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><LiveUsers /></RoleRoute>} />
-          <Route path="/trackops/errors" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><ErrorCenter /></RoleRoute>} />
-          <Route path="/trackops/mission-logs" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><MissionLogs /></RoleRoute>} />
-          <Route path="/trackops/health" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><ProductHealth /></RoleRoute>} />
-          <Route path="/trackops/analytics" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><UsageAnalytics /></RoleRoute>} />
-          <Route path="/trackops/support" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><SupportCenter /></RoleRoute>} />
-          <Route path="/trackops/remote-actions" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><RemoteActions /></RoleRoute>} />
-          <Route path="/trackops/security" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><SecurityCenter /></RoleRoute>} />
-          <Route path="/trackops/roadmap" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><Roadmap /></RoleRoute>} />
-          <Route path="/trackops/deployment" element={<RoleRoute allowedRoles={['trackops']} fallback="/dashboard"><DeploymentCenter /></RoleRoute>} />
+        <Route element={<ProtectedRoute><TrackOpsMonitoringProvider><TrackOpsLayout /></TrackOpsMonitoringProvider></ProtectedRoute>}>
+          <Route path="/trackops/dashboard" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><MissionDashboard /></RoleRoute>} />
+          <Route path="/trackops/live-users" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><LiveUsers /></RoleRoute>} />
+          <Route path="/trackops/errors" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><ErrorCenter /></RoleRoute>} />
+          <Route path="/trackops/mission-logs" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><MissionLogs /></RoleRoute>} />
+          <Route path="/trackops/health" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><ProductHealth /></RoleRoute>} />
+          <Route path="/trackops/analytics" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><UsageAnalytics /></RoleRoute>} />
+          <Route path="/trackops/support" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><SupportCenter /></RoleRoute>} />
+          <Route path="/trackops/remote-actions" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><RemoteActions /></RoleRoute>} />
+          <Route path="/trackops/security" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><SecurityCenter /></RoleRoute>} />
+          <Route path="/trackops/roadmap" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><Roadmap /></RoleRoute>} />
+          <Route path="/trackops/deployment" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><DeploymentCenter /></RoleRoute>} />
         </Route>
 
         <Route element={<ProtectedRoute><LabsLayout /></ProtectedRoute>}>
@@ -297,6 +303,10 @@ export default function App() {
           <Route path="/sites"       element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><Sites /></RoleRoute>} />
           <Route path="/expenses"    element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Expenses /></RoleRoute>} />
           <Route path="/site-costs"  element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><SiteCosts /></RoleRoute>} />
+          
+          <Route path="/clients"     element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><ClientList /></RoleRoute>} />
+          <Route path="/clients/:id" element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><ClientProfile /></RoleRoute>} />
+          <Route path="/clients/:clientId/projects/:projectId" element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><ProjectDetails /></RoleRoute>} />
 
           <Route index element={<NavigateByRole />} />
           <Route path="*" element={<NavigateByRole />} />

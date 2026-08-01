@@ -1,61 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { GitBranch, Search, Filter, Download, ServerCrash, Shield, Briefcase, Zap, User, AlertTriangle, Pin } from 'lucide-react';
-import { db } from '../../lib/firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import React, { useState, useMemo } from 'react';
+import { GitBranch, Search, Filter, Download, ServerCrash, Shield, Briefcase, Zap, User, AlertTriangle, Pin, RefreshCw } from 'lucide-react';
+import { useInfiniteTrackOpsLogs } from '../../lib/services/trackopsQueryService';
 
 const MODULES = ['All', 'UserLogs', 'BusinessLogs', 'SecurityLogs', 'ProductLogs', 'SystemLogs'];
 const SEVERITIES = ['All', 'Info', 'Success', 'Warning', 'Error', 'Critical'];
 
 export default function MissionLogs() {
-  const [logs, setLogs] = useState([]);
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState('All');
   const [severityFilter, setSeverityFilter] = useState('All');
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Listen to latest 200 operational events
-    const q = query(collection(db, 'mission_logs'), orderBy('timestamp', 'desc'), limit(200));
-    
-    let unsub = () => {};
-    try {
-      unsub = onSnapshot(q, (snapshot) => {
-        try {
-          const fetchedLogs = [];
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isFetchingNextPage,
+    status
+  } = useInfiniteTrackOpsLogs('mission_logs');
 
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            fetchedLogs.push({
-              id: doc.id,
-              time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : 'Pending...',
-              rawDate: data.timestamp ? data.timestamp.toDate() : new Date(),
-              severity: data.severity || 'Info',
-              module: data.module || 'SystemLogs',
-              action: data.action || 'Unknown Event',
-              companyId: data.companyId || 'N/A',
-              userId: data.userId || 'System',
-              role: data.role || 'Unknown',
-              details: data.details || ''
-            });
-          });
+  const logs = useMemo(() => {
+    if (!data) return [];
+    return data.pages.flatMap(page => 
+      page.logs.map(log => ({
+        id: log.id,
+        time: log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : 'Pending...',
+        rawDate: log.timestamp ? new Date(log.timestamp) : new Date(),
+        severity: log.severity || 'Info',
+        module: log.module || 'SystemLogs',
+        action: log.action || 'Unknown Event',
+        companyId: log.companyId || 'N/A',
+        userId: log.userId || 'System',
+        role: log.role || 'Unknown',
+        details: log.details || ''
+      }))
+    );
+  }, [data]);
 
-          setLogs(fetchedLogs);
-          setLoading(false);
-        } catch (e) {
-          console.warn('Error processing snapshot in MissionLogs:', e);
-          setLoading(false);
-        }
-      }, (err) => {
-        console.warn('onSnapshot error in MissionLogs:', err);
-        setLoading(false);
-      });
-    } catch (e) {
-      console.warn('Failed to start onSnapshot in MissionLogs:', e);
-      setLoading(false);
-    }
-
-    return () => { try { unsub(); } catch(e) {} };
-  }, []);
+  const loading = status === 'pending';
 
   const handleExport = () => {
     if (filteredLogs.length === 0) return;
@@ -223,6 +205,18 @@ export default function MissionLogs() {
                 </div>
               </div>
             ))
+          )}
+          {hasNextPage && (
+            <div className="flex justify-center pt-4">
+              <button 
+                onClick={() => fetchNextPage()} 
+                disabled={isFetchingNextPage}
+                className="flex items-center px-4 py-2 bg-trackops-navy border border-trackops-border rounded text-trackops-green text-sm hover:border-trackops-green transition-colors disabled:opacity-50"
+              >
+                {isFetchingNextPage ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {isFetchingNextPage ? 'Loading more...' : 'Load More'}
+              </button>
+            </div>
           )}
         </div>
       </div>
