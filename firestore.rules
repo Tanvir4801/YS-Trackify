@@ -192,6 +192,45 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    // ── clients/ ─────────────────────────────────────────────────────────────
+
+    match /clients/{clientId} {
+      allow read: if isSuperAdmin() || isInTenant(resource.data.contractorId);
+      allow create: if isSuperAdmin() || canManageTenant(request.resource.data.contractorId);
+      allow update: if isSuperAdmin() || canManageTenant(resource.data.contractorId);
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── projects/ ────────────────────────────────────────────────────────────
+
+    match /projects/{projectId} {
+      allow read: if isSuperAdmin() || isInTenant(resource.data.contractorId);
+      allow create: if isSuperAdmin() || canManageTenant(request.resource.data.contractorId);
+      allow update: if isSuperAdmin() || canManageTenant(resource.data.contractorId);
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── payment_milestones/ ──────────────────────────────────────────────────
+
+    match /payment_milestones/{milestoneId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── client_payments/ ─────────────────────────────────────────────────────
+
+    match /client_payments/{paymentId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── project_documents/ ───────────────────────────────────────────────────
+
+    match /project_documents/{docId} {
+      allow read: if isSuperAdmin() || isInTenant(resource.data.contractorId);
+      allow create: if isSuperAdmin() || canManageTenant(request.resource.data.contractorId);
+      allow update: if isSuperAdmin() || canManageTenant(resource.data.contractorId);
+      allow delete: if isSuperAdmin();
+    }
+
     // ── temp_labour_entries/ ─────────────────────────────────────────────────
 
     match /temp_labour_entries/{entryId} {
