@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd Trackify_Admin && npm install && npm run build",
+  "buildCommand": "cd Trackify_Admin && npm install --include=dev && npm run build",
   "outputDirectory": "Trackify_Admin/dist",
   "framework": "vite",
   "rewrites": [
