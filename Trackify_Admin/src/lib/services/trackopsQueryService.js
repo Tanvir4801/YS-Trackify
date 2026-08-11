@@ -1,7 +1,39 @@
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import { useTrackOpsMonitoring } from '../../context/TrackOpsMonitoringContext';
+
+// Hook to detect user inactivity (5 minutes)
+export function useUserIdle() {
+  const [isIdle, setIsIdle] = useState(false);
+
+  useEffect(() => {
+    let timeout;
+    const resetTimer = () => {
+      setIsIdle(false);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setIsIdle(true), 5 * 60 * 1000);
+    };
+
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('scroll', resetTimer);
+    window.addEventListener('click', resetTimer);
+
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('scroll', resetTimer);
+      window.removeEventListener('click', resetTimer);
+    };
+  }, []);
+
+  return isIdle;
+}
 
 // Define endpoints
 const getAnalyticsFn = httpsCallable(functions, 'trackopsGetAnalytics');
@@ -104,15 +136,18 @@ export function useInfiniteTrackOpsLogs(collectionName) {
  */
 export function useTrackOpsVercelDashboard() {
   const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = isMonitoringActive && !isIdle;
+
   return useQuery({
     queryKey: ['trackops', 'vercel', 'dashboard'],
     queryFn: async () => {
       const res = await vercelGetProjectFullFn({});
       return res.data?.data || null;
     },
-    refetchInterval: isMonitoringActive ? 5000 : false,
+    refetchInterval: active ? 5000 : false,
     staleTime: 5000,
-    enabled: isMonitoringActive,
+    enabled: active,
   });
 }
 
@@ -122,15 +157,18 @@ export function useTrackOpsVercelDashboard() {
  */
 export function useTrackOpsVercelAnalytics(projectId) {
   const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = !!projectId && isMonitoringActive && !isIdle;
+
   return useQuery({
     queryKey: ['trackops', 'vercel', 'analytics', projectId],
     queryFn: async () => {
       const res = await vercelGetAnalyticsFn({ projectId });
       return res.data?.data || null;
     },
-    refetchInterval: !isMonitoringActive || !projectId ? false : 30000,
+    refetchInterval: active ? 30000 : false,
     staleTime: 30000,
-    enabled: !!projectId && isMonitoringActive,
+    enabled: active,
   });
 }
 
@@ -140,15 +178,18 @@ export function useTrackOpsVercelAnalytics(projectId) {
  */
 export function useTrackOpsVercelLogs(deploymentId) {
   const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = !!deploymentId && isMonitoringActive && !isIdle;
+
   return useQuery({
     queryKey: ['trackops', 'vercel', 'logs', deploymentId],
     queryFn: async () => {
       const res = await vercelGetLogsFn({ deploymentId });
       return res.data?.data || null;
     },
-    refetchInterval: !isMonitoringActive || !deploymentId ? false : 5000,
+    refetchInterval: active ? 5000 : false,
     staleTime: 5000,
-    enabled: !!deploymentId && isMonitoringActive,
+    enabled: active,
   });
 }
 
@@ -158,14 +199,17 @@ export function useTrackOpsVercelLogs(deploymentId) {
  */
 export function useTrackOpsVercelFiles(deploymentId) {
   const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = !!deploymentId && isMonitoringActive && !isIdle;
+
   return useQuery({
     queryKey: ['trackops', 'vercel', 'files', deploymentId],
     queryFn: async () => {
       const res = await vercelGetFilesFn({ deploymentId });
       return res.data?.data || null;
     },
-    refetchInterval: !isMonitoringActive || !deploymentId ? false : 60000,
+    refetchInterval: active ? 60000 : false,
     staleTime: 60000,
-    enabled: !!deploymentId && isMonitoringActive,
+    enabled: active,
   });
 }

@@ -3,8 +3,10 @@ import { Server, Activity, Database, HardDrive, Key, Bell, Cpu, CheckCircle, Ale
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
 import telemetryAggregator from '../../lib/services/telemetryAggregator.service';
+import { useTrackOpsMonitoring } from '../../context/TrackOpsMonitoringContext';
 
 export default function ProductHealth() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
   const [infraMetrics, setInfraMetrics] = useState([]);
   const [serviceMetrics, setServiceMetrics] = useState([]);
   const [liveUsers, setLiveUsers] = useState([]);
@@ -12,6 +14,11 @@ export default function ProductHealth() {
   const [contractorMap, setContractorMap] = useState({});
 
   useEffect(() => {
+    if (!isMonitoringActive) {
+      telemetryAggregator.stop();
+      return;
+    }
+
     // Start generating real aggregated telemetry metrics
     telemetryAggregator.start();
 
@@ -76,7 +83,7 @@ export default function ProductHealth() {
       try { healthUnsub(); } catch(e) {}
       try { contractorsUnsub(); } catch(e) {}
     };
-  }, []);
+  }, [isMonitoringActive]);
 
   const getStatusIcon = (status) => {
     if (status === 'RED') return <CloudLightning className="w-5 h-5 text-trackops-red animate-bounce" />;

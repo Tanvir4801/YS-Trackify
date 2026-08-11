@@ -60,8 +60,6 @@ class PaymentService {
         isSynced: false,
       );
 
-      await _paymentBox.put(dirty.id, dirty);
-
       try {
         final docRef = await _firestore.collection('payments').add({
           'id': '',
@@ -75,7 +73,7 @@ class PaymentService {
           'notes': dirty.notes,
           'isSynced': true,
           'syncedAt': FieldValue.serverTimestamp(),
-        });
+        }).timeout(const Duration(seconds: 15));
         _logWrite('payments', 'ADD', docRef.id);
 
         await docRef.update({'id': docRef.id});
@@ -96,9 +94,8 @@ class PaymentService {
         await _paymentBox.put(dirty.id, dirty);
         return Result.success(dirty);
       } catch (e) {
-        debugPrint('addPayment firestore write failed, queued for sync: $e');
-        unawaited(_requestSync?.call());
-        return Result.success(dirty);
+        debugPrint('addPayment firestore write failed: $e');
+        return Result.err(AppFailure(message: 'Failed to record payment online: $e'));
       }
     } catch (e, st) {
       debugPrint('addPayment failed: $e');

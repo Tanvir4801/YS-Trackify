@@ -10,6 +10,7 @@ import '../models/labour_model.dart';
 import 'firestore_paths.dart';
 import 'session_service.dart';
 import 'rtdb_service.dart';
+import 'connectivity_service.dart';
 
 class AttendanceService {
   AttendanceService({
@@ -166,17 +167,42 @@ class AttendanceService {
           ? '${attendance.labourId}_${attendance.date}_${attendance.siteId}' 
           : '${attendance.labourId}_${attendance.date}';
     }
-    attendance.isSynced = false;
-    await _attendanceBox.put(attendance.id, attendance);
 
+    final isOnline = await ConnectivityService().isOnline();
+
+    if (isOnline) {
+      // ONLINE: Push to Firestore, then cache as synced
+      await pushToFirestore(
+        attendance: attendance,
+        markedVia: markedVia,
+        uid: uid,
+        contractorId: contractorId,
+      );
+      attendance.isSynced = true;
+      await _attendanceBox.put(attendance.id, attendance);
+    } else {
+      // OFFLINE: Cache as unsynced for Deep Offline Queue
+      attendance.isSynced = false;
+      await _attendanceBox.put(attendance.id, attendance);
+      // SyncEngine will pick this up when back online
+    }
+  }
+
+  /// Extracted logic to push an Attendance record to Firestore idempotently
+  /// (Using SetOptions(merge: true) to avoid duplicates)
+  Future<void> pushToFirestore({
+    required Attendance attendance,
+    required String markedVia,
+    required String uid,
+    required String contractorId,
+  }) async {
     try {
-      // Flat write: include markedVia so admin's flat-only readers see it
       final flatPayload = {
         ...attendance.toFirestore(),
         'markedVia': markedVia,
       };
       final docRef = _db.collection('attendance').doc(attendance.id);
-      await docRef.set(flatPayload, SetOptions(merge: true));
+      await docRef.set(flatPayload, SetOptions(merge: true)).timeout(const Duration(seconds: 15));
       _logWrite('attendance', 'SET', docRef.id);
       attendance.firestoreId = docRef.id;
 
@@ -187,9 +213,6 @@ class AttendanceService {
         siteId: attendance.siteId,
       );
 
-      // For manual marks: exclude markedVia/markedAt from the mergeFields list
-      // so an existing QR-scanned record keeps its original markedVia:'qr'.
-      // The lastModifiedVia field always reflects the most recent action.
       final nestedPayload = <String, dynamic>{
         'labourId':          attendance.labourId,
         'contractorId':      contractorId,
@@ -207,17 +230,15 @@ class AttendanceService {
       };
 
       if (markedVia != 'manual') {
-        // QR / offline_qr: write markedVia + markedAt (full merge)
         nestedPayload['markedVia'] = markedVia;
         nestedPayload['markedAt'] = FieldValue.serverTimestamp();
-        await nestedRef.set(nestedPayload, SetOptions(merge: true));
+        await nestedRef.set(nestedPayload, SetOptions(merge: true)).timeout(const Duration(seconds: 15));
       } else {
-        // Manual: only update the listed fields — preserves existing markedVia:'qr'
         await nestedRef.set(nestedPayload, SetOptions(mergeFields: [
           'labourId', 'contractorId', 'supervisorId', 'siteId',
           'supervisorRef', 'date', 'status', 'overtimeHours', 'remark',
           'wageAtTime', 'lastModifiedVia', 'lastModifiedAt', 'legacyId',
-        ]));
+        ])).timeout(const Duration(seconds: 15));
       }
       _logWrite('attendance/$contractorId/dates/${attendance.date}/records', 'SET', attendance.labourId);
 
@@ -225,11 +246,8 @@ class AttendanceService {
         'date':         attendance.date,
         'contractorId': contractorId,
         'updatedAt':    FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 15));
 
-      attendance.isSynced = true;
-      await _attendanceBox.put(attendance.id, attendance);
-      
       // Update RTDB Live Dashboard
       await RtdbService.instance.syncDashboardStats(
         contractorId: contractorId,
@@ -237,7 +255,7 @@ class AttendanceService {
         date: attendance.date,
       );
     } catch (e) {
-      debugPrint('Attendance sync failed: $e');
+      debugPrint('Attendance pushToFirestore failed: $e');
       rethrow;
     }
   }

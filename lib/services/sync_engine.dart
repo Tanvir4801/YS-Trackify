@@ -13,6 +13,7 @@ import '../models/payment_model.dart';
 import 'connectivity_service.dart';
 import 'firestore_paths.dart';
 import 'session_service.dart';
+import 'attendance_service.dart';
 
 class SyncEngine {
   SyncEngine({
@@ -85,6 +86,7 @@ class SyncEngine {
       }
 
       final pendingAttendance = _attendanceBox.values.where((x) => !x.isSynced).toList();
+      final attendanceService = AttendanceService();
 
       for (final attendance in pendingAttendance) {
         if (attendance.supervisorId.isEmpty) {
@@ -97,33 +99,22 @@ class SyncEngine {
           attendance.id = '${attendance.labourId}_${attendance.date}';
         }
 
-
-
         await retryWithBackoff(() async {
           final now = DateTime.now();
 
-          final docRef = _firestore.collection('attendance').doc(attendance.id);
-          await docRef.set(attendance.toFirestore(), SetOptions(merge: true));
-          _logWrite('attendance', 'SET_MERGE', docRef.id);
-          
-          if (attendance.contractorId.isNotEmpty) {
-            final nestedRef = FirestorePaths.attendanceRecordRef(
-                attendance.contractorId, 
-                attendance.date, 
-                attendance.labourId,
-                siteId: attendance.siteId);
-            await nestedRef.set(attendance.toFirestore(), SetOptions(merge: true));
-            _logWrite('attendance_nested', 'SET_MERGE', nestedRef.id);
-          }
-          
-          attendance.firestoreId = docRef.id;
+          // Safely push to Firestore using the central idempotent logic
+          await attendanceService.pushToFirestore(
+            attendance: attendance,
+            markedVia: attendance.status.name == 'present' ? 'manual_sync' : 'sync', // Fallback for markedVia
+            uid: uid,
+            contractorId: attendance.contractorId,
+          );
 
           attendance
             ..syncedAt = now
             ..lastSyncedAt = now
             ..isSynced = true;
           await attendance.save();
-
         });
       }
 

@@ -30,7 +30,7 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
   static const int _totalSeconds = 60;
 
   String _qrPayload = '';
-  int _secondsLeft = _totalSeconds;
+  final ValueNotifier<int> _secondsLeftNotifier = ValueNotifier(_totalSeconds);
   
   String _resolvedLabourId     = '';
   String _resolvedContractorId = '';
@@ -128,8 +128,8 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() => _secondsLeft -= 1);
-      if (_secondsLeft <= 0) _doRefresh();
+      _secondsLeftNotifier.value -= 1;
+      if (_secondsLeftNotifier.value <= 0) _doRefresh();
     });
   }
 
@@ -157,7 +157,7 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
       labourName:   _resolvedLabourName,
       lifetime:     const Duration(seconds: _totalSeconds),
     );
-    _secondsLeft = _totalSeconds;
+    _secondsLeftNotifier.value = _totalSeconds;
   }
 
   @override
@@ -165,6 +165,7 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
     _ticker?.cancel();
     _spinCtrl.dispose();
     _fadeCtrl.dispose();
+    _secondsLeftNotifier.dispose();
     super.dispose();
   }
 
@@ -210,9 +211,14 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
                   children: [
                     const Icon(Icons.timer_rounded, color: AppColors.textTertiary, size: 16),
                     const SizedBox(width: 6),
-                    Text(
-                      'Refreshing in ${_secondsLeft}s',
-                      style: const TextStyle(color: AppColors.textTertiary, fontSize: 14, fontWeight: FontWeight.bold),
+                    ValueListenableBuilder<int>(
+                      valueListenable: _secondsLeftNotifier,
+                      builder: (context, val, child) {
+                        return Text(
+                          'Refreshing in ${val}s',
+                          style: const TextStyle(color: AppColors.textTertiary, fontSize: 14, fontWeight: FontWeight.bold),
+                        );
+                      }
                     ),
                   ],
                 ),

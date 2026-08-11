@@ -65,8 +65,17 @@ class AppRoutes {
 
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await ErrorLoggerService.instance.initialize();
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await ErrorLoggerService.instance.initialize();
+    
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      ErrorLoggerService.instance.logError(
+        error: details.exceptionAsString(),
+        stackTrace: details.stack,
+      );
+    };
 
   try {
     await Firebase.initializeApp(
@@ -80,7 +89,29 @@ Future<void> main() async {
     );
   } catch (e) {
     if (!e.toString().contains('duplicate-app')) {
-      rethrow;
+      ErrorLoggerService.instance.logError(error: 'Startup failure', stackTrace: StackTrace.fromString(e.toString()));
+      runApp(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                  const SizedBox(height: 16),
+                  const Text('Trackify could not connect to the service.', style: TextStyle(fontSize: 16)),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {}, 
+                    child: const Text('Please check your internet and restart the app.'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
     }
   }
 
@@ -191,6 +222,10 @@ Future<void> main() async {
       child: const ProviderScope(child: TrackifyApp()),
     ),
   );
+  }, (error, stackTrace) {
+    debugPrint('Global unhandled error: $error');
+    ErrorLoggerService.instance.logError(error: error.toString(), stackTrace: StackTrace.fromString(stackTrace.toString()));
+  });
 }
 
 class TrackifyApp extends ConsumerStatefulWidget {

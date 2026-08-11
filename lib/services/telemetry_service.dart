@@ -7,12 +7,23 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'session_service.dart';
 
 class TelemetryService {
-  TelemetryService._();
+  TelemetryService._() {
+    _initMonitoring();
+  }
   static final TelemetryService instance = TelemetryService._();
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   String? _sessionId;
   Map<String, String>? _deviceCache;
+  bool _isMonitoringEnabled = false;
+
+  void _initMonitoring() {
+    _db.collection('trackops_config').doc('monitoring').snapshots().listen((snap) {
+      if (snap.exists) {
+        _isMonitoringEnabled = snap.data()?['enabled'] == true;
+      }
+    });
+  }
 
   String get sessionId {
     if (_sessionId == null) {
@@ -64,6 +75,8 @@ class TelemetryService {
     Map<String, dynamic>? additionalMetadata,
   }) async {
     try {
+      if (!_isMonitoringEnabled) return;
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 

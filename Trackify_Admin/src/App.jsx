@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, where, setDoc, deleteDoc } from 'firebase/firestore';
@@ -19,66 +19,66 @@ import TelemetryTracker from './components/shared/TelemetryTracker';
 // Contractor pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Labours from './pages/Labours';
-import LabourProfile from './pages/LabourProfile';
-import Attendance from './pages/Attendance';
-import Payments from './pages/Payments';
-import Users from './pages/Users';
-import Reports from './pages/Reports';
-import Payroll from './pages/Payroll';
-import Supervisors from './pages/Supervisors';
-import Settings from './pages/Settings';
-import BrandingSettings from './pages/BrandingSettings';
-import SupportRequests from './pages/SupportRequests';
-import Sites from './pages/Sites';
-import Expenses from './pages/Expenses';
-import SiteCosts from './pages/SiteCosts';
-import TempLabours from './pages/TempLabours';
+const Labours = lazy(() => import('./pages/Labours'));
+const LabourProfile = lazy(() => import('./pages/LabourProfile'));
+const Attendance = lazy(() => import('./pages/Attendance'));
+const Payments = lazy(() => import('./pages/Payments'));
+const Users = lazy(() => import('./pages/Users'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Payroll = lazy(() => import('./pages/Payroll'));
+const Supervisors = lazy(() => import('./pages/Supervisors'));
+const Settings = lazy(() => import('./pages/Settings'));
+const BrandingSettings = lazy(() => import('./pages/BrandingSettings'));
+const SupportRequests = lazy(() => import('./pages/SupportRequests'));
+const Sites = lazy(() => import('./pages/Sites'));
+const Expenses = lazy(() => import('./pages/Expenses'));
+const SiteCosts = lazy(() => import('./pages/SiteCosts'));
+const TempLabours = lazy(() => import('./pages/TempLabours'));
 
 // Client Ledger
-import ClientList from './pages/clients/ClientList';
-import ClientProfile from './pages/clients/ClientProfile';
-import ProjectDetails from './pages/clients/ProjectDetails';
+const ClientList = lazy(() => import('./pages/clients/ClientList'));
+const ClientProfile = lazy(() => import('./pages/clients/ClientProfile'));
+const ProjectDetails = lazy(() => import('./pages/clients/ProjectDetails'));
 
 // TrackOps Pages
-import MissionDashboard from './pages/trackops/MissionDashboard';
-import LiveUsers from './pages/trackops/LiveUsers';
-import ErrorCenter from './pages/trackops/ErrorCenter';
-import UsageAnalytics from './pages/trackops/UsageAnalytics';
-import MissionLogs from './pages/trackops/MissionLogs';
-import ProductHealth from './pages/trackops/ProductHealth';
-import SupportCenter from './pages/trackops/SupportCenter';
-import RemoteActions from './pages/trackops/RemoteActions';
-import SecurityCenter from './pages/trackops/SecurityCenter';
-import Roadmap from './pages/trackops/Roadmap';
-import DeploymentCenter from './pages/trackops/DeploymentCenter';
+const MissionDashboard = lazy(() => import('./pages/trackops/MissionDashboard'));
+const LiveUsers = lazy(() => import('./pages/trackops/LiveUsers'));
+const ErrorCenter = lazy(() => import('./pages/trackops/ErrorCenter'));
+const UsageAnalytics = lazy(() => import('./pages/trackops/UsageAnalytics'));
+const MissionLogs = lazy(() => import('./pages/trackops/MissionLogs'));
+const ProductHealth = lazy(() => import('./pages/trackops/ProductHealth'));
+const SupportCenter = lazy(() => import('./pages/trackops/SupportCenter'));
+const RemoteActions = lazy(() => import('./pages/trackops/RemoteActions'));
+const SecurityCenter = lazy(() => import('./pages/trackops/SecurityCenter'));
+const Roadmap = lazy(() => import('./pages/trackops/Roadmap'));
+const DeploymentCenter = lazy(() => import('./pages/trackops/DeploymentCenter'));
 
 // Super Admin pages
-import SADashboard      from './pages/superadmin/SADashboard';
-import SARevenue        from './pages/superadmin/SARevenue';
-import SACustomers      from './pages/superadmin/SACustomers';
-import SACustomerProfile from './pages/superadmin/SACustomerProfile';
-import SASubscriptions  from './pages/superadmin/SASubscriptions';
-import SAUsageAnalytics from './pages/superadmin/SAUsageAnalytics';
-import SAFeatureAnalytics from './pages/superadmin/SAFeatureAnalytics';
-import SASupport        from './pages/superadmin/SASupport';
-import SAGrowth         from './pages/superadmin/SAGrowth';
-import SAChurn          from './pages/superadmin/SAChurn';
-import SAInsights       from './pages/superadmin/SAInsights';
-import SAUserManagement from './pages/superadmin/SAUserManagement';
+const SADashboard = lazy(() => import('./pages/superadmin/SADashboard'));
+const SARevenue = lazy(() => import('./pages/superadmin/SARevenue'));
+const SACustomers = lazy(() => import('./pages/superadmin/SACustomers'));
+const SACustomerProfile = lazy(() => import('./pages/superadmin/SACustomerProfile'));
+const SASubscriptions = lazy(() => import('./pages/superadmin/SASubscriptions'));
+const SAUsageAnalytics = lazy(() => import('./pages/superadmin/SAUsageAnalytics'));
+const SAFeatureAnalytics = lazy(() => import('./pages/superadmin/SAFeatureAnalytics'));
+const SASupport = lazy(() => import('./pages/superadmin/SASupport'));
+const SAGrowth = lazy(() => import('./pages/superadmin/SAGrowth'));
+const SAChurn = lazy(() => import('./pages/superadmin/SAChurn'));
+const SAInsights = lazy(() => import('./pages/superadmin/SAInsights'));
+const SAUserManagement = lazy(() => import('./pages/superadmin/SAUserManagement'));
 // Labs Pages
-import FeatureFlags from './pages/labs/FeatureFlags';
-import BetaTestCenter from './pages/labs/BetaTestCenter';
-import CostSimulator from './pages/labs/CostSimulator';
-import AILabs from './pages/labs/AILabs';
-import ABTesting from './pages/labs/ABTesting';
-import UILabs from './pages/labs/UILabs';
-import RoadmapLabs from './pages/labs/RoadmapLabs';
-import ExperimentalModules from './pages/labs/ExperimentalModules';
-import PerformanceLab from './pages/labs/PerformanceLab';
-import InternalNotes from './pages/labs/InternalNotes';
-import FeatureRequests from './pages/labs/FeatureRequests';
-import ReleaseCenter from './pages/labs/ReleaseCenter';
+const FeatureFlags = lazy(() => import('./pages/labs/FeatureFlags'));
+const BetaTestCenter = lazy(() => import('./pages/labs/BetaTestCenter'));
+const CostSimulator = lazy(() => import('./pages/labs/CostSimulator'));
+const AILabs = lazy(() => import('./pages/labs/AILabs'));
+const ABTesting = lazy(() => import('./pages/labs/ABTesting'));
+const UILabs = lazy(() => import('./pages/labs/UILabs'));
+const RoadmapLabs = lazy(() => import('./pages/labs/RoadmapLabs'));
+const ExperimentalModules = lazy(() => import('./pages/labs/ExperimentalModules'));
+const PerformanceLab = lazy(() => import('./pages/labs/PerformanceLab'));
+const InternalNotes = lazy(() => import('./pages/labs/InternalNotes'));
+const FeatureRequests = lazy(() => import('./pages/labs/FeatureRequests'));
+const ReleaseCenter = lazy(() => import('./pages/labs/ReleaseCenter'));
 
 function NavigateByRole() {
   const role = useAuthStore((s) => s.role);
@@ -88,6 +88,13 @@ function NavigateByRole() {
 }
 
 const contractorRoles = ['contractor', 'supervisor'];
+
+
+const SuspenseFallback = () => (
+  <div className="flex h-screen w-full items-center justify-center bg-gray-50/10 dark:bg-gray-900/10">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+  </div>
+);
 
 export default function App() {
   const navigate = useNavigate();
@@ -236,7 +243,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <TelemetryTracker />
-      <Routes>
+      <Suspense fallback={<SuspenseFallback />}><Routes>
         <Route path="/login" element={<Login />} />
 
         {/* ── TrackOps Routes (/trackops/*) ────────────────────── */}
@@ -311,7 +318,7 @@ export default function App() {
           <Route index element={<NavigateByRole />} />
           <Route path="*" element={<NavigateByRole />} />
         </Route>
-      </Routes>
+      </Routes></Suspense>
     </ErrorBoundary>
   );
 }

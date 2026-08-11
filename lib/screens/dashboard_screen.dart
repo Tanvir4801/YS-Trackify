@@ -29,6 +29,7 @@ import '../services/session_service.dart';
 import '../widgets/animations/staggered_list.dart';
 import '../widgets/today_summary_card.dart';
 import '../widgets/week_attendance_strip.dart';
+import '../utils/error_handler.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -262,7 +263,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      AppSnackBar.showError(context, 'Failed to start session: $e');
+      AppSnackBar.showError(context, ErrorHandler.getUserFriendlyMessage(e));
     }
   }
 

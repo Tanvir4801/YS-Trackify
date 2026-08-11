@@ -13,6 +13,8 @@ class HealthPingService {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   Timer? _pingTimer;
+  StreamSubscription? _monitoringSub;
+  bool _isMonitoringEnabled = false;
   
   String? _currentUserId;
   String? _currentCompanyId;
@@ -44,12 +46,22 @@ class HealthPingService {
     _subscriptionPlan = subscriptionPlan;
     _loginTime ??= DateTime.now();
     
+    // Listen to global monitoring state
+    _monitoringSub?.cancel();
+    _monitoringSub = _db.collection('trackops_config').doc('monitoring').snapshots().listen((snap) {
+      if (snap.exists) {
+        _isMonitoringEnabled = snap.data()?['enabled'] == true;
+      }
+    });
+
     // Ping immediately on start
-    _sendPing();
+    if (_isMonitoringEnabled) _sendPing();
 
     // Setup periodic ping every 60 seconds
     _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(const Duration(seconds: 60), (_) => _sendPing());
+    _pingTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_isMonitoringEnabled) _sendPing();
+    });
   }
 
   /// Update the current screen the user is viewing
@@ -59,6 +71,8 @@ class HealthPingService {
 
   /// Stop pinging when user logs out or app goes to background
   void stopPinging() {
+    _monitoringSub?.cancel();
+    _monitoringSub = null;
     _pingTimer?.cancel();
     _pingTimer = null;
     _loginTime = null;

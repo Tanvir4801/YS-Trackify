@@ -2,14 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { Users, Search, PlayCircle, Clock, Smartphone, Wifi, Shield, X, AlertTriangle, Activity, MapPin, Zap } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, serverTimestamp, setDoc, deleteField } from 'firebase/firestore';
+import { useTrackOpsMonitoring } from '../../context/TrackOpsMonitoringContext';
+import { useUserIdle } from '../../lib/services/trackopsQueryService';
 
 export default function LiveUsers() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
   const [liveUsers, setLiveUsers] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isMonitoringActive || isIdle) {
+      if (!isIdle) {
+        setLiveUsers([]);
+      }
+      setLoading(false);
+      return;
+    }
+
     // We aggregate unique users from the latest 500 telemetry events
     const q = query(collection(db, 'telemetry_events'), orderBy('timestamp', 'desc'), limit(500));
     
@@ -76,7 +88,7 @@ export default function LiveUsers() {
     }
 
     return () => { try { unsub(); } catch(e) {} };
-  }, []);
+  }, [isMonitoringActive, isIdle]);
 
   const handleForceLogout = async () => {
     if (!selectedUser || !selectedUser.userId) return;

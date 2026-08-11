@@ -101,7 +101,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: AppColors.navy,
       extendBody: true,
-      body: OfflineBanner(
+      body: Container(
         child: IndexedStack(index: _currentIndex, children: _screens),
       ),
       bottomNavigationBar: BridgeBottomNavigationBar(

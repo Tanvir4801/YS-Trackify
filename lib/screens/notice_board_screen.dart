@@ -6,6 +6,7 @@ import '../models/notice_model.dart';
 import '../services/labour_mode/labour_firestore_service.dart';
 import '../services/session_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/error_handler.dart';
 
 class NoticeBoardScreen extends StatefulWidget {
   const NoticeBoardScreen({super.key});
@@ -60,7 +61,7 @@ class _NoticeBoardScreenState extends State<NoticeBoardScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error posting notice: $e')),
+          SnackBar(content: Text(ErrorHandler.getUserFriendlyMessage(e))),
         );
       }
     } finally {

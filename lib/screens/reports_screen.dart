@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../providers/report_provider.dart';
 import '../services/report_service.dart';
 import '../services/telemetry_service.dart';
+import '../utils/error_handler.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -426,7 +427,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       await Share.shareXFiles([XFile(path)], text: 'Monthly Report');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error exporting Excel: $e')),
+        SnackBar(content: Text(ErrorHandler.getUserFriendlyMessage(e))),
       );
     }
   }

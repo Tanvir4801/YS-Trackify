@@ -21,6 +21,8 @@ import '../widgets/animations/bouncy_tap.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/shimmer_loader.dart';
 import '../widgets/add_temp_labour_dialog.dart';
+import '../utils/error_handler.dart';
+import '../widgets/loading_button.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -154,7 +156,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     onChanged: (v) => paymentRemark = v,
                   ),
                   const SizedBox(height: 24),
-                  ElevatedButton(
+                  LoadingButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -162,14 +164,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 0,
                     ),
-                    onPressed: () {
-                      data.updateTempLabourPayment(
+                    onPressed: () async {
+                      await data.updateTempLabourPayment(
                         entryId: entry.id,
                         paidAmount: paidAmount,
                         paymentMethod: paymentMethod,
                         paymentRemark: paymentRemark,
                       );
-                      Navigator.pop(ctx);
+                      if (context.mounted) Navigator.pop(ctx);
                       HapticUtils.success();
                     },
                     child: const Text('Save Payment', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
@@ -2453,8 +2455,10 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
                     child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
                   ),
                   const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: widget.presentLabours.isEmpty ? null : _saveAll,
+                  LoadingButton(
+                    onPressed: widget.presentLabours.isEmpty ? null : () async {
+                      await _saveAll();
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,

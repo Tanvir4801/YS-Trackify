@@ -203,12 +203,7 @@ exports.validateAndMarkAttendance = functions.https.onCall(
   }
 );
 
-exports.cleanupOldAttendance = functions.pubsub
-  .schedule('every 24 hours')
-  .onRun(async () => {
-    console.log('Cleanup job ran');
-    return null;
-  });
+
 
 exports.cleanupOldLogs = functions.pubsub
   .schedule('every 24 hours')
@@ -235,8 +230,89 @@ exports.cleanupOldLogs = functions.pubsub
 
     await deleteCollectionOld('security_events');
     await deleteCollectionOld('activity_log');
+    await deleteCollectionOld('telemetry_events'); // Also cleanup old telemetry
     
     console.log('Old logs cleanup ran');
+    return null;
+  });
+
+exports.aggregateTelemetry = functions.pubsub
+  .schedule('every 5 minutes')
+  .onRun(async () => {
+    try {
+      const db = admin.firestore();
+      const snap = await db.collection('telemetry_events')
+        .orderBy('timestamp', 'desc')
+        .limit(200)
+        .get();
+
+      let totalRequests = 0;
+      let totalDuration = 0;
+      let perfEventsCount = 0;
+      const featureCounts = {};
+      const featureSuccess = {};
+
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        totalRequests++;
+
+        if (data.eventType === 'performance_metric' && data.additionalMetadata?.durationMs) {
+          totalDuration += data.additionalMetadata.durationMs;
+          perfEventsCount++;
+        }
+
+        const feature = data.featureName || data.eventType;
+        if (feature) {
+          if (!featureCounts[feature]) featureCounts[feature] = 0;
+          if (!featureSuccess[feature]) featureSuccess[feature] = 0;
+          
+          featureCounts[feature]++;
+          const duration = data.additionalMetadata?.durationMs || 0;
+          if (duration < 5000) {
+            featureSuccess[feature]++;
+          }
+        }
+      });
+
+      const avgLatency = perfEventsCount > 0 ? Math.round(totalDuration / perfEventsCount) : 0;
+
+      const infra = [
+        { id: 'firestore_main', name: 'Firestore DB', status: avgLatency > 2000 ? 'YELLOW' : 'GREEN', latencyMs: avgLatency > 0 ? avgLatency : 45, details: 'Real-time sync latency based on client events.' },
+        { id: 'auth_service', name: 'Firebase Auth', status: 'GREEN', latencyMs: avgLatency > 0 ? Math.round(avgLatency * 0.8) : 30, details: 'Authentication response times.' }
+      ];
+
+      for (const item of infra) {
+        await db.collection('infrastructure_metrics').doc(item.id).set(item);
+      }
+
+      const services = [];
+      const enginesToTrack = ['attendance_sync', 'screen_open', 'login'];
+      
+      enginesToTrack.forEach(engine => {
+        const count = featureCounts[engine] || 0;
+        const success = featureSuccess[engine] || 0;
+        const rate = count > 0 ? Math.round((success / count) * 100) : 100;
+        
+        services.push({
+          id: engine, name: engine.replace('_', ' ').toUpperCase(), status: rate < 90 ? 'YELLOW' : 'GREEN', successRate: rate, failedRequests: count - success,
+        });
+      });
+
+      for (const item of services) {
+        await db.collection('service_metrics').doc(item.id).set(item);
+      }
+
+      const health = {
+        missionHealthPercentage: avgLatency > 2000 ? 85 : 100,
+        totalRequests: totalRequests,
+        estimatedCosts: (totalRequests * 0.0001).toFixed(2), 
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      await db.collection('system_health').doc('global').set(health);
+      console.log('Telemetry Aggregation completed');
+    } catch (e) {
+      console.error('Telemetry Aggregation Failed:', e);
+    }
     return null;
   });
 
@@ -321,9 +397,21 @@ exports.onSecurityEventCreated = functions.firestore
   .onCreate(async (snap, context) => {
     const data = snap.data();
     
-    // We only want the AI to analyze things that are high/critical or specific abuse vectors
     // To prevent infinite loops, check if aiAnalysis already exists
     if (data.aiAnalysis) return null;
+
+    // Rate Limiting
+    const rateLimitRef = admin.firestore().collection('system_status').doc('ai_rate_limit');
+    const rateLimitDoc = await rateLimitRef.get();
+    const now = Date.now();
+    if (rateLimitDoc.exists) {
+      const lastCall = rateLimitDoc.data().lastSecurityCall || 0;
+      if (now - lastCall < 5000) {
+        console.log('Skipping Gemini security analysis due to rate limit.');
+        return null; // Skip if called within 5 seconds
+      }
+    }
+    await rateLimitRef.set({ lastSecurityCall: now }, { merge: true });
 
     const prompt = `You are the Trackify AI Security Guard. Analyze this new security event:
 Event Type: ${data.type || 'Unknown'}
@@ -442,12 +530,27 @@ exports.autoIncidentTriage = functions.firestore
     // Only analyze CRITICAL errors while admin is away
     if (errorLog.severity !== 'CRITICAL') return null;
 
+    // Rate Limiting
+    const rateLimitRef = admin.firestore().collection('system_status').doc('ai_rate_limit');
+    const rateLimitDoc = await rateLimitRef.get();
+    const now = Date.now();
+    if (rateLimitDoc.exists) {
+      const lastCall = rateLimitDoc.data().lastTriageCall || 0;
+      if (now - lastCall < 5000) {
+        console.log('Skipping Gemini incident triage due to rate limit.');
+        return null; // Skip if called within 5 seconds
+      }
+    }
+    await rateLimitRef.set({ lastTriageCall: now }, { merge: true });
+
+    const stackTrace = errorLog.stackTrace ? errorLog.stackTrace.substring(0, 1500) : 'None';
+
     const prompt = `You are the Trackify Autonomous Security & Ops Agent. 
 A CRITICAL error has just occurred in production. 
 
 Error: ${errorLog.message}
 Module: ${errorLog.module}
-Stack Trace: ${errorLog.stackTrace || 'None'}
+Stack Trace: ${stackTrace}
 
 Does this error indicate a catastrophic failure that risks data corruption or severe security breaches (e.g. database dropped, firestore rules bypassed, massive memory leak)?
 Respond with EXACTLY "MAINTENANCE_REQUIRED" if the system must be shut down immediately to protect user data.

@@ -45,8 +45,18 @@ class SiteDataProvider extends ChangeNotifier {
   DateTime _selectedDate = DateTime.now();
 
   bool _isLoading = false;
-
   bool get isLoading => _isLoading;
+
+  bool _hasError = false;
+  String _errorMessage = '';
+  bool get hasError => _hasError;
+  String get errorMessage => _errorMessage;
+
+  void _setError(String msg) {
+    _hasError = true;
+    _errorMessage = msg;
+    notifyListeners();
+  }
   DateTime get selectedDate => _selectedDate;
 
   String get selectedDateKey => AppDateUtils.toDateKey(_selectedDate);
@@ -106,6 +116,7 @@ class SiteDataProvider extends ChangeNotifier {
         .collection('labours')
         .where('supervisorId', isEqualTo: uid)
         .where('isActive', isEqualTo: true)
+        .limit(1000)
         .snapshots()
         .listen((snap) {
       _supervisorLabours = {
@@ -113,7 +124,7 @@ class SiteDataProvider extends ChangeNotifier {
           doc.id: _docToLabour(doc.id, doc.data())
       };
       updateLabours();
-    }, onError: (e) => debugPrint('❌ Supervisor labour stream error: $e'));
+    }, onError: (e) { debugPrint('❌ Supervisor labour stream error: $e'); _setError('Unable to load live updates.'); });
 
     // V2 data: queried by contractorId
     if (contractorId.isNotEmpty) {
@@ -121,6 +132,7 @@ class SiteDataProvider extends ChangeNotifier {
           .collection('labours')
           .where('contractorId', isEqualTo: contractorId)
           .where('isActive', isEqualTo: true)
+          .limit(1000)
           .snapshots()
           .listen((snap) {
         _contractorLabours = {
@@ -128,10 +140,10 @@ class SiteDataProvider extends ChangeNotifier {
             doc.id: _docToLabour(doc.id, doc.data())
         };
         updateLabours();
-      }, onError: (e) => debugPrint('❌ Contractor labour stream error: $e'));
+      }, onError: (e) { debugPrint('❌ Contractor labour stream error: $e'); _setError('Unable to load live updates.'); });
     }
 
-    _startMonthAttendanceStream(contractorId, uid);
+    _fetchAndListenAttendance(contractorId, uid);
   }
 
   Labour _docToLabour(String id, Map<String, dynamic> data) {
@@ -147,108 +159,112 @@ class SiteDataProvider extends ChangeNotifier {
     );
   }
 
-  void _startMonthAttendanceStream(String contractorId, String uid) {
+  
+  Future<void> _fetchAndListenAttendance(String contractorId, String uid) async {
     _supervisorAttendanceSubscription?.cancel();
     _contractorAttendanceSubscription?.cancel();
+    _supervisorTempLabourSubscription?.cancel();
+    _contractorTempLabourSubscription?.cancel();
 
     final now = DateTime.now();
-    final monthStart =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
-        
-    Map<String, AttendanceRecord> supervisorRecords = {};
-    Map<String, AttendanceRecord> contractorRecords = {};
+    final monthStart = '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
     
-    void updateAttendance() {
-      // Merge: Firestore records override Hive records for same key
+    Map<String, AttendanceRecord> staticRecords = {};
+    List<TempLabourEntry> staticTempEntries = [];
+
+    void updateAttendanceFromMaps(Map<String, AttendanceRecord> sRec, Map<String, AttendanceRecord> cRec) {
       final mergedMap = <String, AttendanceRecord>{
         for (final r in _hiveService.getAllAttendanceRecords())
           '${r.labourId}_${r.dateKey}': r,
       };
-      
-      for (final r in supervisorRecords.values) {
-        mergedMap['${r.labourId}_${r.dateKey}'] = r;
-      }
-      for (final r in contractorRecords.values) {
-        mergedMap['${r.labourId}_${r.dateKey}'] = r;
-      }
-
+      for (final r in sRec.values) mergedMap['${r.labourId}_${r.dateKey}'] = r;
+      for (final r in cRec.values) mergedMap['${r.labourId}_${r.dateKey}'] = r;
       _attendanceRecords = mergedMap.values.toList();
       notifyListeners();
     }
 
-    void updateTempLabours(QuerySnapshot<Map<String, dynamic>> snap, bool isContractor) {
-      final entries = snap.docs.map((d) => TempLabourEntry.fromFirestore(d)).toList();
-      // Remove old entries from this specific source (using contractorId/supervisorId)
-      if (isContractor) {
-        _tempLabourEntries.removeWhere((e) => e.contractorId == contractorId);
-      } else {
-        _tempLabourEntries.removeWhere((e) => e.supervisorId == uid && e.contractorId != contractorId);
+    // 1. Fetch historical data for the month (One-time read to save cost)
+    try {
+      final db = FirebaseFirestore.instance;
+      
+      // Supervisor data
+      final sAttSnap = await db.collection('attendance').where('supervisorId', isEqualTo: uid).where('date', isGreaterThanOrEqualTo: monthStart).get();
+      for (final doc in sAttSnap.docs) {
+        final r = _docToRecord(doc.id, doc.data());
+        if (r != null) staticRecords[doc.id] = r;
       }
-      _tempLabourEntries.addAll(entries);
-      // Remove duplicates by ID
+      
+      final sTempSnap = await db.collection('temp_labour_entries').where('supervisorId', isEqualTo: uid).where('date', isGreaterThanOrEqualTo: monthStart).get();
+      staticTempEntries.addAll(sTempSnap.docs.map((d) => TempLabourEntry.fromFirestore(d)));
+
+      // Contractor data
+      if (contractorId.isNotEmpty) {
+        final cAttSnap = await db.collection('attendance').where('contractorId', isEqualTo: contractorId).where('date', isGreaterThanOrEqualTo: monthStart).get();
+        for (final doc in cAttSnap.docs) {
+          final r = _docToRecord(doc.id, doc.data());
+          if (r != null) staticRecords[doc.id] = r;
+        }
+        
+        final cTempSnap = await db.collection('temp_labour_entries').where('contractorId', isEqualTo: contractorId).where('date', isGreaterThanOrEqualTo: monthStart).get();
+        staticTempEntries.addAll(cTempSnap.docs.map((d) => TempLabourEntry.fromFirestore(d)));
+      }
+
+      // Merge static into state
+      final mergedMap = <String, AttendanceRecord>{
+        for (final r in _hiveService.getAllAttendanceRecords()) '${r.labourId}_${r.dateKey}': r,
+      };
+      for (final r in staticRecords.values) {
+        mergedMap['${r.labourId}_${r.dateKey}'] = r;
+      }
+      _attendanceRecords = mergedMap.values.toList();
+      
+      _tempLabourEntries = staticTempEntries;
+      
+      // Remove duplicates by ID for temp
       final unique = {for (final e in _tempLabourEntries) e.id: e};
       _tempLabourEntries = unique.values.toList();
+      
       notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Historical fetch error: $e');
     }
+
+    // 2. Real-time listen ONLY to today to save massive scaling costs
+    final todayStr = AppDateUtils.toDateKey(DateTime.now());
+    
+    Map<String, AttendanceRecord> liveSupervisorRecords = {};
+    Map<String, AttendanceRecord> liveContractorRecords = {};
 
     _supervisorAttendanceSubscription = FirebaseFirestore.instance
         .collection('attendance')
         .where('supervisorId', isEqualTo: uid)
-        .where('date', isGreaterThanOrEqualTo: monthStart)
+        .where('date', isEqualTo: todayStr)
         .snapshots()
-        .listen(
-      (snap) {
-        supervisorRecords = {
-          for (final doc in snap.docs)
-            if (_docToRecord(doc.id, doc.data()) != null)
-              doc.id: _docToRecord(doc.id, doc.data())!
-        };
-        updateAttendance();
-      },
-      onError: (e) => debugPrint('❌ Supervisor attendance stream error: $e'),
-    );
-
-    _supervisorTempLabourSubscription = FirebaseFirestore.instance
-        .collection('temp_labour_entries')
-        .where('supervisorId', isEqualTo: uid)
-        .where('date', isGreaterThanOrEqualTo: monthStart)
-        .snapshots()
-        .listen(
-      (snap) => updateTempLabours(snap, false),
-      onError: (e) => debugPrint('❌ Supervisor temp labour stream error: $e'),
-    );
+        .listen((snap) {
+          liveSupervisorRecords = {
+            for (final doc in snap.docs)
+              if (_docToRecord(doc.id, doc.data()) != null) doc.id: _docToRecord(doc.id, doc.data())!
+          };
+          // Merge static + live
+          updateAttendanceFromMaps({...staticRecords, ...liveSupervisorRecords}, liveContractorRecords);
+        });
 
     if (contractorId.isNotEmpty) {
       _contractorAttendanceSubscription = FirebaseFirestore.instance
           .collection('attendance')
           .where('contractorId', isEqualTo: contractorId)
-          .where('date', isGreaterThanOrEqualTo: monthStart)
+          .where('date', isEqualTo: todayStr)
           .snapshots()
-          .listen(
-        (snap) {
-          contractorRecords = {
-            for (final doc in snap.docs)
-              if (_docToRecord(doc.id, doc.data()) != null)
-                doc.id: _docToRecord(doc.id, doc.data())!
-          };
-          updateAttendance();
-        },
-        onError: (e) => debugPrint('❌ Contractor attendance stream error: $e'),
-      );
-      
-      _contractorTempLabourSubscription = FirebaseFirestore.instance
-          .collection('temp_labour_entries')
-          .where('contractorId', isEqualTo: contractorId)
-          .where('date', isGreaterThanOrEqualTo: monthStart)
-          .snapshots()
-          .listen(
-        (snap) => updateTempLabours(snap, true),
-        onError: (e) => debugPrint('❌ Contractor temp labour stream error: $e'),
-      );
+          .listen((snap) {
+            liveContractorRecords = {
+              for (final doc in snap.docs)
+                if (_docToRecord(doc.id, doc.data()) != null) doc.id: _docToRecord(doc.id, doc.data())!
+            };
+            updateAttendanceFromMaps({...staticRecords, ...liveSupervisorRecords}, liveContractorRecords);
+          });
     }
   }
-
-  AttendanceRecord? _docToRecord(String id, Map<String, dynamic> data) {
+AttendanceRecord? _docToRecord(String id, Map<String, dynamic> data) {
     final labourId = (data['labourId'] as String?) ?? '';
     final dateKey = (data['date'] as String?) ?? '';
     final statusStr = (data['status'] as String?) ?? 'absent';
@@ -653,6 +669,8 @@ class SiteDataProvider extends ChangeNotifier {
     _contractorLabourSubscription?.cancel();
     _supervisorAttendanceSubscription?.cancel();
     _contractorAttendanceSubscription?.cancel();
+    _supervisorTempLabourSubscription?.cancel();
+    _contractorTempLabourSubscription?.cancel();
     super.dispose();
   }
 }

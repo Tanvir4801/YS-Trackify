@@ -93,6 +93,7 @@ class DashboardProvider extends ChangeNotifier {
         .collection('labours')
         .where('supervisorId', isEqualTo: uid)
         .where('isActive', isEqualTo: true)
+        .limit(1000)
         .snapshots()
         .listen((snap) {
       _supervisorLabours.clear();
@@ -107,6 +108,7 @@ class DashboardProvider extends ChangeNotifier {
           .collection('labours')
           .where('contractorId', isEqualTo: resolvedContractorId)
           .where('isActive', isEqualTo: true)
+          .limit(1000)
           .snapshots()
           .listen((snap) {
         _contractorLabours.clear();

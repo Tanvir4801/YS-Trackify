@@ -42,14 +42,11 @@ class AttendanceTypeSheet extends StatefulWidget {
 
 class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
     with SingleTickerProviderStateMixin {
-  late int _secondsLeft;
-  Timer? _timer;
   late AnimationController _progressController;
 
   @override
   void initState() {
     super.initState();
-    _secondsLeft = widget.autoConfirmSeconds;
 
     if (widget.remainingFactor >= 1.0) {
       _progressController = AnimationController(
@@ -57,14 +54,8 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
         duration: Duration(seconds: widget.autoConfirmSeconds),
       )..forward();
 
-      _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-        if (!mounted) {
-          t.cancel();
-          return;
-        }
-        setState(() => _secondsLeft--);
-        if (_secondsLeft <= 0) {
-          t.cancel();
+      _progressController.addStatusListener((status) {
+        if (status == AnimationStatus.completed && mounted) {
           HapticFeedback.lightImpact();
           widget.onSelected('present');
         }
@@ -74,7 +65,6 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
 
   @override
   void dispose() {
-    _timer?.cancel();
     if (widget.remainingFactor >= 1.0) {
       _progressController.dispose();
     }
@@ -82,7 +72,9 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
   }
 
   void _select(String type) {
-    _timer?.cancel();
+    if (widget.remainingFactor >= 1.0) {
+      _progressController.stop();
+    }
     HapticFeedback.mediumImpact();
     widget.onSelected(type);
   }
@@ -240,11 +232,14 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
             if (widget.remainingFactor >= 1.0)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  'Full Day auto-selected in ${_secondsLeft}s. '
-                  'You can change it later in Attendance.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                child: AnimatedBuilder(
+                  animation: _progressController,
+                  builder: (context, _) => Text(
+                    'Full Day auto-selected in ${((1.0 - _progressController.value) * widget.autoConfirmSeconds).ceil()}s. '
+                    'You can change it later in Attendance.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
                 ),
               ),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
@@ -317,7 +312,7 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Auto in ${_secondsLeft}s',
+                        'Auto in ${((1.0 - _progressController.value) * widget.autoConfirmSeconds).ceil()}s',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.9),
                           fontSize: 10,
