@@ -1,0 +1,6 @@
+# We will use this later for non-secret environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trackify-config
+data: {}

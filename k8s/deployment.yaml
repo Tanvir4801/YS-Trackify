@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trackify-admin-deployment
+  labels:
+    app: trackify-admin
+spec:
+  replicas: 2 # Kubernetes will ensure exactly 2 copies of your app are running
+  selector:
+    matchLabels:
+      app: trackify-admin
+  template:
+    metadata:
+      labels:
+        app: trackify-admin
+    spec:
+      containers:
+      - name: trackify-admin
+        image: trackify-admin:latest
+        # This tells local Kubernetes to use the image we built on your Mac, instead of trying to download it from the internet
+        imagePullPolicy: IfNotPresent 
+        ports:
+        - containerPort: 80
+        # Step 12: Resource Limits & Requests
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        # The health check we added in Step 5!
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10

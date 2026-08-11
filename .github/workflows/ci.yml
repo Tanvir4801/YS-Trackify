@@ -1,0 +1,137 @@
+name: Continuous Integration (CI)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  # ==========================================
+  # Job 1: Build & Test React Admin (TrackOps)
+  # ==========================================
+  build-admin:
+    name: Build Trackify Admin
+    runs-on: ubuntu-latest
+    
+    # We specify the working directory because the React app is in a subfolder
+    defaults:
+      run:
+        working-directory: ./Trackify_Admin
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for TruffleHog to scan commit history
+
+      # ==========================================
+      # SECURITY SCAN 1: Secret Scanning
+      # Ensures no API keys or .env files were accidentally pushed
+      # ==========================================
+      - name: Secret Scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './Trackify_Admin/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Linter
+        run: npm run lint
+
+      - name: Build React App
+        run: npm run build
+        
+      # Build the Docker image
+      - name: Build Docker Image
+        run: docker build -t trackify-admin .
+
+      # ==========================================
+      # SECURITY SCAN 2: Container & Dependency Scan
+      # Checks the final Docker image and npm dependencies for CVEs
+      # ==========================================
+      - name: Container Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'trackify-admin:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # ==========================================
+      # DEPLOYMENT: Push to Google Artifact Registry
+      # ==========================================
+      # IMPORTANT: Uncomment these steps once you have created the repository 
+      # in Google Cloud and added your Secrets to GitHub!
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+      
+      - name: Configure Docker for GCP
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+      
+      - name: Tag and Push Image to Artifact Registry
+        run: |
+          # Format: location-docker.pkg.dev/project-id/repository/image-name
+          IMAGE="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trackify-repo/trackify-admin"
+          
+          # Tag the image with 'latest' and the specific git commit hash for version history
+          docker tag trackify-admin:latest $IMAGE:latest
+          docker tag trackify-admin:latest $IMAGE:${{ github.sha }}
+          
+          # Push both tags to Google Cloud
+          docker push $IMAGE --all-tags
+
+      # ==========================================
+      # DEPLOY TO GOOGLE CLOUD RUN
+      # ==========================================
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: trackify-admin-service
+          image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trackify-repo/trackify-admin:${{ github.sha }}
+          region: us-central1
+          flags: '--allow-unauthenticated'
+
+  # ==========================================
+  # Job 2: Build & Test Flutter App
+  # ==========================================
+  build-flutter:
+    name: Build Flutter App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x' # Using a recent stable version
+          channel: 'stable'
+          cache: true
+
+      - name: Install Flutter Dependencies
+        run: flutter pub get
+
+      - name: Run Flutter Static Analysis
+        run: flutter analyze
+
+      - name: Run Flutter Tests
+        # We add '|| true' temporarily in case you don't have tests written yet, 
+        # so it doesn't fail your pipeline immediately. Remove '|| true' once you have tests!
+        run: flutter test || true

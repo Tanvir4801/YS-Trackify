@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: trackify-admin-service
+spec:
+  # LoadBalancer tells Kubernetes to expose this service outside of the cluster.
+  # On Docker Desktop, this automatically maps to localhost.
+  type: LoadBalancer
+  selector:
+    app: trackify-admin # This links the Service to the Deployment above
+  ports:
+    - protocol: TCP
+      port: 8080      # The port you type into your browser (localhost:8080)
+      targetPort: 80  # The port Nginx is listening on inside the container

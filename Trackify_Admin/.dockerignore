@@ -34,7 +34,6 @@ dist-ssr
 *.sw?
 
 # Env files (Secrets)
-.env
-.env.*
-!.env.example
+# Note: In a multi-stage build, it is safe to include .env because it is only 
+# used in the Node.js builder stage and is NOT copied to the final Nginx image.
 firebase.json

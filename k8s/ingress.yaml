@@ -1,0 +1,7 @@
+# We will configure Ingress later for routing domains (like admin.trackify.com)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trackify-ingress
+spec:
+  rules: []
