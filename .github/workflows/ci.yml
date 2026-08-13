@@ -74,36 +74,36 @@ jobs:
       # IMPORTANT: Uncomment these steps once you have created the repository 
       # in Google Cloud and added your Secrets to GitHub!
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
-      
-      - name: Configure Docker for GCP
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev
-      
-      - name: Tag and Push Image to Artifact Registry
-        run: |
-          # Format: location-docker.pkg.dev/project-id/repository/image-name
-          IMAGE="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trackify-repo/trackify-admin"
-          
-          # Tag the image with 'latest' and the specific git commit hash for version history
-          docker tag trackify-admin:latest $IMAGE:latest
-          docker tag trackify-admin:latest $IMAGE:${{ github.sha }}
-          
-          # Push both tags to Google Cloud
-          docker push $IMAGE --all-tags
-
-      # ==========================================
-      # DEPLOY TO GOOGLE CLOUD RUN
-      # ==========================================
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: trackify-admin-service
-          image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trackify-repo/trackify-admin:${{ github.sha }}
-          region: us-central1
-          flags: '--allow-unauthenticated'
+      # - name: Authenticate to Google Cloud
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+      # 
+      # - name: Configure Docker for GCP
+      #   run: gcloud auth configure-docker us-central1-docker.pkg.dev
+      # 
+      # - name: Tag and Push Image to Artifact Registry
+      #   run: |
+      #     # Format: location-docker.pkg.dev/project-id/repository/image-name
+      #     IMAGE="us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trackify-repo/trackify-admin"
+      #     
+      #     # Tag the image with 'latest' and the specific git commit hash for version history
+      #     docker tag trackify-admin:latest $IMAGE:latest
+      #     docker tag trackify-admin:latest $IMAGE:${{ github.sha }}
+      #     
+      #     # Push both tags to Google Cloud
+      #     docker push $IMAGE --all-tags
+      # 
+      # # ==========================================
+      # # DEPLOY TO GOOGLE CLOUD RUN
+      # # ==========================================
+      # - name: Deploy to Cloud Run
+      #   uses: google-github-actions/deploy-cloudrun@v2
+      #   with:
+      #     service: trackify-admin-service
+      #     image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trackify-repo/trackify-admin:${{ github.sha }}
+      #     region: us-central1
+      #     flags: '--allow-unauthenticated'
 
   # ==========================================
   # Job 2: Build & Test Flutter App
