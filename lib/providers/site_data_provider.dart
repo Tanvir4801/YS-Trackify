@@ -177,8 +177,12 @@ class SiteDataProvider extends ChangeNotifier {
         for (final r in _hiveService.getAllAttendanceRecords())
           '${r.labourId}_${r.dateKey}': r,
       };
-      for (final r in sRec.values) mergedMap['${r.labourId}_${r.dateKey}'] = r;
-      for (final r in cRec.values) mergedMap['${r.labourId}_${r.dateKey}'] = r;
+      for (final r in sRec.values) {
+        mergedMap['${r.labourId}_${r.dateKey}'] = r;
+      }
+      for (final r in cRec.values) {
+        mergedMap['${r.labourId}_${r.dateKey}'] = r;
+      }
       _attendanceRecords = mergedMap.values.toList();
       notifyListeners();
     }

@@ -37,6 +37,7 @@ const FUNCTION_CONFIG = {
   timeoutSeconds: 30,
   memory: '256MiB',
   region: 'us-central1',
+  enforceAppCheck: true,
 };
 
 // ─── In-Memory Rate Limiter ───────────────────────────────────────────────────

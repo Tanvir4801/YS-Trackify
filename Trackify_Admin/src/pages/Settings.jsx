@@ -47,6 +47,7 @@ export default function Settings() {
     absenceAlertDays: 3,
     ...loadSettings(),
   });
+  const [theme, setTheme] = useState(localStorage.getItem('trackify_theme') || 'dark');
   const [unsyncedCount, setUnsyncedCount] = useState(null);
   const [loadingSync, setLoadingSync] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -104,6 +105,33 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
+      <Section
+        icon={Building2}
+        title="Appearance"
+        desc="Choose your preferred theme"
+      >
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-text-primary">Theme</Label>
+            <select
+              value={theme}
+              onChange={(e) => {
+                const newTheme = e.target.value;
+                setTheme(newTheme);
+                localStorage.setItem('trackify_theme', newTheme);
+                document.documentElement.setAttribute('data-theme', newTheme);
+                toast.success(`Theme updated to ${newTheme}`);
+              }}
+              className={fieldClass}
+            >
+              <option value="dark">Dark Theme</option>
+              <option value="light">Premium Light</option>
+            </select>
+            <p className="text-[11px] text-text-muted">Changes the overall look and feel</p>
+          </div>
+        </div>
+      </Section>
+
       <Section
         icon={Building2}
         title="Work & Schedule Settings"

@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'package:flutter/widgets.dart';
+
 /// Service that routinely pings the TrackOps 'live_users' collection to report
 /// app health, current screen, and network latency.
-class HealthPingService {
+class HealthPingService with WidgetsBindingObserver {
   HealthPingService._();
   static final HealthPingService instance = HealthPingService._();
 
@@ -57,11 +59,14 @@ class HealthPingService {
     // Ping immediately on start
     if (_isMonitoringEnabled) _sendPing();
 
-    // Setup periodic ping every 60 seconds
+    // Setup periodic ping every 300 seconds (5 minutes) to save write costs
     _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+    _pingTimer = Timer.periodic(const Duration(seconds: 300), (_) {
       if (_isMonitoringEnabled) _sendPing();
     });
+
+    WidgetsBinding.instance.removeObserver(this);
+    WidgetsBinding.instance.addObserver(this);
   }
 
   /// Update the current screen the user is viewing
@@ -71,12 +76,23 @@ class HealthPingService {
 
   /// Stop pinging when user logs out or app goes to background
   void stopPinging() {
+    WidgetsBinding.instance.removeObserver(this);
     _monitoringSub?.cancel();
     _monitoringSub = null;
     _pingTimer?.cancel();
     _pingTimer = null;
     _loginTime = null;
     _crashCount = 0;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _currentScreen = 'Background/Paused';
+      if (_isMonitoringEnabled) _sendPing();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_isMonitoringEnabled) _sendPing();
+    }
   }
 
   /// Increment crash count

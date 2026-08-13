@@ -21,8 +21,7 @@ export default function LabsLayout() {
           {/* Subtle glow effects in background */}
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px] pointer-events-none" />
           <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
-          
-          <div className="mx-auto w-full max-w-7xl relative z-10">
+          <div className="mx-auto w-full max-w-[1600px] relative z-10">
             <Outlet />
           </div>
         </main>

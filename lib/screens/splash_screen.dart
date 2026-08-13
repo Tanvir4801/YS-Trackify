@@ -77,10 +77,10 @@ class _SplashScreenState extends State<SplashScreen>
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           title: Text(versionResult!.maintenanceMode ? 'Maintenance Break' : 'Update Required', style: const TextStyle(color: AppColors.gold)),
-          content: Text(versionResult!.message, style: const TextStyle(color: Colors.white70)),
+          content: Text(versionResult.message, style: const TextStyle(color: Colors.white70)),
           backgroundColor: AppColors.navyLight,
           actions: [
-            if (!versionResult!.maintenanceMode)
+            if (!versionResult.maintenanceMode)
               TextButton(
                 onPressed: () {}, // Would link to Play Store/App Store
                 child: const Text('UPDATE NOW', style: TextStyle(color: AppColors.gold)),

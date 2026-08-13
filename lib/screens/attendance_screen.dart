@@ -11,17 +11,14 @@ import '../core/utils/date_utils.dart';
 import '../core/utils/haptic_utils.dart';
 import '../core/utils/snackbar_utils.dart';
 import '../core/theme/app_colors.dart';
-import '../core/theme/app_text_styles.dart';
 import '../models/labour_model.dart';
 import '../models/site_model.dart';
 import '../models/temp_labour_entry.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/sites_provider.dart';
-import '../widgets/animations/bouncy_tap.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/shimmer_loader.dart';
 import '../widgets/add_temp_labour_dialog.dart';
-import '../utils/error_handler.dart';
 import '../widgets/loading_button.dart';
 
 class AttendanceScreen extends StatefulWidget {
@@ -756,22 +753,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         }
       },
       itemBuilder: (ctx) => [
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'allowances',
-          child: Row(children: [const Icon(Icons.payments_outlined, color: AppColors.goldDark, size: 18), const SizedBox(width: 8), const Text('Allowances', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.payments_outlined, color: AppColors.goldDark, size: 18), SizedBox(width: 8), Text('Allowances', style: TextStyle(color: Colors.white, fontSize: 13))]),
         ),
         const PopupMenuDivider(),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'mark_all',
-          child: Row(children: [const Icon(Icons.done_all_rounded, color: AppColors.present, size: 18), const SizedBox(width: 8), const Text('Mark All Present', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.done_all_rounded, color: AppColors.present, size: 18), SizedBox(width: 8), Text('Mark All Present', style: TextStyle(color: Colors.white, fontSize: 13))]),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'copy',
-          child: Row(children: [const Icon(Icons.copy_rounded, color: AppColors.textTertiary, size: 18), const SizedBox(width: 8), const Text('Copy Yesterday', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.copy_rounded, color: AppColors.textTertiary, size: 18), SizedBox(width: 8), Text('Copy Yesterday', style: TextStyle(color: Colors.white, fontSize: 13))]),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'reset',
-          child: Row(children: [const Icon(Icons.refresh_rounded, color: AppColors.absent, size: 18), const SizedBox(width: 8), const Text('Reset Attendance', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.refresh_rounded, color: AppColors.absent, size: 18), SizedBox(width: 8), Text('Reset Attendance', style: TextStyle(color: Colors.white, fontSize: 13))]),
         ),
       ],
     );

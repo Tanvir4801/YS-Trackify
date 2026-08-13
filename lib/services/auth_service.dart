@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -425,34 +426,33 @@ class AuthService {
     }
 
     try {
-      // First try with 'phone' field
-      var labourSnap = await _db
-          .collection('labours')
-          .where('phone', isEqualTo: phoneClean)
-          .where('isActive', isEqualTo: true)
-          .limit(1)
-          .get();
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('labourLogin');
+      final result = await callable.call(<String, dynamic>{
+        'phone': phoneClean,
+      });
 
-      // If not found, try 'phoneNumber' field
-      if (labourSnap.docs.isEmpty) {
-        labourSnap = await _db
-            .collection('labours')
-            .where('phoneNumber', isEqualTo: phoneClean)
-            .where('isActive', isEqualTo: true)
-            .limit(1)
-            .get();
+      final data = result.data;
+      if (data['success'] != true || data['token'] == null) {
+        return AuthResult.error('Failed to authenticate.');
       }
 
-      if (labourSnap.docs.isEmpty) {
-        debugPrint('❌ No active labour found for phone: $phoneClean');
-        return AuthResult.error(
-          'Mobile number not registered.\nContact your supervisor.',
-        );
+      final String customToken = data['token'];
+      
+      // Sign in to Firebase Auth using the custom token
+      final UserCredential userCredential = await _auth.signInWithCustomToken(customToken);
+      final String labourId = userCredential.user!.uid;
+
+      // Now fetch the labour document using the authenticated labourId
+      final labourDoc = await _db.collection('labours').doc(labourId).get();
+      if (!labourDoc.exists) {
+        return AuthResult.error('Labour profile not found.');
       }
 
-      final labourDoc = labourSnap.docs.first;
-      final labourData = labourDoc.data();
-      final labourId = labourDoc.id;
+      final labourData = labourDoc.data()!;
+      if (labourData['isActive'] != true) {
+        return AuthResult.error('Mobile number not registered. Contact your supervisor.');
+      }
+
       final name = (labourData['name'] as String? ?? 'Labour').trim();
       final supervisorId = (labourData['supervisorId'] as String? ?? '').trim();
       final contractorIdFromLabour =
@@ -463,7 +463,7 @@ class AuthService {
       final supervisorRefId =
           supervisorId.isNotEmpty ? supervisorId : labourId;
 
-      debugPrint('✅ Labour found: $labourId | name: $name');
+      debugPrint('✅ Labour authenticated: $labourId | name: $name');
 
       final appUser = AppUser(
         uid: labourId,
@@ -511,6 +511,9 @@ class AuthService {
       );
     } catch (e) {
       debugPrint('❌ Labour login error: $e');
+      if (e is FirebaseFunctionsException) {
+        return AuthResult.error(e.message ?? 'Login failed. Check your connection.');
+      }
       return AuthResult.error('Login failed. Check your connection.');
     }
   }

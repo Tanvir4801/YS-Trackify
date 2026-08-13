@@ -26,9 +26,7 @@ class TelemetryService {
   }
 
   String get sessionId {
-    if (_sessionId == null) {
-      _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}_${(1000 + DateTime.now().microsecond % 9000)}';
-    }
+    _sessionId ??= 'sess_${DateTime.now().millisecondsSinceEpoch}_${(1000 + DateTime.now().microsecond % 9000)}';
     return _sessionId!;
   }
 
@@ -115,7 +113,7 @@ class TelemetryService {
       }
 
       // Fire and forget
-      _db.collection('telemetry_events').add(payload).catchError((_) {});
+      (_db.collection('telemetry_events').add(payload) as Future<dynamic>).catchError((_) {});
     } catch (e) {
       debugPrint('Telemetry Error: $e');
     }

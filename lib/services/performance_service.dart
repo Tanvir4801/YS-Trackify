@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'telemetry_service.dart';
 
 class PerformanceService {

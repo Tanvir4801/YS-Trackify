@@ -21,11 +21,32 @@ exports.trackopsGetAnalytics     = trackopsFunctions.trackopsGetAnalytics;
 exports.trackopsGetBilling       = trackopsFunctions.trackopsGetBilling;
 exports.trackopsGetPaginatedLogs = trackopsFunctions.trackopsGetPaginatedLogs;
 
+// ─── InfraLens Monitoring Integration ─────────────────────────────────────────
+const infralensFunctions = require('./infralens');
+exports.infralensGetOverview        = infralensFunctions.infralensGetOverview;
+exports.infralensGetAlerts          = infralensFunctions.infralensGetAlerts;
+exports.infralensGetIncidentDetails = infralensFunctions.infralensGetIncidentDetails;
+exports.infralensGetHealth          = infralensFunctions.infralensGetHealth;
+exports.infralensGetKubernetes      = infralensFunctions.infralensGetKubernetes;
+exports.infralensGetContainers      = infralensFunctions.infralensGetContainers;
+exports.infralensGetForecast        = infralensFunctions.infralensGetForecast;
+
 // Must match Flutter app constant.
 const QR_SALT = 'TRACKIFY_QR_SECRET_2026';
 
-// In-memory rate limiting for serverless instance
-const rateLimitMap = new Map();
+// Helper for scalable rate limiting
+async function enforceFirestoreRateLimit(key, cooldownMs) {
+  const ref = db.collection('rate_limits').doc(key);
+  const docSnap = await ref.get();
+  const now = Date.now();
+  if (docSnap.exists) {
+    const last = docSnap.data().timestamp || 0;
+    if (now - last < cooldownMs) {
+      throw new functions.https.HttpsError('resource-exhausted', 'Too many requests. Please wait.');
+    }
+  }
+  await ref.set({ timestamp: now });
+}
 
 // Format date as YYYY-MM-DD.
 function todayString() {
@@ -70,7 +91,7 @@ function verifyToken(token) {
   }
 }
 
-exports.validateAndMarkAttendance = functions.https.onCall(
+exports.validateAndMarkAttendance = functions.runWith({ enforceAppCheck: true }).https.onCall(
   async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError(
@@ -81,22 +102,19 @@ exports.validateAndMarkAttendance = functions.https.onCall(
 
     const { token, supervisorId, date, status, offlineSync } = data;
 
-    // Basic rate limit: max 1 request per 3 seconds per supervisor (in-memory)
-    const now = Date.now();
-    if (rateLimitMap.has(supervisorId)) {
-        if (now - rateLimitMap.get(supervisorId) < 3000) {
-            // Log api abuse asynchronously
-            db.collection('security_events').add({
-                type: 'api_abuse',
-                uid: supervisorId,
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                reason: 'validateAndMarkAttendance rate limit exceeded (in-memory cooldown)'
-            }).catch(console.error);
-            throw new functions.https.HttpsError('resource-exhausted', 'Please wait before scanning again.');
-        }
+    // Scalable rate limit: max 1 request per 3 seconds per supervisor
+    try {
+      await enforceFirestoreRateLimit(`attendance_${supervisorId}`, 3000);
+    } catch (err) {
+      // Log api abuse asynchronously
+      db.collection('security_events').add({
+          type: 'api_abuse',
+          uid: supervisorId,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          reason: 'validateAndMarkAttendance rate limit exceeded'
+      }).catch(console.error);
+      throw err;
     }
-    rateLimitMap.set(supervisorId, now);
-    if (rateLimitMap.size > 1000) rateLimitMap.clear(); // Basic memory protection
 
     if (context.auth.uid !== supervisorId) {
       throw new functions.https.HttpsError(
@@ -202,6 +220,60 @@ exports.validateAndMarkAttendance = functions.https.onCall(
     };
   }
 );
+
+exports.labourLogin = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
+  const phone = data.phone;
+  if (!phone || typeof phone !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Phone number is required.');
+  }
+
+  // Rate Limiting by IP (max 1 request per 10 seconds)
+  const ip = context.rawRequest ? (context.rawRequest.ip || 'unknown').replace(/\./g, '_').replace(/:/g, '_') : 'unknown';
+  if (ip !== 'unknown') {
+    await enforceFirestoreRateLimit(`login_${ip}`, 10000);
+  }
+
+  let phoneClean = phone.replace(/\D/g, '');
+  if (phoneClean.length === 12 && phoneClean.startsWith('91')) {
+    phoneClean = phoneClean.substring(2);
+  } else if (phoneClean.length > 10) {
+    phoneClean = phoneClean.substring(phoneClean.length - 10);
+  }
+
+  if (phoneClean.length !== 10) {
+    throw new functions.https.HttpsError('invalid-argument', 'Enter a valid 10-digit mobile number.');
+  }
+
+  let snap = await db.collection('labours')
+    .where('phone', '==', phoneClean)
+    .where('isActive', '==', true)
+    .limit(1)
+    .get();
+
+  if (snap.empty) {
+    snap = await db.collection('labours')
+      .where('phoneNumber', '==', phoneClean)
+      .where('isActive', '==', true)
+      .limit(1)
+      .get();
+  }
+
+  if (snap.empty) {
+    throw new functions.https.HttpsError('not-found', 'Mobile number not registered. Contact your supervisor.');
+  }
+
+  const labourDoc = snap.docs[0];
+  const labourId = labourDoc.id;
+
+  try {
+    const customToken = await admin.auth().createCustomToken(labourId, { role: 'labour' });
+    return { success: true, token: customToken };
+  } catch (error) {
+    console.error("Error creating custom token:", error);
+    throw new functions.https.HttpsError('internal', 'Unable to generate authentication token.');
+  }
+});
+
 
 
 
@@ -447,7 +519,7 @@ You MUST output ONLY a valid JSON object in this exact format, with no markdown 
     }
   });
 
-exports.executeSecurityAction = functions.https.onCall(async (data, context) => {
+exports.executeSecurityAction = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
   // Only Super Admins can execute this
   if (!context.auth || context.auth.token.role !== 'super_admin') {
     throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can execute security actions.');

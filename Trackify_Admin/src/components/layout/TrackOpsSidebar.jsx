@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Activity, Users, AlertTriangle, LifeBuoy, 
-  BarChart2, Server, Key, GitBranch, Crosshair, Shield, Map, FlaskConical, LogOut, Rocket
+  BarChart2, Server, Key, GitBranch, Crosshair, Shield, Map, FlaskConical, LogOut, Rocket, Network
 } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -11,6 +11,7 @@ import { signOut } from 'firebase/auth';
 const navItems = [
   { path: '/trackops/dashboard', icon: Activity, label: 'Mission Dashboard' },
   { path: '/trackops/deployment', icon: Rocket, label: 'Deployment Center' },
+  { path: '/trackops/infrastructure', icon: Network, label: 'Infrastructure' },
   { path: '/trackops/live-users', icon: Users, label: 'Live Users' },
   { path: '/trackops/mission-logs', icon: GitBranch, label: 'Mission Logs' },
   { path: '/trackops/health', icon: Server, label: 'Product Health' },

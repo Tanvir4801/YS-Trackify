@@ -18,7 +18,7 @@ function checkAuth(context) {
 }
 
 // ─── Analytics (Companies, Revenue, Usage) ──────────────────────────────────
-exports.trackopsGetAnalytics = functions.https.onCall(async (data, context) => {
+exports.trackopsGetAnalytics = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
   checkAuth(context);
 
   const now = Date.now();
@@ -171,7 +171,7 @@ exports.trackopsGetAnalytics = functions.https.onCall(async (data, context) => {
 });
 
 // ─── Billing (GCP / Firebase Cost) ──────────────────────────────────────────
-exports.trackopsGetBilling = functions.https.onCall(async (data, context) => {
+exports.trackopsGetBilling = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
   checkAuth(context);
 
   const now = Date.now();
@@ -210,7 +210,7 @@ exports.trackopsGetBilling = functions.https.onCall(async (data, context) => {
 });
 
 // ─── Paginated Logs ─────────────────────────────────────────────────────────
-exports.trackopsGetPaginatedLogs = functions.https.onCall(async (data, context) => {
+exports.trackopsGetPaginatedLogs = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
   checkAuth(context);
 
   const { collectionName, lastVisibleId, pageSize = 50 } = data;

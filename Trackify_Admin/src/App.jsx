@@ -52,6 +52,7 @@ const RemoteActions = lazy(() => import('./pages/trackops/RemoteActions'));
 const SecurityCenter = lazy(() => import('./pages/trackops/SecurityCenter'));
 const Roadmap = lazy(() => import('./pages/trackops/Roadmap'));
 const DeploymentCenter = lazy(() => import('./pages/trackops/DeploymentCenter'));
+const Infrastructure = lazy(() => import('./pages/trackops/Infrastructure'));
 
 // Super Admin pages
 const SADashboard = lazy(() => import('./pages/superadmin/SADashboard'));
@@ -104,6 +105,12 @@ export default function App() {
   const switchContractor   = useAuthStore((s) => s.switchContractor);
   const setContractorsList = useAuthStore((s) => s.setContractorsList);
   const setLoading         = useAuthStore((s) => s.setLoading);
+
+  useEffect(() => {
+    // Initialize Theme
+    const savedTheme = localStorage.getItem('trackify_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -259,6 +266,7 @@ export default function App() {
           <Route path="/trackops/security" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><SecurityCenter /></RoleRoute>} />
           <Route path="/trackops/roadmap" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><Roadmap /></RoleRoute>} />
           <Route path="/trackops/deployment" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><DeploymentCenter /></RoleRoute>} />
+          <Route path="/trackops/infrastructure" element={<RoleRoute allowedRoles={['trackops', 'super_admin']} fallback="/dashboard"><Infrastructure /></RoleRoute>} />
         </Route>
 
         <Route element={<ProtectedRoute><LabsLayout /></ProtectedRoute>}>

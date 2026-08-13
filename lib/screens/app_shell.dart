@@ -11,7 +11,6 @@ import '../providers/site_data_provider.dart';
 import '../services/auth_service.dart';
 import '../services/scanner_service.dart';
 import '../services/session_service.dart';
-import '../widgets/offline_banner.dart';
 import '../widgets/bridge_bottom_nav_bar.dart';
 
 import '../core/localization/app_text.dart';

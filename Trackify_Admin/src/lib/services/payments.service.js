@@ -65,6 +65,7 @@ export async function getPayments(scopeId, options = {}) {
     const constraints = scopeId
       ? [where('contractorId', '==', scopeId)]
       : [];
+    constraints.push(...buildBaseConstraints(options));
     const snap = await getDocs(query(collection(db, 'payments'), ...constraints));
     const rows = applyClientFilters(snap.docs.map(snapToDoc), options);
     return rows.sort((a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0));
@@ -78,6 +79,7 @@ export function subscribePayments(scopeId, callback, options = {}) {
   const constraints = scopeId
     ? [where('contractorId', '==', scopeId)]
     : [];
+  constraints.push(...buildBaseConstraints(options));
   const q = query(collection(db, 'payments'), ...constraints);
 
   return onSnapshot(q, (snap) => {

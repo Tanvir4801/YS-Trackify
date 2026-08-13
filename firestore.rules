@@ -13,32 +13,36 @@ service cloud.firestore {
     }
 
     function callerData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(path) ? get(path).data : null;
     }
 
     function isSuperAdmin() {
+      let data = callerData();
       return isSignedIn() && (
         (request.auth.token.email == 'shirish@ysconstruction.com') || 
-        (callerData().role == 'super_admin') ||
-        (callerData().role == 'trackops')
+        (data != null && (data.get('role', '') == 'super_admin' || data.get('role', '') == 'trackops'))
       );
     }
 
     function isInTenant(contractorId) {
       // A contractor's own uid IS their contractorId — allow that shortcut
       // so reads work even when the users doc has no contractorId field.
+      let data = callerData();
       return isSignedIn() && (
         callerUid() == contractorId ||
-        callerData().contractorId == contractorId
+        (data != null && data.get('contractorId', '') == contractorId)
       );
     }
 
     function isContractorAdmin(contractorId) {
-      return isInTenant(contractorId) && callerData().role == 'contractor';
+      let data = callerData();
+      return isInTenant(contractorId) && data != null && data.get('role', '') == 'contractor';
     }
 
     function isSupervisor(contractorId) {
-      return isInTenant(contractorId) && callerData().role == 'supervisor';
+      let data = callerData();
+      return isInTenant(contractorId) && data != null && data.get('role', '') == 'supervisor';
     }
 
     function canManageTenant(contractorId) {
@@ -46,7 +50,7 @@ service cloud.firestore {
     }
 
     function isOwnTenantData(contractorId) {
-      return request.resource.data.contractorId == contractorId
+      return request.resource.data.get('contractorId', '') == contractorId
           && isInTenant(contractorId);
     }
 
@@ -81,8 +85,9 @@ service cloud.firestore {
     // ── labours/ ─────────────────────────────────────────────────────────────
 
     match /labours/{labourId} {
-      // Allow read for everyone so Labour Login via phone number can work
-      allow read: if true;
+      allow read: if isSuperAdmin()
+                  || isInTenant(resource.data.contractorId)
+                  || callerUid() == labourId;
 
       allow create: if isSuperAdmin()
                     || (isOwnTenantData(request.resource.data.contractorId)
@@ -106,7 +111,8 @@ service cloud.firestore {
 
     match /sites/{siteId} {
       allow read: if isSuperAdmin()
-                  || isInTenant(resource.data.contractorId);
+                  || isInTenant(resource.data.contractorId)
+                  || resource.data.get('supervisorId', '') == callerUid();
 
       allow create: if isSuperAdmin()
                     || (isOwnTenantData(request.resource.data.contractorId)
@@ -124,7 +130,8 @@ service cloud.firestore {
 
     match /attendance/{attendanceId} {
       allow read: if isSuperAdmin()
-                  || isInTenant(resource.data.contractorId);
+                  || isInTenant(resource.data.contractorId)
+                  || resource.data.get('supervisorId', '') == callerUid();
 
       // Supervisor or contractor admin can create; supervisorId must match caller
       allow create: if isSignedIn()
@@ -155,7 +162,8 @@ service cloud.firestore {
 
     match /attendanceSessions/{sessionId} {
       allow read: if isSuperAdmin()
-                  || isInTenant(resource.data.contractorId);
+                  || isInTenant(resource.data.contractorId)
+                  || resource.data.get('supervisorId', '') == callerUid();
 
       allow create: if isSignedIn()
                     && request.resource.data.supervisorId == callerUid()
@@ -177,7 +185,8 @@ service cloud.firestore {
 
     match /payments/{paymentId} {
       allow read: if isSuperAdmin()
-                  || isInTenant(resource.data.contractorId);
+                  || isInTenant(resource.data.contractorId)
+                  || resource.data.get('supervisorId', '') == callerUid();
 
       allow create: if isSuperAdmin()
                     || (isOwnTenantData(request.resource.data.contractorId)
@@ -292,7 +301,8 @@ service cloud.firestore {
     match /security_events/{eventId} {
       // Anyone can create an event (e.g. failing to login creates an event)
       allow create: if true;
-      allow read, update, delete: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update, delete: if isSuperAdmin();
     }
     
     // ── telemetry_events/ ────────────────────────────────────────────────────
@@ -311,7 +321,15 @@ service cloud.firestore {
     // Real-time presence tracking for admin dashboard
     match /live_users/{userId} {
       allow read: if isSuperAdmin();
-      allow write: if isSignedIn();
+      allow write: if isSignedIn() && callerUid() == userId;
+    }
+
+    // ── sessions/ ────────────────────────────────────────────────────────────
+    match /sessions/{sessionId} {
+      allow create: if isSignedIn() && request.resource.data.userId == callerUid();
+      allow read, update: if isSignedIn() && resource.data.userId == callerUid();
+      allow delete: if isSignedIn() && resource.data.userId == callerUid();
+      allow read, update, delete: if isSuperAdmin();
     }
 
     // ── infrastructure_metrics/ ──────────────────────────────────────────────
@@ -370,7 +388,8 @@ service cloud.firestore {
 
     // ── trackops_config/ ─────────────────────────────────────────────────────
     match /trackops_config/{docId} {
-      allow read, write: if isSuperAdmin();
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
     }
   }
 }

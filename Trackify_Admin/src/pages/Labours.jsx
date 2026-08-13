@@ -343,13 +343,13 @@ export default function Labours() {
   return (
     <div className="space-y-6">
       
-      <div className="bg-purple-900/20 border border-purple-500/30 text-purple-300 px-4 py-3 rounded-lg flex items-start gap-3">
-        <svg className="w-5 h-5 mt-0.5 text-purple-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="bg-info-bg border border-info/30 px-4 py-3 rounded-lg flex items-start gap-3">
+        <svg className="w-5 h-5 mt-0.5 text-info shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
         <div>
-          <p className="font-medium text-sm text-purple-200">Temporary Labours Auto-Hide</p>
-          <p className="text-xs opacity-80 mt-1">
+          <p className="font-medium text-sm text-text-primary">Temporary Labours Auto-Hide</p>
+          <p className="text-xs text-text-secondary mt-1">
             Labours marked as "temporary" in the app are only visible for the day they are added. 
             They will automatically be hidden tomorrow to keep your list clean.
           </p>

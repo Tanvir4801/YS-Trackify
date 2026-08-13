@@ -7,12 +7,12 @@
 :root {
   color-scheme: dark;
   /* Primary backgrounds */
-  --bg-primary:     #0A0E1A;
-  --bg-secondary:   #111827;
-  --bg-card:        #1A2235;
-  --bg-card-hover:  #1F2A40;
-  --bg-input:       #141C2E;
-  --bg-elevated:    #243044;
+  --bg-primary:     #0B0F17;
+  --bg-secondary:   #0A0E15;
+  --bg-card:        #111827;
+  --bg-card-hover:  #1A2437;
+  --bg-input:       #151D2E;
+  --bg-elevated:    #151D2E;
 
   /* Gold accent */
   --gold:           #F5A623;
@@ -37,14 +37,14 @@
   --info-bg:        rgba(59, 130, 246, 0.10);
 
   /* Text */
-  --text-primary:   #F0F4FF;
-  --text-secondary: #94A3B8;
-  --text-muted:     #64748B;
+  --text-primary:   #F3F4F6;
+  --text-secondary: #A7B0C0;
+  --text-muted:     #7F8BA0;
   --text-gold:      #F5A623;
 
   /* Borders */
-  --border:         rgba(255, 255, 255, 0.06);
-  --border-strong:  rgba(255, 255, 255, 0.12);
+  --border:         #263044;
+  --border-strong:  #334155;
   --border-gold:    rgba(245, 166, 35, 0.30);
 
   /* Special effects */
@@ -70,6 +70,73 @@
   --destructive-foreground: #0A0E1A;
   --ring: var(--gold);
   --radius: 0.5rem;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  /* Primary backgrounds */
+  --bg-primary:     #F8FAFC;
+  --bg-secondary:   #F1F5F9;
+  --bg-card:        #FFFFFF;
+  --bg-card-hover:  #F8FAFC;
+  --bg-input:       #FFFFFF;
+  --bg-elevated:    #FFFFFF;
+
+  /* Gold accent (slightly darkened for better contrast on light bg) */
+  --gold:           #D97706;
+  --gold-rgb:       217 119 6;
+  --gold-light:     #F59E0B;
+  --gold-dark:      #B45309;
+  --gold-bg:        rgba(217, 119, 6, 0.10);
+  --gold-border:    rgba(217, 119, 6, 0.25);
+
+  /* Semantic colors */
+  --success:        #059669;
+  --success-rgb:    5 150 105;
+  --success-bg:     rgba(5, 150, 105, 0.10);
+  --danger:         #DC2626;
+  --danger-rgb:     220 38 38;
+  --danger-bg:      rgba(220, 38, 38, 0.10);
+  --warning:        #D97706;
+  --warning-rgb:    217 119 6;
+  --warning-bg:     rgba(217, 119, 6, 0.10);
+  --info:           #2563EB;
+  --info-rgb:       37 99 235;
+  --info-bg:        rgba(37, 99, 235, 0.10);
+
+  /* Text */
+  --text-primary:   #0F172A;
+  --text-secondary: #475569;
+  --text-muted:     #64748B;
+  --text-gold:      #D97706;
+
+  /* Borders */
+  --border:         rgba(0, 0, 0, 0.08);
+  --border-strong:  rgba(0, 0, 0, 0.15);
+  --border-gold:    rgba(217, 119, 6, 0.30);
+
+  /* Special effects */
+  --glow-gold:      0 0 20px rgba(217, 119, 6, 0.15);
+  --glow-success:   0 0 20px rgba(5, 150, 105, 0.15);
+
+  /* Shadcn variables mapped to light theme equivalents */
+  --background: var(--bg-primary);
+  --foreground: var(--text-primary);
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-card);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--gold);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--bg-secondary);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-secondary);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--bg-secondary);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--danger);
+  --destructive-foreground: #FFFFFF;
+  --ring: var(--gold);
 }
 
 body {

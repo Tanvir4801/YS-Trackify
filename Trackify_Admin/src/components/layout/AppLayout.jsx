@@ -17,7 +17,7 @@ export default function AppLayout() {
       >
         <Header />
         <main className="flex-1 px-8 py-8 relative">
-          <div className="mx-auto w-full max-w-7xl">
+          <div className="mx-auto w-full max-w-[1600px]">
             <Outlet />
           </div>
         </main>

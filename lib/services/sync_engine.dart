@@ -11,7 +11,6 @@ import '../models/attendance_model.dart';
 import '../models/labour_model.dart';
 import '../models/payment_model.dart';
 import 'connectivity_service.dart';
-import 'firestore_paths.dart';
 import 'session_service.dart';
 import 'attendance_service.dart';
 

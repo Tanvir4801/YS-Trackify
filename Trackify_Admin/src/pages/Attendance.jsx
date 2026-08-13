@@ -795,7 +795,7 @@ export default function Attendance() {
           </button>
         </td>
         <td className="px-6 py-4 text-center">
-          {row.recordId ? <span className="text-[14px] font-bold text-success">✓</span> : <span className="text-text-muted/30">—</span>}
+          {(row.recordId && row.status !== 'pending') ? <span className="text-[14px] font-bold text-success">✓</span> : <span className="text-text-muted/30">—</span>}
         </td>
       </tr>
     );

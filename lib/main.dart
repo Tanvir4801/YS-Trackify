@@ -8,7 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart' as legacy_provider;
 
 import 'firebase_options.dart';
-import 'debug/firestore_audit.dart';
+
 import 'models/attendance_model.dart';
 import 'models/labour_model.dart';
 import 'models/payment_model.dart';
@@ -19,6 +19,7 @@ import 'models/site_expense_model.dart';
 import 'models/daily_closing_report.dart';
 import 'providers/attendance_provider.dart';
 import 'services/temp_labour_cleanup_service.dart';
+import 'services/offline_cleanup_service.dart';
 import 'providers/dashboard_provider.dart';
 import 'providers/labour_provider.dart';
 import 'providers/language_provider.dart';
@@ -118,9 +119,9 @@ Future<void> main() async {
   // Temporary audit — run in a fire-and-forget way (never blocks startup).
   FirebaseAuth.instance.authStateChanges().listen((user) {
     if (user != null) {
-      // ignore: unawaited_futures
-      FirestoreAudit.runAudit();
+
       TempLabourCleanupService.runCleanup();
+      OfflineCleanupService.runCleanup();
     }
   });
 

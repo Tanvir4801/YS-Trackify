@@ -102,7 +102,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.navyLight,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+                  border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: DropdownButtonHideUnderline(
@@ -138,7 +138,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.navyLight,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: TextField(

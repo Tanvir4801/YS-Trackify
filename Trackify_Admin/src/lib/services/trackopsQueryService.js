@@ -46,6 +46,14 @@ const vercelGetLogsFn = httpsCallable(functions, 'vercelGetDeploymentLogs');
 const vercelGetFilesFn = httpsCallable(functions, 'vercelGetDeploymentFiles');
 const getVercelProjectFn = httpsCallable(functions, 'vercelGetProjectFull');
 
+const infralensGetOverviewFn = httpsCallable(functions, 'infralensGetOverview');
+const infralensGetAlertsFn = httpsCallable(functions, 'infralensGetAlerts');
+const infralensGetIncidentDetailsFn = httpsCallable(functions, 'infralensGetIncidentDetails');
+const infralensGetHealthFn = httpsCallable(functions, 'infralensGetHealth');
+const infralensGetKubernetesFn = httpsCallable(functions, 'infralensGetKubernetes');
+const infralensGetContainersFn = httpsCallable(functions, 'infralensGetContainers');
+const infralensGetForecastFn = httpsCallable(functions, 'infralensGetForecast');
+
 // Default Intervals
 const INTERVALS = {
   ANALYTICS: 5 * 60 * 1000,     // 5 minutes
@@ -210,6 +218,134 @@ export function useTrackOpsVercelFiles(deploymentId) {
     },
     refetchInterval: active ? 60000 : false,
     staleTime: 60000,
+    enabled: active,
+  });
+}
+
+// ─── InfraLens Integration Hooks ──────────────────────────────────────────────
+
+export function useInfraLensOverview() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = isMonitoringActive && !isIdle;
+
+  return useQuery({
+    queryKey: ['trackops', 'infralens', 'overview'],
+    queryFn: async () => {
+      const res = await infralensGetOverviewFn({});
+      if (res.data?.success === false) throw new Error(res.data.message || 'InfraLens request failed.');
+      return res.data?.data?.data ? { ...res.data, data: res.data.data.data } : res.data;
+    },
+    refetchInterval: active ? 30000 : false, // Poll every 30s when active
+    staleTime: 30000,
+    enabled: active,
+    retry: 2, // Retry network errors briefly
+  });
+}
+
+export function useInfraLensAlerts() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = isMonitoringActive && !isIdle;
+
+  return useQuery({
+    queryKey: ['trackops', 'infralens', 'alerts'],
+    queryFn: async () => {
+      const res = await infralensGetAlertsFn({});
+      if (res.data?.success === false) throw new Error(res.data.message || 'InfraLens request failed.');
+      return res.data?.data?.data ? { ...res.data, data: res.data.data.data } : res.data;
+    },
+    refetchInterval: active ? 30000 : false,
+    staleTime: 30000,
+    enabled: active,
+    retry: 2,
+  });
+}
+
+export function useInfraLensIncident(incidentId) {
+  // On demand fetching for details
+  return useQuery({
+    queryKey: ['trackops', 'infralens', 'incident', incidentId],
+    queryFn: async () => {
+      const res = await infralensGetIncidentDetailsFn({ incidentId });
+      if (res.data?.success === false) throw new Error(res.data.message || 'InfraLens request failed.');
+      return res.data;
+    },
+    staleTime: 5 * 60 * 1000, // 5 min cache
+    enabled: !!incidentId,
+    retry: 1,
+  });
+}
+
+export function useInfraLensHealth() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = isMonitoringActive && !isIdle;
+
+  return useQuery({
+    queryKey: ['trackops', 'infralens', 'health'],
+    queryFn: async () => {
+      const res = await infralensGetHealthFn({});
+      if (res.data?.success === false) throw new Error(res.data.message || 'InfraLens request failed.');
+      return res.data?.data?.data ? { ...res.data, data: res.data.data.data } : res.data;
+    },
+    refetchInterval: active ? 60000 : false, // Every 60s
+    staleTime: 60000,
+    enabled: active,
+    retry: 2,
+  });
+}
+
+export function useInfraLensForecast() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = isMonitoringActive && !isIdle;
+
+  return useQuery({
+    queryKey: ['trackops', 'infralens', 'forecast'],
+    queryFn: async () => {
+      const res = await infralensGetForecastFn({});
+      if (res.data?.success === false) throw new Error(res.data.message || 'InfraLens request failed.');
+      return res.data?.data?.data ? { ...res.data, data: res.data.data.data } : res.data;
+    },
+    refetchInterval: active ? 60000 : false,
+    staleTime: 60000,
+    enabled: active,
+  });
+}
+
+export function useInfraLensKubernetes() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = isMonitoringActive && !isIdle;
+
+  return useQuery({
+    queryKey: ['trackops', 'infralens', 'kubernetes'],
+    queryFn: async () => {
+      const res = await infralensGetKubernetesFn({});
+      if (res.data?.success === false) throw new Error(res.data.message || 'InfraLens request failed.');
+      return res.data?.data?.data ? { ...res.data, data: res.data.data.data } : res.data;
+    },
+    refetchInterval: active ? 30000 : false,
+    staleTime: 30000,
+    enabled: active,
+  });
+}
+
+export function useInfraLensContainers() {
+  const { isMonitoringActive } = useTrackOpsMonitoring();
+  const isIdle = useUserIdle();
+  const active = isMonitoringActive && !isIdle;
+
+  return useQuery({
+    queryKey: ['trackops', 'infralens', 'containers'],
+    queryFn: async () => {
+      const res = await infralensGetContainersFn({});
+      if (res.data?.success === false) throw new Error(res.data.message || 'InfraLens request failed.');
+      return res.data?.data?.data ? { ...res.data, data: res.data.data.data } : res.data;
+    },
+    refetchInterval: active ? 30000 : false,
+    staleTime: 30000,
     enabled: active,
   });
 }

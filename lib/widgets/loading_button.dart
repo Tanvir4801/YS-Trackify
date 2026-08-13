@@ -6,11 +6,11 @@ class LoadingButton extends StatefulWidget {
   final ButtonStyle? style;
 
   const LoadingButton({
-    Key? key,
+    super.key,
     required this.onPressed,
     required this.child,
     this.style,
-  }) : super(key: key);
+  });
 
   @override
   State<LoadingButton> createState() => _LoadingButtonState();

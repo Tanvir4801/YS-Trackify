@@ -101,9 +101,9 @@ function SummaryChip({ icon, label, value, color }) {
   );
 }
 
-function buildLast14() {
+function buildLast7() {
   const days = [];
-  for (let i = 13; i >= 0; i--) {
+  for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     days.push({ date: d.toISOString().split('T')[0], label: `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}` });
@@ -141,8 +141,8 @@ export default function Dashboard() {
 
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  const days14 = useMemo(() => buildLast14(), []);
-  const days14Start = days14[0].date;
+  const days7 = useMemo(() => buildLast7(), []);
+  const days7Start = days7[0].date;
 
   const { data: labours = [], isLoading: loadingLabours } = useLabours();
   const { data: supervisors = [] } = useSupervisors();
@@ -150,7 +150,7 @@ export default function Dashboard() {
 
   const [attendanceToday, setAttendanceToday] = useState([]);
   const [loadingToday, setLoadingToday] = useState(true);
-  const [trend14, setTrend14] = useState([]);
+  const [trend7, setTrend7] = useState([]);
   const [loadingTrend, setLoadingTrend] = useState(true);
   const [monthPayments, setMonthPayments] = useState([]);
   const [loadingPay, setLoadingPay] = useState(true);
@@ -176,7 +176,7 @@ export default function Dashboard() {
     
     // Defer heavy history loading by 500ms so main UI renders instantly
     const timer = setTimeout(() => {
-      getAttendanceRange(scopeId, days14Start, today)
+      getAttendanceRange(scopeId, days7Start, today)
         .then((records) => {
         const byDate = new Map();
         records.forEach((r) => {
@@ -189,8 +189,8 @@ export default function Dashboard() {
           else if (r.status === 'pending') entry.pending++;
           byDate.set(r.date, entry);
         });
-        setTrend14(
-          days14.map((d) => ({
+        setTrend7(
+          days7.map((d) => ({
             label: d.label,
             ...({ present: 0, three_quarter: 0, half: 0, quarter: 0, absent: 0, pending: 0, ...(byDate.get(d.date) || {}) }),
           })),
@@ -200,7 +200,7 @@ export default function Dashboard() {
       .finally(() => setLoadingTrend(false));
     }, 500);
     return () => clearTimeout(timer);
-  }, [scopeId, days14Start, today, days14]);
+  }, [scopeId, days7Start, today, days7]);
 
   useEffect(() => {
     if (!scopeId && role !== 'super_admin') {
@@ -348,7 +348,7 @@ export default function Dashboard() {
       {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Active Labours',   value: labours.length,               icon: HardHat,    color: 'gold',   trend: labours.length > 0 ? `${labours.length} registered` : 'No labours yet' },
+          { label: 'Active Labours',   value: labours.length,               icon: HardHat,    color: 'purple',   trend: labours.length > 0 ? `${labours.length} registered` : 'No labours yet' },
           { label: 'Present Today',    value: todayCounts.uniquePresent,           icon: UserCheck,  color: 'green',  trend: `${todayCounts.totalShiftFactor} total days` },
           { label: 'Absent Today',     value: todayCounts.absent,            icon: UserX,      color: 'red',    trend: `${absentPct}% workforce` },
           { label: 'Half Day Today',   value: todayCounts.half,              icon: Activity,   color: 'amber',  sub: 'half-day records' },
@@ -367,16 +367,16 @@ export default function Dashboard() {
         <div className="rounded-xl border border-border bg-bg-card p-5 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-[16px] font-medium text-text-primary">14-Day Attendance Trend</h3>
-              <p className="text-[12px] text-text-muted mt-0.5">Last 2 weeks overview</p>
+              <h3 className="text-[16px] font-medium text-text-primary">7-Day Attendance Trend</h3>
+              <p className="text-[12px] text-text-muted mt-0.5">Last 7 days overview</p>
             </div>
-            <span className="text-[12px] text-text-muted hidden sm:block">Last 2 weeks</span>
+            <span className="text-[12px] text-text-muted hidden sm:block">Last 7 days</span>
           </div>
           {loadingTrend ? (
             <div className="flex h-52 items-center justify-center">
               <LoadingSpinner label="Loading trend…" />
             </div>
-          ) : trend14.every((d) => d.present === 0 && d.absent === 0 && d.half === 0) ? (
+          ) : trend7.every((d) => d.present === 0 && d.absent === 0 && d.half === 0) ? (
             <div className="flex h-52 flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-bg-elevated border border-border">
                 <BarChart2 className="h-7 w-7 text-text-muted" />
@@ -388,7 +388,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={trend14} margin={{ top: 4, right: 8, left: -10, bottom: 0 }} barCategoryGap="35%">
+              <BarChart data={trend7} margin={{ top: 4, right: 8, left: -10, bottom: 0 }} barCategoryGap="35%">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-strong)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} allowDecimals={false} axisLine={false} tickLine={false} />
