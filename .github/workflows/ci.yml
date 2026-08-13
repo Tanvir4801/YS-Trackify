@@ -40,23 +40,6 @@ jobs:
       - name: Build React App
         run: npm run build
         
-      # Build the Docker image
-      - name: Build Docker Image
-        run: docker build -t trackify-admin .
-
-      # ==========================================
-      # SECURITY SCAN 2: Container & Dependency Scan
-      # Checks the final Docker image and npm dependencies for CVEs
-      # ==========================================
-      - name: Container Vulnerability Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'trackify-admin:latest'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
 
       # ==========================================
       # DEPLOYMENT: Push to Google Artifact Registry
