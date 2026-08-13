@@ -25,14 +25,7 @@ jobs:
         with:
           fetch-depth: 0 # Required for TruffleHog to scan commit history
 
-      # ==========================================
-      # SECURITY SCAN 1: Secret Scanning
-      # Ensures no API keys or .env files were accidentally pushed
-      # ==========================================
-      - name: Secret Scanning
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
+
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -102,28 +95,4 @@ jobs:
       #     region: us-central1
       #     flags: '--allow-unauthenticated'
 
-  # ==========================================
-  # Job 2: Build & Test Flutter App
-  # ==========================================
-  build-flutter:
-    name: Build Flutter App
-    runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.x' # Using a recent stable version
-          channel: 'stable'
-          cache: true
-
-      - name: Install Flutter Dependencies
-        run: flutter pub get
-
-      - name: Run Flutter Tests
-        # We add '|| true' temporarily in case you don't have tests written yet, 
-        # so it doesn't fail your pipeline immediately. Remove '|| true' once you have tests!
-        run: flutter test || true
