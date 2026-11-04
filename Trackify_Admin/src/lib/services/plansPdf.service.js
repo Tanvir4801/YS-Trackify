@@ -125,6 +125,7 @@ export async function generateHousePlanInvoicePDF({
   // Determine payment status badge
   let paymentBadgeText = 'PENDING';
   let badgeBgColor = [220, 38, 38]; // Red
+  let badgeTextColor = [255, 255, 255];
   if (totalPaid >= totalPlanFee && totalPlanFee > 0) {
     paymentBadgeText = 'PAID IN FULL';
     badgeBgColor = [16, 185, 129]; // Emerald Green
@@ -137,26 +138,35 @@ export async function generateHousePlanInvoicePDF({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 1. TOP HEADER BAND (Branded with custom theme color & logo)
+  // 1. SLEEK EXECUTIVE HEADER (Modern Luxury White Theme with Brand Accent)
   // ─────────────────────────────────────────────────────────────────────────
+  // Top brand color accent strip (4mm)
   doc.setFillColor(...rgbTheme);
-  doc.rect(0, 0, pageWidth, 38, 'F');
+  doc.rect(0, 0, pageWidth, 4, 'F');
 
-  // Load Logo if available
+  // Header background card (pure clean white with subtle bottom border)
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 4, pageWidth, 32, 'F');
+  doc.setDrawColor(226, 232, 240); // slate-200
+  doc.setLineWidth(0.3);
+  doc.line(margin, 36, pageWidth - margin, 36);
+
+  // Logo rendering
   let textStartX = margin;
   const logoInfo = await loadLogoDataUrl(branding?.logoUrl);
 
   if (logoInfo) {
     try {
-      const maxBox = 24;
+      const maxBox = 22;
       const ratio = Math.min(maxBox / logoInfo.width, maxBox / logoInfo.height);
       const renderW = logoInfo.width * ratio;
       const renderH = logoInfo.height * ratio;
-      const renderY = 19 - renderH / 2;
+      const renderY = 20 - renderH / 2;
 
-      // Clean white rounded backing for logo
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(margin, renderY - 1, renderW + 2, renderH + 2, 2, 2, 'F');
+      // Modern rounded border box for logo
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin, renderY - 1, renderW + 2, renderH + 2, 2, 2, 'FD');
       doc.addImage(logoInfo.dataUrl, 'PNG', margin + 1, renderY, renderW, renderH);
 
       textStartX = margin + renderW + 5;
@@ -165,8 +175,10 @@ export async function generateHousePlanInvoicePDF({
     }
   } else {
     // Stylized Monogram Badge if no image uploaded
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(margin, 7, 24, 24, 3, 3, 'F');
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(...rgbTheme);
+    doc.setLineWidth(0.6);
+    doc.roundedRect(margin, 9, 22, 22, 3, 3, 'FD');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(...rgbTheme);
@@ -176,151 +188,172 @@ export async function generateHousePlanInvoicePDF({
       .slice(0, 2)
       .join('')
       .toUpperCase() || 'YS';
-    doc.text(monogram, margin + 6, 22);
+    doc.text(monogram, margin + 5.5, 23.5);
 
-    textStartX = margin + 28;
+    textStartX = margin + 26;
   }
 
-  // Company Name
+  // Company Name in Bold Slate
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(17);
-  doc.setTextColor(255, 255, 255);
-  doc.text(companyName.toUpperCase(), textStartX, 16.5);
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text(companyName.toUpperCase(), textStartX, 17);
 
-  // Subtitle / Tagline
-  doc.setFont('helvetica', 'normal');
+  // Tagline in Brand Accent Color
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
-  doc.text(tagline, textStartX, 22.5);
-  doc.text('House Planning • 2D Working • 3D Elevation • Structural Design & Sanctions', textStartX, 27.5);
+  doc.setTextColor(...rgbTheme);
+  doc.text(tagline.toUpperCase(), textStartX, 22.5);
 
-  // Right Header: Invoice Title & Meta Badge
+  // Services Subtitle in Slate
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.text('2D Architectural Working • 3D Elevation • IS-456 Structural Drawings • Sanction Plans', textStartX, 27.5);
+
+  // Right Header: Invoice Title & Meta
   const rightX = pageWidth - margin;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(15, 23, 42);
   doc.text('PLANNING INVOICE / BILL', rightX, 15, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...rgbTheme);
+  doc.text(`Bill Ref: ${billInvoiceNo}`, rightX, 20.5, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.text(`Bill No: ${billInvoiceNo}`, rightX, 21, { align: 'right' });
-  doc.text(`Date: ${formatDate(new Date())}`, rightX, 26, { align: 'right' });
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Date: ${formatDate(new Date())}`, rightX, 25.5, { align: 'right' });
 
   // Status Pill
   doc.setFillColor(...badgeBgColor);
-  doc.roundedRect(rightX - 44, 29, 44, 6, 2, 2, 'F');
+  doc.roundedRect(rightX - 44, 28, 44, 5.5, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  doc.setTextColor(255, 255, 255);
-  doc.text(paymentBadgeText, rightX - 22, 33.3, { align: 'center' });
+  doc.setTextColor(...badgeTextColor);
+  doc.text(paymentBadgeText, rightX - 22, 32, { align: 'center' });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 2. CONTACT DETAILS & CLIENT INFORMATION GRID
+  // 2. MODERN CONTACT DETAILS & CLIENT INFORMATION CARDS
   // ─────────────────────────────────────────────────────────────────────────
-  const infoTopY = 44;
+  const infoTopY = 41;
   const colWidth = (pageWidth - margin * 2 - 6) / 2;
-  const infoBoxHeight = 32;
+  const infoBoxHeight = 31;
 
-  // Left Box: Consultancy Info
-  doc.setFillColor(249, 250, 251);
-  doc.setDrawColor(229, 231, 235);
+  // Left Box: Consultancy Info (with left accent border)
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
   doc.roundedRect(margin, infoTopY, colWidth, infoBoxHeight, 2, 2, 'FD');
 
+  // Solid left accent bar
+  doc.setFillColor(...rgbTheme);
+  doc.rect(margin, infoTopY, 2.5, infoBoxHeight, 'F');
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(107, 114, 128);
-  doc.text('ISSUED BY (PLANNING CONSULTANT):', margin + 4, infoTopY + 5.5);
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('ISSUED BY (PLANNING CONSULTANT):', margin + 6, infoTopY + 5.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
-  doc.setTextColor(17, 24, 39);
-  doc.text(companyName, margin + 4, infoTopY + 11.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(companyName, margin + 6, infoTopY + 11.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.setTextColor(75, 85, 99);
-  doc.text(`Office: ${companyAddress}`, margin + 4, infoTopY + 16.5);
-  doc.text(`Phone: ${companyPhone}  •  Email: ${companyEmail}`, margin + 4, infoTopY + 21.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Office: ${companyAddress}`, margin + 6, infoTopY + 16.5);
+  doc.text(`Phone: ${companyPhone}  •  Email: ${companyEmail}`, margin + 6, infoTopY + 21);
   if (gstNumber) {
-    doc.text(`GST / Registration: ${gstNumber}`, margin + 4, infoTopY + 26.5);
+    doc.text(`GST / Registration: ${gstNumber}`, margin + 6, infoTopY + 25.5);
   } else {
-    doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, margin + 4, infoTopY + 26.5);
+    doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, margin + 6, infoTopY + 25.5);
   }
 
   // Right Box: Billed To (Client / Owner)
   const clientBoxX = margin + colWidth + 6;
-  doc.setFillColor(249, 250, 251);
-  doc.setDrawColor(229, 231, 235);
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
   doc.roundedRect(clientBoxX, infoTopY, colWidth, infoBoxHeight, 2, 2, 'FD');
 
+  // Solid left accent bar
+  doc.setFillColor(...rgbTheme);
+  doc.rect(clientBoxX, infoTopY, 2.5, infoBoxHeight, 'F');
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(107, 114, 128);
-  doc.text('BILLED TO (HOUSE OWNER / CLIENT):', clientBoxX + 4, infoTopY + 5.5);
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('BILLED TO (HOUSE OWNER / CLIENT):', clientBoxX + 6, infoTopY + 5.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
-  doc.setTextColor(17, 24, 39);
-  doc.text(ownerName.toUpperCase(), clientBoxX + 4, infoTopY + 11.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(ownerName.toUpperCase(), clientBoxX + 6, infoTopY + 11.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.setTextColor(75, 85, 99);
-  doc.text(`Phone: ${owner.ownerPhone || 'N/A'}`, clientBoxX + 4, infoTopY + 16.5);
-  doc.text(`Site Location: ${owner.city || owner.town || owner.ownerAddress || 'Anaval'}`, clientBoxX + 4, infoTopY + 21.5);
-  doc.text(`Plan Serial No: ${planNumber}  •  3D Model Ref: ${serialNumber3D}`, clientBoxX + 4, infoTopY + 26.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Phone: ${owner.ownerPhone || 'N/A'}`, clientBoxX + 6, infoTopY + 16.5);
+  doc.text(`Site Location: ${owner.city || owner.town || owner.ownerAddress || 'Anaval'}`, clientBoxX + 6, infoTopY + 21);
+  doc.text(`Plan Serial No: ${planNumber}  •  3D Model Ref: ${serialNumber3D}`, clientBoxX + 6, infoTopY + 25.5);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 3. PROJECT & ARCHITECTURE SPECIFICATIONS BAR
   // ─────────────────────────────────────────────────────────────────────────
-  const specY = 79;
-  doc.setFillColor(243, 244, 246);
-  doc.setDrawColor(229, 231, 235);
-  doc.roundedRect(margin, specY, pageWidth - margin * 2, 11, 2, 2, 'FD');
+  const specY = 75;
+  doc.setFillColor(241, 245, 249);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(margin, specY, pageWidth - margin * 2, 10.5, 2, 2, 'FD');
 
   const specColWidth = (pageWidth - margin * 2) / 4;
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
 
   // Spec 1: Total Built-up Area
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(107, 114, 128);
-  doc.text('TOTAL BUILT-UP AREA:', margin + 4, specY + 4.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('TOTAL BUILT-UP AREA:', margin + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(17, 24, 39);
-  doc.text(`${Number(owner.totalSqFt || 0).toLocaleString('en-IN')} sq.ft`, margin + 4, specY + 8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${Number(owner.totalSqFt || 0).toLocaleString('en-IN')} sq.ft`, margin + 4, specY + 8.2);
 
   // Spec 2: Rate per sq.ft
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(107, 114, 128);
-  doc.text('PLANNING RATE:', margin + specColWidth + 4, specY + 4.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('PLANNING RATE:', margin + specColWidth + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(17, 24, 39);
+  doc.setTextColor(15, 23, 42);
   const rateDisplay = owner.ratePerSqFt ? `Rs. ${owner.ratePerSqFt}/sq.ft` : totalPlanFee && owner.totalSqFt ? `Rs. ${Math.round(totalPlanFee / owner.totalSqFt)}/sq.ft` : 'Fixed Fee';
-  doc.text(rateDisplay, margin + specColWidth + 4, specY + 8.5);
+  doc.text(rateDisplay, margin + specColWidth + 4, specY + 8.2);
 
   // Spec 3: Structural Specs
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(107, 114, 128);
-  doc.text('FLOORS & ORIENTATION:', margin + specColWidth * 2 + 4, specY + 4.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('CONFIGURATION & FACING:', margin + specColWidth * 2 + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(17, 24, 39);
-  doc.text(`${owner.floors || 'G+1'} • ${owner.bhk || '3 BHK'} • ${owner.facing || 'East'}`, margin + specColWidth * 2 + 4, specY + 8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${owner.floors || 'G+1'} • ${owner.bhk || '3 BHK'} • ${owner.facing || 'East'}`, margin + specColWidth * 2 + 4, specY + 8.2);
 
   // Spec 4: Engineer In-Charge
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(107, 114, 128);
-  doc.text('PROJECT ENGINEER:', margin + specColWidth * 3 + 4, specY + 4.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('PROJECT ENGINEER:', margin + specColWidth * 3 + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...rgbTheme);
-  doc.text(owner.engineerName || 'Er. YS_Construction', margin + specColWidth * 3 + 4, specY + 8.5);
+  doc.text(owner.engineerName || 'Er. YS_Construction', margin + specColWidth * 3 + 4, specY + 8.2);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 4. PAYMENTS & ADVANCE INSTALLMENTS LEDGER TABLE
   // ─────────────────────────────────────────────────────────────────────────
-  const paymentSectionY = 94;
+  const paymentSectionY = 90;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(17, 24, 39);
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
   doc.text('1. PAYMENT INSTALLMENTS & ADVANCE LEDGER', margin, paymentSectionY);
 
   const paymentHeaders = ['Installment / Milestone Description', 'Date', 'Mode', 'Reference / UTR', 'Amount Received'];
@@ -350,22 +383,24 @@ export async function generateHousePlanInvoicePDF({
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       fontSize: 8,
-      cellPadding: 2.5,
+      cellPadding: 2.3,
     },
     styles: {
-      fontSize: 8,
-      cellPadding: 2.2,
-      textColor: '#1F2937',
+      fontSize: 7.8,
+      cellPadding: 2,
+      textColor: '#1E293B',
+      lineColor: '#E2E8F0',
+      lineWidth: 0.2,
     },
     columnStyles: {
       0: { cellWidth: 70, fontStyle: 'bold' },
       1: { cellWidth: 26, halign: 'center' },
       2: { cellWidth: 22, halign: 'center' },
-      3: { cellWidth: 36, textColor: '#4B5563' },
+      3: { cellWidth: 36, textColor: '#64748B' },
       4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
     },
     alternateRowStyles: {
-      fillColor: '#F9FAFB',
+      fillColor: '#F8FAFC',
     },
     margin: { left: margin, right: margin, top: 16, bottom: 16 },
   });
@@ -373,14 +408,14 @@ export async function generateHousePlanInvoicePDF({
   // ─────────────────────────────────────────────────────────────────────────
   // 5. FINANCIAL BILLING SUMMARY BOX
   // ─────────────────────────────────────────────────────────────────────────
-  const summaryStartY = doc.lastAutoTable.finalY + 3.5;
+  const summaryStartY = doc.lastAutoTable.finalY + 3;
   const summaryBoxWidth = 84;
   const summaryBoxX = pageWidth - margin - summaryBoxWidth;
 
   const summaryData = [
     ['Total Agreed Plan Fee:', formatPdfCurrency(totalPlanFee)],
-    ['Total Amount Received to Date:', formatPdfCurrency(totalPaid)],
-    ['Net Remaining Balance Pending:', formatPdfCurrency(pendingBalance)],
+    ['Total Advance Received:', formatPdfCurrency(totalPaid)],
+    ['Net Remaining Balance:', formatPdfCurrency(pendingBalance)],
   ];
 
   autoTable(doc, {
@@ -388,12 +423,14 @@ export async function generateHousePlanInvoicePDF({
     body: summaryData,
     theme: 'grid',
     styles: {
-      fontSize: 8.5,
-      cellPadding: 2.2,
+      fontSize: 8.2,
+      cellPadding: 2,
+      lineColor: '#E2E8F0',
+      lineWidth: 0.2,
     },
     columnStyles: {
-      0: { fontStyle: 'bold', textColor: '#4B5563', halign: 'right', cellWidth: 52, fillColor: '#F9FAFB' },
-      1: { fontStyle: 'bold', textColor: '#111827', halign: 'right', cellWidth: 32 },
+      0: { fontStyle: 'bold', textColor: '#475569', halign: 'right', cellWidth: 52, fillColor: '#F8FAFC' },
+      1: { fontStyle: 'bold', textColor: '#0F172A', halign: 'right', cellWidth: 32 },
     },
     margin: { left: summaryBoxX, right: margin, top: 16, bottom: 16 },
     tableWidth: summaryBoxWidth,
@@ -414,11 +451,11 @@ export async function generateHousePlanInvoicePDF({
   // ─────────────────────────────────────────────────────────────────────────
   // 6. SCOPE OF 21 ENGINEERING DRAWINGS CHECKLIST TABLE
   // ─────────────────────────────────────────────────────────────────────────
-  const plansSectionY = doc.lastAutoTable.finalY + 5;
+  const plansSectionY = doc.lastAutoTable.finalY + 4.5;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(17, 24, 39);
-  doc.text('2. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES (21 PLANS)', margin, plansSectionY);
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text('2. SCOPE OF 21 ENGINEERING DRAWINGS & DELIVERABLES', margin, plansSectionY);
 
   const planHeaders = ['#', 'Engineering Plan / Drawing Deliverable', 'Discipline', 'Status / Release'];
 
@@ -441,35 +478,37 @@ export async function generateHousePlanInvoicePDF({
     body: planRows,
     theme: 'grid',
     headStyles: {
-      fillColor: '#374151', // Dark slate for drawings scope
+      fillColor: '#1E293B', // Dark executive slate for scope table
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 7.5,
-      cellPadding: 2,
+      fontSize: 7.2,
+      cellPadding: 1.8,
     },
     styles: {
-      fontSize: 7.5,
-      cellPadding: 1.8,
-      textColor: '#1F2937',
+      fontSize: 7.2,
+      cellPadding: 1.5,
+      textColor: '#1E293B',
+      lineColor: '#E2E8F0',
+      lineWidth: 0.2,
     },
     columnStyles: {
       0: { cellWidth: 10, halign: 'center', fontStyle: 'bold', textColor: themeHex },
       1: { cellWidth: 96, fontStyle: 'bold' },
-      2: { cellWidth: 38, textColor: '#4B5563' },
+      2: { cellWidth: 38, textColor: '#64748B' },
       3: { cellWidth: 38, halign: 'center', fontStyle: 'bold' },
     },
     alternateRowStyles: {
-      fillColor: '#F9FAFB',
+      fillColor: '#F8FAFC',
     },
     didParseCell: function (data) {
       if (data.column.index === 3 && data.section === 'body') {
         const val = data.cell.raw;
         if (typeof val === 'string' && val.includes('COMPLETED')) {
-          data.cell.styles.textColor = '#059669';
+          data.cell.styles.textColor = '#059669'; // Green
         } else if (typeof val === 'string' && val.includes('IN PROGRESS')) {
-          data.cell.styles.textColor = '#2563EB';
+          data.cell.styles.textColor = '#2563EB'; // Blue
         } else {
-          data.cell.styles.textColor = '#6B7280';
+          data.cell.styles.textColor = '#64748B'; // Slate
         }
       }
     },
@@ -479,39 +518,40 @@ export async function generateHousePlanInvoicePDF({
   // ─────────────────────────────────────────────────────────────────────────
   // 7. TERMS, CONDITIONS & AUTHORIZED SIGNATURE BLOCKS
   // ─────────────────────────────────────────────────────────────────────────
-  let signY = doc.lastAutoTable.finalY + 8;
+  let signY = doc.lastAutoTable.finalY + 7;
 
   // Check if signature section fits on current page, otherwise add a page
-  if (signY > pageHeight - 38) {
+  if (signY > pageHeight - 36) {
     doc.addPage();
-    signY = 25;
+    signY = 22;
   }
 
   // Terms Box (Left side)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.setTextColor(17, 24, 39);
+  doc.setTextColor(15, 23, 42);
   doc.text('TERMS & CONDITIONS:', margin, signY);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.setTextColor(107, 114, 128);
-  doc.text('1. All structural drawings are designed as per Indian Standard (IS 456 / NBC) soil & loading standards.', margin, signY + 4);
-  doc.text('2. Passing plans and loan estimates are certified for municipal sanction and banking valuation.', margin, signY + 7.5);
-  doc.text('3. Any revision beyond standard architectural draft will be charged as per agreed schedule.', margin, signY + 11);
-  doc.text('4. Complete drawing set and soft copy release are subject to full plan fee settlement.', margin, signY + 14.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('1. All structural drawings are designed as per Indian Standard (IS 456 / NBC) soil & loading standards.', margin, signY + 3.8);
+  doc.text('2. Passing plans and loan estimates are certified for municipal sanction and banking valuation.', margin, signY + 7);
+  doc.text('3. Any revision beyond standard architectural draft will be charged as per agreed schedule.', margin, signY + 10.2);
+  doc.text('4. Complete drawing set and soft copy release are subject to full plan fee settlement.', margin, signY + 13.5);
 
   // Signatures
-  const sigLineY = signY + 24;
+  const sigLineY = signY + 22;
 
   // Client Signature (Left)
   doc.setDrawColor(156, 163, 175);
+  doc.setLineWidth(0.3);
   doc.line(margin, sigLineY, margin + 45, sigLineY);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.setTextColor(75, 85, 99);
-  doc.text('Client Acceptance Signature', margin, sigLineY + 4);
-  doc.text(`(${ownerName})`, margin, sigLineY + 7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Client Acceptance Signature', margin, sigLineY + 3.8);
+  doc.text(`(${ownerName})`, margin, sigLineY + 7);
 
   // Consultant Authorized Signature (Right)
   const authSigX = pageWidth - margin - 55;
@@ -519,54 +559,44 @@ export async function generateHousePlanInvoicePDF({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(...rgbTheme);
-  doc.text(`For ${companyName}`, authSigX, sigLineY + 4);
+  doc.text(`For ${companyName}`, authSigX, sigLineY + 3.8);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.setTextColor(75, 85, 99);
-  doc.text('Authorized Signatory & Seal', authSigX, sigLineY + 7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Authorized Signatory & Seal', authSigX, sigLineY + 7);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 8. FOOTER & MULTI-PAGE NUMBERING
+  // 8. CLEAN FOOTER & MULTI-PAGE NUMBERING (NO WATERMARK)
   // ─────────────────────────────────────────────────────────────────────────
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
 
-    // Subtle background watermark on page 1
-    if (i === 1) {
-      doc.setFontSize(36);
-      doc.setTextColor(245, 245, 245);
-      doc.setFont('helvetica', 'bold');
-      doc.text(companyName.toUpperCase(), pageWidth / 2, pageHeight / 2, {
-        align: 'center',
-        angle: 35,
-      });
-    }
-
     // Top Header Mini-strip on continuation pages (Page 2+)
     if (i > 1) {
       doc.setFillColor(...rgbTheme);
-      doc.rect(0, 0, pageWidth, 6, 'F');
-      doc.setFontSize(7.5);
+      doc.rect(0, 0, pageWidth, 5, 'F');
+      doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(255, 255, 255);
-      doc.text(`${companyName.toUpperCase()} — PLANNING INVOICE & DELIVERABLES (Ref: ${billInvoiceNo})`, margin, 4.2);
-      doc.text(`Client: ${ownerName}`, pageWidth - margin, 4.2, { align: 'right' });
+      doc.text(`${companyName.toUpperCase()} — PLANNING INVOICE & DELIVERABLES (Ref: ${billInvoiceNo})`, margin, 3.5);
+      doc.text(`Client: ${ownerName}`, pageWidth - margin, 3.5, { align: 'right' });
     }
 
     // Bottom footer line
-    doc.setDrawColor(229, 231, 235);
-    doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(margin, pageHeight - 9, pageWidth - margin, pageHeight - 9);
 
-    doc.setFontSize(7);
-    doc.setTextColor(156, 163, 175);
+    doc.setFontSize(6.8);
+    doc.setTextColor(148, 163, 184); // slate-400
     doc.setFont('helvetica', 'normal');
     doc.text(
       `${companyName} • Architectural & Structural Engineering • Thank you for your business!`,
       margin,
-      pageHeight - 6
+      pageHeight - 5
     );
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, pageHeight - 6, { align: 'right' });
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
   }
 
   // Download PDF file
