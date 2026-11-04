@@ -191,25 +191,39 @@ class SiteDataProvider extends ChangeNotifier {
     try {
       final db = FirebaseFirestore.instance;
       
-      // Supervisor data
-      final sAttSnap = await db.collection('attendance').where('supervisorId', isEqualTo: uid).where('date', isGreaterThanOrEqualTo: monthStart).get();
-      for (final doc in sAttSnap.docs) {
-        final r = _docToRecord(doc.id, doc.data());
-        if (r != null) staticRecords[doc.id] = r;
+      final futures = <Future<dynamic>>[
+        db.collection('attendance').where('supervisorId', isEqualTo: uid).where('date', isGreaterThanOrEqualTo: monthStart).get(),
+        db.collection('temp_labour_entries').where('supervisorId', isEqualTo: uid).where('date', isGreaterThanOrEqualTo: monthStart).get(),
+        if (contractorId.isNotEmpty) db.collection('attendance').where('contractorId', isEqualTo: contractorId).where('date', isGreaterThanOrEqualTo: monthStart).get() else Future.value(null),
+        if (contractorId.isNotEmpty) db.collection('temp_labour_entries').where('contractorId', isEqualTo: contractorId).where('date', isGreaterThanOrEqualTo: monthStart).get() else Future.value(null),
+      ];
+
+      final results = await Future.wait(futures);
+
+      final sAttSnap = results[0] as QuerySnapshot<Map<String, dynamic>>?;
+      final sTempSnap = results[1] as QuerySnapshot<Map<String, dynamic>>?;
+      final cAttSnap = results[2] as QuerySnapshot<Map<String, dynamic>>?;
+      final cTempSnap = results[3] as QuerySnapshot<Map<String, dynamic>>?;
+
+      if (sAttSnap != null) {
+        for (final doc in sAttSnap.docs) {
+          final r = _docToRecord(doc.id, doc.data());
+          if (r != null) staticRecords[doc.id] = r;
+        }
       }
       
-      final sTempSnap = await db.collection('temp_labour_entries').where('supervisorId', isEqualTo: uid).where('date', isGreaterThanOrEqualTo: monthStart).get();
-      staticTempEntries.addAll(sTempSnap.docs.map((d) => TempLabourEntry.fromFirestore(d)));
+      if (sTempSnap != null) {
+        staticTempEntries.addAll(sTempSnap.docs.map((d) => TempLabourEntry.fromFirestore(d)));
+      }
 
-      // Contractor data
-      if (contractorId.isNotEmpty) {
-        final cAttSnap = await db.collection('attendance').where('contractorId', isEqualTo: contractorId).where('date', isGreaterThanOrEqualTo: monthStart).get();
+      if (cAttSnap != null) {
         for (final doc in cAttSnap.docs) {
           final r = _docToRecord(doc.id, doc.data());
           if (r != null) staticRecords[doc.id] = r;
         }
-        
-        final cTempSnap = await db.collection('temp_labour_entries').where('contractorId', isEqualTo: contractorId).where('date', isGreaterThanOrEqualTo: monthStart).get();
+      }
+      
+      if (cTempSnap != null) {
         staticTempEntries.addAll(cTempSnap.docs.map((d) => TempLabourEntry.fromFirestore(d)));
       }
 

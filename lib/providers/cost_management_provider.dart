@@ -36,7 +36,7 @@ class CostManagementProvider extends ChangeNotifier {
 
   // ── Data Fetching ──────────────────────────────────────────────────────────
 
-  Future<void> loadDashboardData({String? siteId}) async {
+  Future<void> loadDashboardData({String? siteId, String? startDate, String? endDate}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -44,7 +44,21 @@ class CostManagementProvider extends ChangeNotifier {
     try {
       final cid = _contractorId;
       _materialPurchases = await _service.fetchMaterialPurchases(cid, siteId: siteId);
+      if (startDate != null && endDate != null) {
+        _materialPurchases = _materialPurchases.where((p) {
+          final pDate = p.purchaseDate.split('T')[0];
+          return pDate.compareTo(startDate) >= 0 && pDate.compareTo(endDate) <= 0;
+        }).toList();
+      }
+
       _siteExpenses = await _service.fetchSiteExpenses(cid, siteId: siteId);
+      if (startDate != null && endDate != null) {
+        _siteExpenses = _siteExpenses.where((e) {
+          final eDate = e.date.split('T')[0];
+          return eDate.compareTo(startDate) >= 0 && eDate.compareTo(endDate) <= 0;
+        }).toList();
+      }
+
       _suppliers = await _service.fetchSuppliers(cid);
     } catch (e) {
       _error = 'Failed to load cost data: $e';

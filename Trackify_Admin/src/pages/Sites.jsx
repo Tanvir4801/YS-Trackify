@@ -84,15 +84,19 @@ export default function Sites() {
       setAttendanceMap({});
       return;
     }
+    // P3-6 FIX: Clear stale state immediately before loading new date
+    setAttendanceMap({});
     setAttendanceLoading(true);
+
+    // P1-4/P3-6 FIX: Use proper options object instead of positional args
     const isSup = role === 'supervisor';
-    const supId = isSup ? uid : null;
+    const options = isSup ? { isSupervisor: true, supervisorId: uid } : {};
     const unsub = subscribeAttendanceByDate(scopeId, detailDate, (records) => {
       const map = {};
       records.forEach((r) => { if (r.labourId) map[r.labourId] = r; });
       setAttendanceMap(map);
       setAttendanceLoading(false);
-    }, isSup, supId);
+    }, options);
     return unsub;
   }, [detailSiteId, detailDate, scopeId, role, uid]);
 

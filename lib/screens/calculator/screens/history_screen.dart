@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme/app_colors.dart';
 import '../utils/calc_constants.dart';
 import '../models/calc_history_item.dart';
 import '../services/calc_history_service.dart';
-
+import 'history_detail_screen.dart';
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -39,27 +41,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('History', style: CalcTextStyles.screenTitle),
-        iconTheme: const IconThemeData(color: CalcColors.textPrimary),
+        title: Text('History', style: CalcTextStyles.screenTitle(context)),
+        iconTheme: IconThemeData(color: CalcColors.textPrimary(context)),
         actions: [
           if (_history.isNotEmpty)
             TextButton(
               onPressed: () => _clearHistory(),
-              child: const Text('Clear', style: TextStyle(color: CalcColors.red)),
+              child: Text('Clear', style: TextStyle(color: CalcColors.red(context))),
             ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: CalcColors.amber))
+          ? Center(child: CircularProgressIndicator(color: CalcColors.amber(context)))
           : _history.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
                     'No calculations yet.',
-                    style: TextStyle(color: CalcColors.textSecondary),
+                    style: TextStyle(color: CalcColors.textSecondary(context)),
                   ),
                 )
               : ListView.separated(
@@ -69,11 +71,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   itemBuilder: (context, index) {
                     final item = _history[index];
                     return Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: CalcColors.surface,
-                        borderRadius: BorderRadius.circular(CalcDimens.radiusLg),
-                        border: Border.all(color: CalcColors.border, width: 0.5),
+                        color: AppColors.cardColor(context),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.borderColor(context), width: 1.0),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryColor(context).withValues(alpha: 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -83,37 +92,80 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             children: [
                               Text(
                                 item.category,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: CalcColors.amber,
-                                  fontWeight: FontWeight.w600,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: AppColors.primaryColor(context),
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                               Text(
-                                DateFormat('dd MMM, hh:mm a').format(item.timestamp),
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: CalcColors.textMuted,
+                                DateFormat('dd MMM').format(item.timestamp),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textTertiaryColor(context),
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            item.title,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: CalcColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 12),
                           Text(
                             item.subtitle,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
-                              color: CalcColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondaryColor(context),
                             ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            item.title,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimaryColor(context),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    HapticFeedback.lightImpact();
+                                    final inputs = await Navigator.push(context, MaterialPageRoute(
+                                      builder: (_) => HistoryDetailScreen(item: item),
+                                    ));
+                                    if (inputs != null && mounted) {
+                                      Navigator.pop(context, inputs);
+                                    }
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    side: BorderSide(color: AppColors.borderColor(context)),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  child: Text('View Details', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 13, fontWeight: FontWeight.w600)),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: () {
+                                    HapticFeedback.lightImpact();
+                                    Navigator.pop(context, item.inputs);
+                                  },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.primaryColor(context).withValues(alpha: 0.1),
+                                    foregroundColor: AppColors.primaryColor(context),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    elevation: 0,
+                                  ),
+                                  child: Text('Use Again', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

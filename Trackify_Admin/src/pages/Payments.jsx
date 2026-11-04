@@ -47,7 +47,12 @@ export default function Payments() {
   const role = useAuthStore((s) => s.role);
   const uid = useAuthStore((s) => s.uid);
   const scopeFromStore = useScopeId();
-  const writeScope = role === 'supervisor' ? uid : scopeFromStore;
+
+  // P2-2 FIX: contractorId is always the contractor tenant ID (never the supervisor's uid).
+  // For supervisors, the supervisorId is their own uid; contractorId comes from useScopeId()
+  // which already resolves to userContractorId for supervisors (see authStore.useScopeId).
+  const supervisorId = role === 'supervisor' ? uid : null;
+  const contractorId = scopeFromStore; // always the contractor/tenant ID
   const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState({ type: 'all', labourId: 'all', startDate: '', endDate: '' });
@@ -97,14 +102,14 @@ export default function Payments() {
     if (!form.labourId) return toast.error('Pick a labour');
     if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter a valid amount');
     if (!form.date) return toast.error('Date is required');
-    if (!writeScope) return toast.error('Pick a contractor in the header before recording');
+    if (!contractorId) return toast.error('Pick a contractor in the header before recording');
     setSaving(true);
     const t = toast.loading('Recording payment…');
     try {
       await addPayment({
-        scopeId: writeScope,
-        supervisorId: writeScope,
-        contractorId: scopeFromStore,
+        scopeId: contractorId,
+        supervisorId: supervisorId ?? contractorId,
+        contractorId,
         labourId: form.labourId,
         amount: form.amount,
         date: form.date,

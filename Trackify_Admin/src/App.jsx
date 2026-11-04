@@ -34,6 +34,7 @@ const Sites = lazy(() => import('./pages/Sites'));
 const Expenses = lazy(() => import('./pages/Expenses'));
 const SiteCosts = lazy(() => import('./pages/SiteCosts'));
 const TempLabours = lazy(() => import('./pages/TempLabours'));
+const Plans = lazy(() => import('./pages/Plans'));
 
 // Client Ledger
 const ClientList = lazy(() => import('./pages/clients/ClientList'));
@@ -92,8 +93,9 @@ const contractorRoles = ['contractor', 'supervisor'];
 
 
 const SuspenseFallback = () => (
-  <div className="flex h-screen w-full items-center justify-center bg-gray-50/10 dark:bg-gray-900/10">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+  // P4-1 FIX: Use CSS variables so the fallback matches the active theme
+  <div className="flex h-screen w-full items-center justify-center bg-bg-primary">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo"></div>
   </div>
 );
 
@@ -192,17 +194,22 @@ export default function App() {
           return;
         }
 
-        const effectiveRole = userData.role === 'supervisor' ? 'contractor' : userData.role;
+        // P1-6 FIX: Preserve the REAL role in the store.
+        // effectiveRole is used ONLY for navigation routing.
+        // Supervisors remain 'supervisor' in the store — this is critical
+        // so that all isSupervisor checks throughout the app work correctly.
+        const realRole = userData.role;           // 'contractor' | 'supervisor' | 'super_admin' | 'trackops'
+        const effectiveRole = realRole === 'supervisor' ? 'contractor' : realRole; // used only for navigation
 
         setUser({
           uid:          firebaseUser.uid,
-          role:         effectiveRole,
+          role:         realRole,               // Store the REAL role
           name:         userData.name,
           email:        firebaseUser.email,
           contractorId: userData.contractorId ?? '',
         });
 
-        if (effectiveRole === 'super_admin') {
+        if (realRole === 'super_admin' || realRole === 'trackops') {
           const snap = await getDocs(collection(db, 'contractors'));
           const list = snap.docs
             .map((d) => ({ id: d.id, ...d.data() }))
@@ -229,11 +236,12 @@ export default function App() {
 
         const currentPath = window.location.pathname;
         if (currentPath === '/login' || currentPath === '/') {
-          if (effectiveRole === 'trackops') {
+          if (realRole === 'trackops') {
             navigate('/trackops/dashboard', { replace: true });
-          } else if (effectiveRole === 'super_admin') {
+          } else if (realRole === 'super_admin') {
             navigate('/sa/dashboard', { replace: true });
           } else {
+            // Both contractor and supervisor go to /dashboard
             navigate('/dashboard', { replace: true });
           }
         }
@@ -316,6 +324,7 @@ export default function App() {
           <Route path="/branding"    element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><BrandingSettings /></RoleRoute>} />
           <Route path="/support-requests" element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><SupportRequests /></RoleRoute>} />
           <Route path="/sites"       element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><Sites /></RoleRoute>} />
+          <Route path="/plans"       element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><Plans /></RoleRoute>} />
           <Route path="/expenses"    element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Expenses /></RoleRoute>} />
           <Route path="/site-costs"  element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><SiteCosts /></RoleRoute>} />
           

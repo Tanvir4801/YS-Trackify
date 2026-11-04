@@ -72,20 +72,35 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
       
       // Fetch supervisor name from Firestore
       String supervisorName = 'Assigned Supervisor';
-      final supervisorId = widget.labour?.supervisorId ?? '';
-      if (supervisorId.isNotEmpty) {
+      final session = SessionService.instance.current;
+      
+      String targetId = widget.labour?.contractorId ?? '';
+      if (targetId.isEmpty) targetId = widget.labour?.supervisorId ?? '';
+      if (targetId.isEmpty) targetId = profile?['contractorId'] as String? ?? '';
+      if (targetId.isEmpty) targetId = profile?['supervisorId'] as String? ?? '';
+      if (targetId.isEmpty) targetId = session?.contractorId ?? '';
+
+      if (targetId.isNotEmpty) {
         try {
-          var doc = await FirebaseFirestore.instance.collection('users').doc(supervisorId).get();
+          var doc = await FirebaseFirestore.instance.collection('contractors').doc(targetId).get();
           if (!doc.exists) {
-            doc = await FirebaseFirestore.instance.collection('contractors').doc(supervisorId).get();
+            doc = await FirebaseFirestore.instance.collection('users').doc(targetId).get();
           }
           if (doc.exists) {
-            supervisorName = doc.data()?['name'] as String? ?? supervisorId;
+            final data = doc.data() ?? {};
+            
+            final branding = data['branding'] as Map<String, dynamic>?;
+            final brandingCompany = branding?['companyName'] as String?;
+            
+            supervisorName = brandingCompany ??
+                             (data['companyName'] as String?) ?? 
+                             (data['name'] as String?) ?? 
+                             'Assigned Supervisor';
           } else {
-            supervisorName = supervisorId;
+            supervisorName = 'Assigned Supervisor';
           }
         } catch (e) {
-          supervisorName = supervisorId;
+          supervisorName = 'Assigned Supervisor';
         }
       }
 
@@ -171,25 +186,28 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    
+    final pageBgColor = AppColors.backgroundColor(context);
+
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator(color: AppColors.gold)),
+      return Scaffold(
+        backgroundColor: pageBgColor,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context))),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: pageBgColor,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline_rounded, color: AppColors.absent, size: 64),
+                Icon(Icons.error_outline_rounded, color: AppColors.errorColor(context), size: 64),
                 const SizedBox(height: 16),
-                Text(_error!, style: const TextStyle(color: Colors.white, fontSize: 16), textAlign: TextAlign.center),
+                Text(_error!, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16), textAlign: TextAlign.center),
               ],
             ),
           ),
@@ -209,14 +227,18 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.timer_rounded, color: AppColors.textTertiary, size: 16),
+                    Icon(Icons.autorenew_rounded, color: AppColors.textTertiaryColor(context), size: 14),
                     const SizedBox(width: 6),
                     ValueListenableBuilder<int>(
                       valueListenable: _secondsLeftNotifier,
                       builder: (context, val, child) {
                         return Text(
                           'Refreshing in ${val}s',
-                          style: const TextStyle(color: AppColors.textTertiary, fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: AppColors.textTertiaryColor(context), 
+                            fontSize: 12, 
+                            fontWeight: FontWeight.w500
+                          ),
                         );
                       }
                     ),
@@ -230,22 +252,22 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
 
     if (widget.showAppBar) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: pageBgColor,
         appBar: AppBar(
-          backgroundColor: AppColors.background,
+          backgroundColor: pageBgColor,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            icon: Icon(Icons.close_rounded, color: AppColors.textPrimaryColor(context)),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: const Text('Digital ID', style: TextStyle(color: Colors.white)),
+          title: Text('Digital ID', style: TextStyle(color: AppColors.textPrimaryColor(context))),
         ),
         body: content,
       );
     }
 
     return Container(
-      color: AppColors.background,
+      color: pageBgColor,
       child: content,
     );
   }
@@ -256,29 +278,44 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
         width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
+          color: AppColors.cardColor(context),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.borderColor(context)),
         ),
         child: Column(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: AppColors.absent, size: 48),
+            Icon(Icons.warning_amber_rounded, color: AppColors.errorColor(context), size: 48),
             const SizedBox(height: 16),
-            Text(_missingReason!, style: const TextStyle(color: Colors.white, fontSize: 15), textAlign: TextAlign.center),
+            Text(_missingReason!, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 15), textAlign: TextAlign.center),
           ],
         ),
       );
     }
 
+    final cardBg = AppColors.cardColor(context);
+    final headerBg = AppColors.softGold(context);
+    final primaryNavy = AppColors.textPrimaryColor(context);
+    final secondaryNavy = AppColors.surfaceColor(context);
+    final primaryGold = AppColors.primaryColor(context);
+    final textSecondary = AppColors.textSecondaryColor(context);
+    final borderCol = AppColors.borderColor(context);
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.5), width: 1.5),
-        boxShadow: [
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderCol, width: 1),
+        boxShadow: Theme.of(context).brightness == Brightness.light ? [
           BoxShadow(
-            color: AppColors.gold.withValues(alpha: 0.2),
+            color: const Color(0xFF14233B).withValues(alpha: 0.04),
+            blurRadius: 24,
+            spreadRadius: -4,
+            offset: const Offset(0, 12),
+          )
+        ] : [
+          BoxShadow(
+            color: AppColors.primaryColor(context).withValues(alpha: 0.1),
             blurRadius: 30,
             spreadRadius: -5,
             offset: const Offset(0, 10),
@@ -290,18 +327,18 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
           // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            decoration: const BoxDecoration(
-              color: AppColors.navyLight,
-              borderRadius: BorderRadius.only(topLeft: Radius.circular(22), topRight: Radius.circular(22)),
+            decoration: BoxDecoration(
+              color: headerBg,
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), topRight: Radius.circular(15)),
             ),
             child: Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: AppColors.gold.withValues(alpha: 0.2),
+                  backgroundColor: AppColors.softGold(context),
                   radius: 28,
                   child: Text(
                     _resolvedLabourName.isNotEmpty ? _resolvedLabourName[0].toUpperCase() : '?',
-                    style: const TextStyle(color: AppColors.gold, fontSize: 24, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: primaryGold, fontSize: 24, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -311,22 +348,24 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
                     children: [
                       Text(
                         _resolvedLabourName,
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: primaryNavy, fontSize: 20, fontWeight: FontWeight.w700),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'ID: ${_resolvedLabourId.toUpperCase()}',
-                          style: const TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w700),
-                        ),
-                      ),
+                      Row(
+                        children: [
+                          Text(
+                            'LABOUR ID', 
+                            style: TextStyle(color: textSecondary, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5)
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _resolvedLabourId.toUpperCase(),
+                            style: TextStyle(color: secondaryNavy, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ]
+                      )
                     ],
                   ),
                 ),
@@ -336,18 +375,20 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
           
           // QR Code section
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.backgroundColor(context)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
+                        color: AppColors.textPrimaryColor(context).withValues(alpha: 0.06),
                         blurRadius: 20,
+                        spreadRadius: -2,
                         offset: const Offset(0, 8),
                       )
                     ],
@@ -363,10 +404,15 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Scan for Attendance & Payments',
-                  style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+                const SizedBox(height: 24),
+                Text(
+                  'SCAN TO VERIFY',
+                  style: TextStyle(color: primaryNavy, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Attendance • Payments • Identity',
+                  style: TextStyle(color: textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -375,24 +421,26 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
           // Details Footer
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.border)),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundColor(context).withValues(alpha: 0.5),
+              borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(15), bottomRight: Radius.circular(15)),
+              border: Border(top: BorderSide(color: borderCol)),
             ),
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildDetailItem(Icons.business_rounded, 'Supervisor', _resolvedContractorName),
-                    _buildDetailItem(Icons.location_on_rounded, 'App', _resolvedSiteName),
+                    _buildPremiumDetailItem(Icons.business_rounded, 'Supervisor', _resolvedContractorName, false),
+                    _buildPremiumDetailItem(Icons.location_on_rounded, 'App', _resolvedSiteName, false),
                   ],
                 ),
                 const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildDetailItem(Icons.payments_rounded, 'Daily Wage', '₹${_resolvedWage.toStringAsFixed(0)}'),
-                    _buildDetailItem(Icons.calendar_month_rounded, 'Joined On', _resolvedJoiningDate),
+                    _buildPremiumDetailItem(Icons.payments_rounded, 'Daily Wage', '₹${_resolvedWage.toStringAsFixed(0)}', true),
+                    _buildPremiumDetailItem(Icons.calendar_month_rounded, 'Joined On', _resolvedJoiningDate, false),
                   ],
                 ),
               ],
@@ -403,20 +451,39 @@ class _QRScreenState extends State<QRScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDetailItem(IconData icon, String label, String value) {
+  Widget _buildPremiumDetailItem(IconData icon, String label, String value, bool isGold) {
+    final textSecondary = AppColors.textSecondaryColor(context);
+    final textPrimary = AppColors.textPrimaryColor(context);
+    final iconBg = AppColors.backgroundColor(context);
+    final goldColor = AppColors.primaryColor(context);
+    final iconColor = isGold ? goldColor : textSecondary;
+    final valueColor = isGold ? goldColor : textPrimary;
+    
     return Expanded(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.textTertiary, size: 16),
-          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isGold ? AppColors.softGold(context) : iconBg,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: iconColor, size: 16),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+                Text(label, style: TextStyle(color: textSecondary, fontSize: 11, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
-                Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(
+                  value, 
+                  style: TextStyle(color: valueColor, fontSize: 14, fontWeight: FontWeight.w700), 
+                  maxLines: 1, 
+                  overflow: TextOverflow.ellipsis
+                ),
               ],
             ),
           ),

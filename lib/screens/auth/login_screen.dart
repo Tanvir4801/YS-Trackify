@@ -325,6 +325,9 @@ class _LoginScreenState extends State<LoginScreen>
             autocorrect: false,
             enableSuggestions: false,
             textInputAction: TextInputAction.next,
+            onChanged: (val) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
             style: const TextStyle(color: Colors.white),
             decoration: _inputDecoration(
               label: 'Email',
@@ -345,6 +348,9 @@ class _LoginScreenState extends State<LoginScreen>
             obscureText: _obscurePassword,
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => _submit(),
+            onChanged: (val) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
             style: const TextStyle(color: Colors.white),
             decoration: _inputDecoration(
               label: 'Password',
@@ -405,6 +411,9 @@ class _LoginScreenState extends State<LoginScreen>
             keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => _submit(),
+            onChanged: (val) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(10),

@@ -242,21 +242,20 @@ class AttendanceProvider extends ChangeNotifier {
     final db = FirebaseFirestore.instance;
     final Map<String, Labour> merged = {};
 
-    for (final q in [
+    final queries = [
       db.collection('labours').where('supervisorId', isEqualTo: uid).where('isActive', isEqualTo: true).get(),
       db.collection('labours').where('contractorId', isEqualTo: uid).where('isActive', isEqualTo: true).get(),
       if (contractorId != uid && contractorId.isNotEmpty)
         db.collection('labours').where('contractorId', isEqualTo: contractorId).where('isActive', isEqualTo: true).get(),
-    ]) {
-      try {
-        final s = await q;
-        for (var d in s.docs) {
-          merged[d.id] = Labour.fromFirestore(d);
-        }
-      } catch (e) {
-        debugPrint('_fetchLabours query error: $e');
+    ];
+
+    await Future.wait(queries.map((q) => q.then((s) {
+      for (var d in s.docs) {
+        merged[d.id] = Labour.fromFirestore(d);
       }
-    }
+    }).catchError((dynamic e) {
+      debugPrint('_fetchLabours query error: $e');
+    })));
 
     for (final labour in merged.values) {
       await _labourBox.put(labour.id, labour);

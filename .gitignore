@@ -55,3 +55,5 @@ test.txt
 
 # Archives
 README.md*.zip
+env
+scratch/

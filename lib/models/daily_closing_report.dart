@@ -12,6 +12,8 @@ class DailyClosingReport extends HiveObject {
     this.presentCount = 0,
     this.absentCount = 0,
     this.halfDayCount = 0,
+    this.threeQuarterCount = 0,
+    this.quarterCount = 0,
     this.totalLabourCost = 0,
     this.totalAdvance = 0,
     this.totalAllowances = 0,
@@ -25,6 +27,11 @@ class DailyClosingReport extends HiveObject {
     this.isSynced = false,
     this.firestoreId,
     this.isRainHoliday = false,
+    this.siteBreakdownJson = '[]',
+    this.totalMaterialCost = 0.0,
+    this.totalMachineryCost = 0.0,
+    this.totalTransportCost = 0.0,
+    this.totalOtherCost = 0.0,
   });
 
   static const String boxName = 'v2_closing_reports';
@@ -54,6 +61,12 @@ class DailyClosingReport extends HiveObject {
   @HiveField(7)
   int halfDayCount;
 
+  @HiveField(21)
+  int threeQuarterCount;
+
+  @HiveField(22)
+  int quarterCount;
+
   // Expenses
   @HiveField(8)
   double totalLabourCost;
@@ -66,6 +79,21 @@ class DailyClosingReport extends HiveObject {
 
   @HiveField(11)
   double totalExpense;
+
+  @HiveField(23)
+  String siteBreakdownJson;
+
+  @HiveField(24)
+  double totalMaterialCost;
+
+  @HiveField(25)
+  double totalMachineryCost;
+
+  @HiveField(26)
+  double totalTransportCost;
+
+  @HiveField(27)
+  double totalOtherCost;
 
   // Labour
   @HiveField(12)
@@ -98,12 +126,12 @@ class DailyClosingReport extends HiveObject {
   bool isRainHoliday;
 
   /// Total marked attendance count
-  int get totalMarked => presentCount + absentCount + halfDayCount;
+  int get totalMarked => presentCount + absentCount + halfDayCount + threeQuarterCount + quarterCount;
 
   /// Attendance percentage (present + half*0.5) / total
   double get attendancePercentage {
     if (totalLabourCount == 0) return 0;
-    return ((presentCount + halfDayCount * 0.5) / totalLabourCount) * 100;
+    return ((presentCount + halfDayCount * 0.5 + threeQuarterCount * 0.75 + quarterCount * 0.25) / totalLabourCount) * 100;
   }
 
   Map<String, dynamic> toFirestore() => {
@@ -115,6 +143,8 @@ class DailyClosingReport extends HiveObject {
         'presentCount': presentCount,
         'absentCount': absentCount,
         'halfDayCount': halfDayCount,
+        'threeQuarterCount': threeQuarterCount,
+        'quarterCount': quarterCount,
         'totalLabourCost': totalLabourCost,
         'totalAdvance': totalAdvance,
         'totalAllowances': totalAllowances,
@@ -126,6 +156,11 @@ class DailyClosingReport extends HiveObject {
         'generatedAt': generatedAt,
         'insights': insights,
         'isRainHoliday': isRainHoliday,
+        'siteBreakdownJson': siteBreakdownJson,
+        'totalMaterialCost': totalMaterialCost,
+        'totalMachineryCost': totalMachineryCost,
+        'totalTransportCost': totalTransportCost,
+        'totalOtherCost': totalOtherCost,
         'syncedAt': FieldValue.serverTimestamp(),
       };
 
@@ -140,6 +175,8 @@ class DailyClosingReport extends HiveObject {
       presentCount: (d['presentCount'] as num?)?.toInt() ?? 0,
       absentCount: (d['absentCount'] as num?)?.toInt() ?? 0,
       halfDayCount: (d['halfDayCount'] as num?)?.toInt() ?? 0,
+      threeQuarterCount: (d['threeQuarterCount'] as num?)?.toInt() ?? 0,
+      quarterCount: (d['quarterCount'] as num?)?.toInt() ?? 0,
       totalLabourCost: (d['totalLabourCost'] as num?)?.toDouble() ?? 0,
       totalAdvance: (d['totalAdvance'] as num?)?.toDouble() ?? 0,
       totalAllowances: (d['totalAllowances'] as num?)?.toDouble() ?? 0,
@@ -151,6 +188,11 @@ class DailyClosingReport extends HiveObject {
       generatedAt: (d['generatedAt'] as String?) ?? '',
       insights: List<String>.from(d['insights'] ?? []),
       isRainHoliday: (d['isRainHoliday'] as bool?) ?? false,
+      siteBreakdownJson: (d['siteBreakdownJson'] as String?) ?? '[]',
+      totalMaterialCost: (d['totalMaterialCost'] as num?)?.toDouble() ?? 0,
+      totalMachineryCost: (d['totalMachineryCost'] as num?)?.toDouble() ?? 0,
+      totalTransportCost: (d['totalTransportCost'] as num?)?.toDouble() ?? 0,
+      totalOtherCost: (d['totalOtherCost'] as num?)?.toDouble() ?? 0,
       isSynced: true,
       firestoreId: doc.id,
     );
@@ -178,6 +220,11 @@ class DailyClosingReport extends HiveObject {
     bool? isSynced,
     String? firestoreId,
     bool? isRainHoliday,
+    String? siteBreakdownJson,
+    double? totalMaterialCost,
+    double? totalMachineryCost,
+    double? totalTransportCost,
+    double? totalOtherCost,
   }) {
     return DailyClosingReport(
       id: id ?? this.id,
@@ -201,6 +248,11 @@ class DailyClosingReport extends HiveObject {
       isSynced: isSynced ?? this.isSynced,
       firestoreId: firestoreId ?? this.firestoreId,
       isRainHoliday: isRainHoliday ?? this.isRainHoliday,
+      siteBreakdownJson: siteBreakdownJson ?? this.siteBreakdownJson,
+      totalMaterialCost: totalMaterialCost ?? this.totalMaterialCost,
+      totalMachineryCost: totalMachineryCost ?? this.totalMachineryCost,
+      totalTransportCost: totalTransportCost ?? this.totalTransportCost,
+      totalOtherCost: totalOtherCost ?? this.totalOtherCost,
     );
   }
 }
@@ -240,13 +292,20 @@ class DailyClosingReportAdapter extends TypeAdapter<DailyClosingReport> {
       isSynced: fields[18] as bool? ?? false,
       firestoreId: fields[19] as String?,
       isRainHoliday: fields[20] as bool? ?? false,
+      threeQuarterCount: (fields[21] as num?)?.toInt() ?? 0,
+      quarterCount: (fields[22] as num?)?.toInt() ?? 0,
+      siteBreakdownJson: fields[23] as String? ?? '[]',
+      totalMaterialCost: (fields[24] as num?)?.toDouble() ?? 0,
+      totalMachineryCost: (fields[25] as num?)?.toDouble() ?? 0,
+      totalTransportCost: (fields[26] as num?)?.toDouble() ?? 0,
+      totalOtherCost: (fields[27] as num?)?.toDouble() ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, DailyClosingReport obj) {
     writer
-      ..writeByte(21) // field count
+      ..writeByte(28) // field count
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -288,6 +347,20 @@ class DailyClosingReportAdapter extends TypeAdapter<DailyClosingReport> {
       ..writeByte(19)
       ..write(obj.firestoreId)
       ..writeByte(20)
-      ..write(obj.isRainHoliday);
+      ..write(obj.isRainHoliday)
+      ..writeByte(21)
+      ..write(obj.threeQuarterCount)
+      ..writeByte(22)
+      ..write(obj.quarterCount)
+      ..writeByte(23)
+      ..write(obj.siteBreakdownJson)
+      ..writeByte(24)
+      ..write(obj.totalMaterialCost)
+      ..writeByte(25)
+      ..write(obj.totalMachineryCost)
+      ..writeByte(26)
+      ..write(obj.totalTransportCost)
+      ..writeByte(27)
+      ..write(obj.totalOtherCost);
   }
 }

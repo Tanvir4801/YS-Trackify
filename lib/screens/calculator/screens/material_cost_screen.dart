@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../utils/calc_constants.dart';
+import '../models/calc_history_item.dart';
+import '../services/calc_history_service.dart';
+import '../widgets/calc_result_widgets.dart';
+import 'package:uuid/uuid.dart';
 
 class MaterialCostScreen extends StatefulWidget {
-  const MaterialCostScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const MaterialCostScreen({super.key, this.initialInputs});
 
   @override
   State<MaterialCostScreen> createState() => _MaterialCostScreenState();
@@ -24,6 +29,22 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
   final _steelRateCtrl = TextEditingController();
 
   double _totalCost = 0;
+  bool _isCalculated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialInputs != null) {
+      _cementQtyCtrl.text = widget.initialInputs!['cq']?.toString() ?? '';
+      _cementRateCtrl.text = widget.initialInputs!['cr']?.toString() ?? '';
+      _sandQtyCtrl.text = widget.initialInputs!['sq']?.toString() ?? '';
+      _sandRateCtrl.text = widget.initialInputs!['sr']?.toString() ?? '';
+      _aggQtyCtrl.text = widget.initialInputs!['aq']?.toString() ?? '';
+      _aggRateCtrl.text = widget.initialInputs!['ar']?.toString() ?? '';
+      _steelQtyCtrl.text = widget.initialInputs!['stq']?.toString() ?? '';
+      _steelRateCtrl.text = widget.initialInputs!['str']?.toString() ?? '';
+    }
+  }
 
   void _calculate() {
     final cq = double.tryParse(_cementQtyCtrl.text) ?? 0;
@@ -38,9 +59,38 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
     final stq = double.tryParse(_steelQtyCtrl.text) ?? 0;
     final str = double.tryParse(_steelRateCtrl.text) ?? 0;
 
+    final total = (cq * cr) + (sq * sr) + (aq * ar) + (stq * str);
+
     setState(() {
-      _totalCost = (cq * cr) + (sq * sr) + (aq * ar) + (stq * str);
+      _totalCost = total;
+      _isCalculated = true;
     });
+
+    final item = CalcHistoryItem(
+      id: const Uuid().v4(),
+      category: 'Material Cost',
+      title: 'Total Cost: ₹${total.toStringAsFixed(2)}',
+      subtitle: 'Cement, Sand, Agg, Steel',
+      timestamp: DateTime.now(),
+      inputs: {
+        'cq': cq, 'cr': cr,
+        'sq': sq, 'sr': sr,
+        'aq': aq, 'ar': ar,
+        'stq': stq, 'str': str,
+      },
+      results: {
+        'mainTitle': 'Total Material Cost',
+        'mainValue': '₹${total.toStringAsFixed(2)}',
+        'formula': 'Sum of Qty × Rate',
+        'materials': [
+          {'label': 'Cement Cost', 'value': '₹${(cq * cr).toStringAsFixed(2)}'},
+          {'label': 'Sand Cost', 'value': '₹${(sq * sr).toStringAsFixed(2)}'},
+          {'label': 'Aggregate Cost', 'value': '₹${(aq * ar).toStringAsFixed(2)}'},
+          {'label': 'Steel Cost', 'value': '₹${(stq * str).toStringAsFixed(2)}'},
+        ],
+      },
+    );
+    CalcHistoryService.save(item);
   }
 
   void _clear() {
@@ -58,11 +108,11 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Material Cost Estimator', style: CalcTextStyles.screenTitle),
+        title: Text('Material Cost Estimator', style: CalcTextStyles.screenTitle(context)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: AppColors.gold),
@@ -93,15 +143,41 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
                 FocusScope.of(context).unfocus();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.gold,
-                foregroundColor: AppColors.navy,
+                backgroundColor: AppColors.primaryColor(context),
+                foregroundColor: AppColors.textOnPrimaryColor(context),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Calculate Cost', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text('CALCULATE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
             const SizedBox(height: 24),
-            if (_totalCost > 0) _buildResult(),
+            if (!_isCalculated)
+              const CalcGuideCard(
+                title: 'HOW ESTIMATION WORKS',
+                steps: [
+                  'Enter the required quantity for each material.',
+                  'Enter the current market rate per unit.',
+                  'Calculate the total estimated cost for the project.',
+                ],
+                formula: 'Total = ∑ (Quantity × Rate)',
+              )
+            else ...[
+              CalcResultHeader(
+                title: 'Total Material Cost',
+                value: '₹${_totalCost.toStringAsFixed(2)}',
+                formula: 'Cement + Sand + Agg + Steel',
+              ),
+              CalcDetailSection(
+                details: {
+                  'Cement': '₹${((double.tryParse(_cementQtyCtrl.text)??0)*(double.tryParse(_cementRateCtrl.text)??0)).toStringAsFixed(2)}',
+                  'Sand': '₹${((double.tryParse(_sandQtyCtrl.text)??0)*(double.tryParse(_sandRateCtrl.text)??0)).toStringAsFixed(2)}',
+                  'Aggregate': '₹${((double.tryParse(_aggQtyCtrl.text)??0)*(double.tryParse(_aggRateCtrl.text)??0)).toStringAsFixed(2)}',
+                  'Steel': '₹${((double.tryParse(_steelQtyCtrl.text)??0)*(double.tryParse(_steelRateCtrl.text)??0)).toStringAsFixed(2)}',
+                },
+              ),
+              CalcActionRow(onRecalculate: _calculate, onReset: _clear),
+              const SizedBox(height: 24),
+            ],
           ],
         ),
       ),
@@ -112,14 +188,14 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.navyLight,
+        color: CalcColors.surface(context),
         borderRadius: BorderRadius.circular(CalcDimens.radiusLg),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: CalcColors.border(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(label, style: TextStyle(color: CalcColors.textPrimary(context), fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -128,7 +204,7 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildTextField(rateCtrl, 'Rate (\$)'),
+                child: _buildTextField(rateCtrl, 'Rate (₹)'),
               ),
             ],
           ),
@@ -141,12 +217,12 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
     return TextField(
       controller: ctrl,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: CalcColors.textPrimary(context)),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textSecondary),
+        hintStyle: TextStyle(color: CalcColors.textSecondary(context)),
         filled: true,
-        fillColor: AppColors.navy,
+        fillColor: CalcColors.inputBg(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
@@ -156,24 +232,5 @@ class _MaterialCostScreenState extends State<MaterialCostScreen> {
     );
   }
 
-  Widget _buildResult() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.gold.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(CalcDimens.radiusLg),
-        border: Border.all(color: AppColors.gold),
-      ),
-      child: Column(
-        children: [
-          const Text('Total Material Cost', style: TextStyle(color: AppColors.goldLight, fontSize: 14)),
-          const SizedBox(height: 8),
-          Text(
-            '\$${_totalCost.toStringAsFixed(2)}',
-            style: const TextStyle(color: AppColors.gold, fontSize: 32, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
+
 }

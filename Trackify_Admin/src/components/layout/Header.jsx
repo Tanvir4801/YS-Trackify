@@ -16,6 +16,7 @@ const PAGE_META = {
   '/payments':    { title: 'Payments',    desc: 'Track advances and salary disbursements' },
   '/reports':     { title: 'Reports',     desc: 'Generate and export detailed workforce reports' },
   '/sites':       { title: 'Sites',       desc: 'Manage work sites and daily attendance' },
+  '/plans':       { title: 'House Plans', desc: 'Manage 2D/3D engineering plans, client drawings, checklist, and plan fees' },
   '/expenses':    { title: 'Expenses',    desc: 'Track and manage project expenses' },
   '/site-costs':  { title: 'Site Costs',  desc: 'Manage material and project costs' },
   '/supervisors': { title: 'Supervisors', desc: 'Monitor supervisor performance and teams' },

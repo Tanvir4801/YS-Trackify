@@ -33,12 +33,12 @@ class _LabourAttendanceScreenState extends State<LabourAttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.background,
+      color: AppColors.backgroundColor(context),
       child: StreamBuilder<List<Attendance>>(
         stream: widget.firestoreService.streamAttendance(widget.labour.id),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+            return Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context)));
           }
 
           final allRecords = snapshot.data!;
@@ -65,17 +65,17 @@ class _LabourAttendanceScreenState extends State<LabourAttendanceScreen> {
                     Container(
                       width: 80, height: 80,
                       decoration: BoxDecoration(
-                        color: AppColors.navyLight,
+                        color: AppColors.cardColor(context),
                         borderRadius: BorderRadius.circular(24)),
-                      child: const Icon(Icons.calendar_month_rounded,
-                        size: 40, color: AppColors.navy)),
+                      child: Icon(Icons.calendar_month_rounded,
+                        size: 40, color: AppColors.primaryColor(context))),
                     const SizedBox(height: 16),
-                    const Text('No Attendance Records',
+                    Text('No Attendance Records',
                       style: TextStyle(fontWeight: FontWeight.w800,
-                        fontSize: 17, color: Colors.white)),
+                        fontSize: 17, color: AppColors.textPrimaryColor(context))),
                     const SizedBox(height: 6),
-                    const Text('Records for this month will appear here.',
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                    Text('Records for this month will appear here.',
+                      style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 13)),
                   ]),
                 )),
               ]),
@@ -85,10 +85,14 @@ class _LabourAttendanceScreenState extends State<LabourAttendanceScreen> {
           final presentCount = filteredRecords.where((r) => r.status == AttendanceStatus.present).length;
           final absentCount  = filteredRecords.where((r) => r.status == AttendanceStatus.absent).length;
           final halfDayCount = filteredRecords.where((r) => r.status == AttendanceStatus.half).length;
+          final threeQuarterCount = filteredRecords.where((r) => r.status == AttendanceStatus.threeQuarter).length;
+          final quarterCount = filteredRecords.where((r) => r.status == AttendanceStatus.quarter).length;
+          
           final totalOT      = filteredRecords.fold<double>(0, (s, r) => s + r.overtimeHours);
-          final totalMarkedDays = presentCount + absentCount + halfDayCount;
+          final totalMarkedDays = presentCount + absentCount + halfDayCount + threeQuarterCount + quarterCount;
+          
           final attendancePct = totalMarkedDays > 0
-              ? ((presentCount + halfDayCount * 0.5) / totalMarkedDays * 100).round()
+              ? ((presentCount + threeQuarterCount * 0.75 + halfDayCount * 0.5 + quarterCount * 0.25) / totalMarkedDays * 100).round()
               : 0;
 
           final sorted = [...filteredRecords]..sort((a, b) => b.date.compareTo(a.date));
@@ -103,12 +107,13 @@ class _LabourAttendanceScreenState extends State<LabourAttendanceScreen> {
                 const SizedBox(height: 16),
                 _SummaryCard(
                   presentCount: presentCount, absentCount: absentCount,
-                  halfDayCount: halfDayCount, totalOT: totalOT,
+                  halfDayCount: halfDayCount, threeQuarterCount: threeQuarterCount,
+                  quarterCount: quarterCount, totalOT: totalOT,
                   attendancePct: attendancePct),
                 const SizedBox(height: 20),
-                const Text('TIMELINE',
+                Text('TIMELINE',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                    color: AppColors.textTertiary, letterSpacing: 1.2)),
+                    color: AppColors.textTertiaryColor(context), letterSpacing: 1.2)),
                 const SizedBox(height: 10),
                 ...sorted.map((record) {
                   final recordDate = AppDateUtils.fromDateKey(record.date);
@@ -140,9 +145,9 @@ class _MonthSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
+        color: AppColors.cardColor(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.borderColor(context)),
       ),
       child: Row(children: [
         _NavBtn(icon: Icons.chevron_left_rounded,
@@ -152,8 +157,8 @@ class _MonthSelector extends StatelessWidget {
           child: Text(
             DateFormat('MMMM yyyy').format(selectedMonth),
             textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w800,
-              fontSize: 15, color: Colors.white))),
+            style: TextStyle(fontWeight: FontWeight.w800,
+              fontSize: 15, color: AppColors.textPrimaryColor(context)))),
         _NavBtn(icon: Icons.chevron_right_rounded,
           onPressed: () => onMonthChanged(
             DateTime(selectedMonth.year, selectedMonth.month + 1))),
@@ -174,9 +179,9 @@ class _NavBtn extends StatelessWidget {
       child: Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-          color: AppColors.navyLight,
+          color: AppColors.softGold(context),
           borderRadius: BorderRadius.circular(12)),
-        child: Icon(icon, color: Colors.white70, size: 22)),
+        child: Icon(icon, color: AppColors.primaryColor(context), size: 22)),
     );
   }
 }
@@ -192,16 +197,18 @@ class _CalendarGrid extends StatelessWidget {
     final firstDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month, 1);
     final firstWeekday = firstDayOfMonth.weekday - 1; 
     
-    final recordMap = {
-      for (var r in records) AppDateUtils.fromDateKey(r.date).day: r.status
-    };
+    final recordMap = <int, List<AttendanceStatus>>{};
+    for (var r in records) {
+      final day = AppDateUtils.fromDateKey(r.date).day;
+      recordMap.putIfAbsent(day, () => []).add(r.status);
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
+        color: AppColors.cardColor(context),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.borderColor(context)),
       ),
       child: Column(
         children: [
@@ -210,7 +217,7 @@ class _CalendarGrid extends StatelessWidget {
             children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => 
               SizedBox(
                 width: 32,
-                child: Text(day, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w700, fontSize: 13)),
+                child: Text(day, textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondaryColor(context), fontWeight: FontWeight.w700, fontSize: 13)),
               )
             ).toList(),
           ),
@@ -229,34 +236,61 @@ class _CalendarGrid extends StatelessWidget {
                 return const SizedBox.shrink();
               }
               final dayNumber = dayIndex + 1;
-              final status = recordMap[dayNumber];
+              final dayStatuses = recordMap[dayNumber] ?? [];
               
-              Color bgColor = AppColors.navyLight;
-              Color textColor = Colors.white54;
-              Color? borderColor;
+              Color textColor = AppColors.textPrimaryColor(context);
 
-              if (status == AttendanceStatus.present) {
-                bgColor = AppColors.present.withValues(alpha: 0.2);
-                textColor = AppColors.present;
-                borderColor = AppColors.present.withValues(alpha: 0.5);
-              } else if (status == AttendanceStatus.absent) {
-                bgColor = AppColors.absent.withValues(alpha: 0.2);
-                textColor = AppColors.absent;
-                borderColor = AppColors.absent.withValues(alpha: 0.5);
-              } else if (status == AttendanceStatus.half) {
-                bgColor = AppColors.halfDay.withValues(alpha: 0.2);
-                textColor = AppColors.halfDay;
-                borderColor = AppColors.halfDay.withValues(alpha: 0.5);
+              Color getIndicatorColor(AttendanceStatus status) {
+                if (status == AttendanceStatus.present) return AppColors.successColor(context);
+                if (status == AttendanceStatus.absent) return AppColors.errorColor(context);
+                if (status == AttendanceStatus.half) return AppColors.warningColor(context);
+                if (status == AttendanceStatus.threeQuarter) return Colors.teal;
+                if (status == AttendanceStatus.quarter) return Colors.orangeAccent;
+                return Colors.transparent;
               }
+
+              final now = DateTime.now();
+              final isToday = selectedMonth.year == now.year && selectedMonth.month == now.month && dayNumber == now.day;
+
+              if (isToday) textColor = AppColors.primaryColor(context);
 
               return Container(
                 decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: borderColor != null ? Border.all(color: borderColor, width: 1.5) : null,
+                  color: isToday ? AppColors.softGold(context) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isToday ? Border.all(color: AppColors.primaryColor(context).withValues(alpha: 0.3)) : null,
                 ),
-                alignment: Alignment.center,
-                child: Text('$dayNumber', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('$dayNumber', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 6),
+                    if (dayStatuses.isEmpty)
+                      const SizedBox(height: 6)
+                    else if (dayStatuses.length == 1)
+                      Container(
+                        width: 6, height: 6,
+                        decoration: BoxDecoration(
+                          color: getIndicatorColor(dayStatuses.first),
+                          shape: BoxShape.circle,
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: 2,
+                        runSpacing: 2,
+                        alignment: WrapAlignment.center,
+                        children: dayStatuses.map((s) => Container(
+                          width: 4, height: 4,
+                          decoration: BoxDecoration(
+                            color: getIndicatorColor(s),
+                            shape: BoxShape.rectangle,
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        )).toList(),
+                      ),
+                  ],
+                ),
               );
             },
           ),
@@ -269,11 +303,12 @@ class _CalendarGrid extends StatelessWidget {
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.presentCount, required this.absentCount,
-    required this.halfDayCount, required this.totalOT,
+    required this.halfDayCount, required this.threeQuarterCount,
+    required this.quarterCount, required this.totalOT,
     required this.attendancePct,
   });
 
-  final int presentCount, absentCount, halfDayCount, attendancePct;
+  final int presentCount, absentCount, halfDayCount, threeQuarterCount, quarterCount, attendancePct;
   final double totalOT;
 
   @override
@@ -281,43 +316,52 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
+        color: AppColors.cardColor(context),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.borderColor(context)),
       ),
-      child: Column(children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Monthly Rate', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                Text('$attendancePct%', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                Text('ATTENDANCE SUMMARY', style: TextStyle(color: AppColors.primaryColor(context), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                const SizedBox(height: 4),
+                Text('$attendancePct%', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 24, fontWeight: FontWeight.bold)),
+                Text('Attendance Rate', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 11)),
               ],
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.1),
+                color: AppColors.primaryColor(context).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.bolt, color: AppColors.gold, size: 16),
+                  Icon(Icons.bolt, color: AppColors.primaryColor(context), size: 16),
                   const SizedBox(width: 4),
-                  Text('${totalOT.toStringAsFixed(1)} OT Hrs', style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
+                  Text('${totalOT.toStringAsFixed(1)} OT Hrs', style: TextStyle(color: AppColors.primaryColor(context), fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 20),
-        Row(
+        const SizedBox(height: 24),
+        Wrap(
+          alignment: WrapAlignment.spaceEvenly,
+          spacing: 8,
+          runSpacing: 16,
           children: [
-            _SummaryStat(label: 'Present', count: presentCount, color: AppColors.present),
-            _SummaryStat(label: 'Half Day', count: halfDayCount, color: AppColors.halfDay),
-            _SummaryStat(label: 'Absent', count: absentCount, color: AppColors.absent),
+            _SummaryStat(label: 'Present', count: presentCount, color: AppColors.successColor(context)),
+            if (threeQuarterCount > 0) _SummaryStat(label: '3/4 Day', count: threeQuarterCount, color: Colors.teal),
+            _SummaryStat(label: 'Half Day', count: halfDayCount, color: AppColors.warningColor(context)),
+            if (quarterCount > 0) _SummaryStat(label: '1/4 Day', count: quarterCount, color: Colors.orangeAccent),
+            _SummaryStat(label: 'Absent', count: absentCount, color: AppColors.errorColor(context)),
           ],
         ),
       ]),
@@ -333,21 +377,12 @@ class _SummaryStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Text('$count', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          const SizedBox(height: 8),
-          Text(label, style: const TextStyle(color: AppColors.textTertiary, fontSize: 11)),
-        ],
-      ),
+    return Column(
+      children: [
+        Text('$count', style: TextStyle(color: AppColors.textPrimaryColor(context), fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(color: AppColors.textTertiaryColor(context), fontSize: 11)),
+      ],
     );
   }
 }
@@ -358,40 +393,38 @@ class _TimelineCard extends StatelessWidget {
   final DateTime recordDate;
   final bool isToday;
 
-  Color _getStatusColor(AttendanceStatus? status) {
-    if (status == AttendanceStatus.present) return AppColors.present;
-    if (status == AttendanceStatus.absent) return AppColors.absent;
-    if (status == AttendanceStatus.half) return AppColors.halfDay;
+  Color _getStatusColor(BuildContext context, AttendanceStatus? status) {
+    if (status == AttendanceStatus.present) return AppColors.successColor(context);
+    if (status == AttendanceStatus.threeQuarter) return Colors.teal;
+    if (status == AttendanceStatus.half) return AppColors.warningColor(context);
+    if (status == AttendanceStatus.quarter) return Colors.orangeAccent;
+    if (status == AttendanceStatus.absent) return AppColors.errorColor(context);
     return Colors.transparent;
   }
 
   IconData _getStatusIcon(AttendanceStatus? status) {
     if (status == AttendanceStatus.present) return Icons.check_circle_rounded;
-    if (status == AttendanceStatus.absent) return Icons.cancel_rounded;
+    if (status == AttendanceStatus.threeQuarter) return Icons.star_half_rounded;
     if (status == AttendanceStatus.half) return Icons.schedule_rounded;
+    if (status == AttendanceStatus.quarter) return Icons.timelapse_rounded;
+    if (status == AttendanceStatus.absent) return Icons.cancel_rounded;
     return Icons.help_outline;
   }
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(record.status);
+    final statusColor = _getStatusColor(context, record.status);
     
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isToday ? AppColors.gold.withValues(alpha: 0.5) : AppColors.border),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(_getStatusIcon(record.status), color: statusColor, size: 24),
+          Column(
+            children: [
+              Icon(Icons.circle, color: statusColor, size: 12),
+              Container(width: 2, height: 40, color: AppColors.borderColor(context)),
+            ],
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -400,28 +433,32 @@ class _TimelineCard extends StatelessWidget {
               children: [
                 Text(
                   DateFormat('EEEE, d MMM').format(recordDate),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                  style: TextStyle(color: AppColors.textPrimaryColor(context), fontWeight: FontWeight.bold, fontSize: 14),
                 ),
-                const SizedBox(height: 4),
-                Text(record.status.firestoreValue.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(record.status.firestoreValue.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
+                    if (record.siteName != null && record.siteName!.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.location_on, size: 12, color: AppColors.textTertiaryColor(context)),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          record.siteName!, 
+                          style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
           if (record.overtimeHours > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.navyLight,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.bolt, color: AppColors.gold, size: 14),
-                  const SizedBox(width: 4),
-                  Text('${record.overtimeHours}h', style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 12)),
-                ],
-              ),
-            ),
+            Text('+${record.overtimeHours} OT Hrs', style: TextStyle(color: AppColors.primaryColor(context), fontWeight: FontWeight.w700, fontSize: 12)),
         ],
       ),
     );

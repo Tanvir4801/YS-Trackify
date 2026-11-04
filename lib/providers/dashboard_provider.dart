@@ -22,7 +22,7 @@ class DashboardProvider extends ChangeNotifier {
 
   final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
       _nestedSubs = [];
-      
+
   StreamSubscription<DatabaseEvent>? _rtdbSub;
 
   int presentToday = 0;
@@ -49,10 +49,6 @@ class DashboardProvider extends ChangeNotifier {
   /// even when nested docs don't always contain a usable date field.
   Map<String, Map<String, dynamic>> _nestedAttendanceDocs = {};
 
-
-
-
-
   /// Starts merged supervisorId + contractorId real-time listeners.
   ///
   /// Attendance/labour docs may be scoped by either `supervisorId` (the
@@ -72,7 +68,8 @@ class DashboardProvider extends ChangeNotifier {
       return;
     }
 
-    debugPrint('\n[DashboardProvider] startListening(uid=$uid, contractorId=$contractorId)');
+    debugPrint(
+        '\n[DashboardProvider] startListening(uid=$uid, contractorId=$contractorId)');
 
     _attendanceSub?.cancel();
     _labourSub?.cancel();
@@ -127,7 +124,8 @@ class DashboardProvider extends ChangeNotifier {
     // Nested attendance listener for week strip.
     // attendance/{contractorId}/dates/{date}/records
     final last7 = _last7Days().toList()..sort();
-    debugPrint('[DashboardProvider] nested attendance listener dates(count=${last7.length}): $last7');
+    debugPrint(
+        '[DashboardProvider] nested attendance listener dates(count=${last7.length}): $last7');
 
     // We attach per-date subscriptions and merge into _nestedAttendanceDocs.
     // To keep this provider simple and avoid leaking listeners, we only
@@ -151,7 +149,8 @@ class DashboardProvider extends ChangeNotifier {
           .collection('records')
           .snapshots()
           .listen((snap) {
-        debugPrint('[DashboardProvider] nested records updated for $dateStr: ${snap.docs.length}');
+        debugPrint(
+            '[DashboardProvider] nested records updated for $dateStr: ${snap.docs.length}');
         for (final doc in snap.docs) {
           final data = doc.data();
           final labourId = (data['labourId'] as String?) ?? '';
@@ -169,9 +168,8 @@ class DashboardProvider extends ChangeNotifier {
       _nestedSubs.add(sub);
     }
 
-    // Removed RTDB listener completely. 
+    // Removed RTDB listener completely.
     // Live dashboard stats are now computed perfectly in sync from the nested Firestore records below.
-
   }
 
   void _refreshLabourCount() {
@@ -192,7 +190,7 @@ class DashboardProvider extends ChangeNotifier {
 
     int seenThisRecompute = 0;
     int weekHits = 0;
-    
+
     int tempPresent = 0;
     int tempAbsent = 0;
     int tempHalf = 0;
@@ -202,7 +200,11 @@ class DashboardProvider extends ChangeNotifier {
       seenThisRecompute++;
 
       final status = (data['status'] as String?) ?? '';
-      if (status != 'present' && status != 'absent' && status != 'half') {
+      if (status != 'present' &&
+          status != 'absent' &&
+          status != 'half' &&
+          status != 'quarter' &&
+          status != 'three_quarter') {
         continue;
       }
 
@@ -217,21 +219,39 @@ class DashboardProvider extends ChangeNotifier {
           weekMap[date]!['present'] = (weekMap[date]!['present']! + 1);
         } else if (status == 'absent') {
           weekMap[date]!['absent'] = (weekMap[date]!['absent']! + 1);
-        } else if (status == 'half') {
+        } else if (status == 'half' ||
+            status == 'quarter' ||
+            status == 'three_quarter') {
           weekMap[date]!['half'] = (weekMap[date]!['half']! + 1);
         }
       }
-      
+
       if (date == todayStr) {
         if (status == 'present') tempPresent++;
         if (status == 'absent') tempAbsent++;
-        if (status == 'half') tempHalf++;
-        
-        final wage = (data['wageAtTime'] as num?)?.toDouble() ?? 0.0;
+        if (status == 'half' ||
+            status == 'quarter' ||
+            status == 'three_quarter') tempHalf++;
+
+        final rawWage = (data['wageAtTime'] as num?)?.toDouble() ?? 0.0;
+
+        // Calculate factor based on status (or saved shiftFactor if available)
+        double factor = (data['shiftFactor'] as num?)?.toDouble() ?? 1.0;
+        if (data['shiftFactor'] == null) {
+          if (status == 'three_quarter')
+            factor = 0.75;
+          else if (status == 'half')
+            factor = 0.5;
+          else if (status == 'quarter')
+            factor = 0.25;
+          else if (status == 'absent') factor = 0.0;
+        }
+
+        final wage = rawWage * factor;
         final advance = (data['advance'] as num?)?.toDouble() ?? 0.0;
         final allowance = (data['totalAllowance'] as num?)?.toDouble() ?? 0.0;
         final grandTotal = wage + allowance - advance;
-        if (grandTotal > 0 && status != 'absent') {
+        if (grandTotal > 0 && factor > 0) {
           tempExpense += grandTotal;
         }
       }
@@ -244,7 +264,6 @@ class DashboardProvider extends ChangeNotifier {
     weekAttendance = weekMap;
     notifyListeners();
   }
-
 
   String _todayString() {
     final now = DateTime.now();
@@ -261,8 +280,10 @@ class DashboardProvider extends ChangeNotifier {
   Set<String> _last7Days() {
     final today = DateTime.now();
     return Set.from(
-      List.generate(7, (i) => DateFormat('yyyy-MM-dd')
-          .format(today.subtract(Duration(days: i)))),
+      List.generate(
+          7,
+          (i) => DateFormat('yyyy-MM-dd')
+              .format(today.subtract(Duration(days: i)))),
     );
   }
 
@@ -279,4 +300,3 @@ class DashboardProvider extends ChangeNotifier {
     super.dispose();
   }
 }
-

@@ -28,21 +28,47 @@ class _AddTempLabourDialogState extends State<AddTempLabourDialog> {
   bool _saving     = false;
   String? _error;
 
+  InputDecoration _inputDeco(String label, String hint, IconData icon, BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fillColor = isDark ? Colors.grey.shade900 : const Color(0xFFF9FAFB);
+    final borderColor = isDark ? Colors.grey.shade800 : const Color(0xFFE5E7EB);
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon, size: 18, color: const Color(0xFF9333EA)),
+      filled: true,
+      fillColor: fillColor,
+      labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : const Color(0xFF64809E), fontWeight: FontWeight.w500),
+      hintStyle: TextStyle(color: isDark ? Colors.grey.shade600 : const Color(0xFF9CA3AF)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF9333EA), width: 1.5)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      backgroundColor: Theme.of(context).brightness == Brightness.dark ? null : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: Row(children: [
         Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF6EEFE),
-            borderRadius: BorderRadius.circular(10)),
-          child: const Icon(Icons.person_add,
-            color: Color(0xFFA855F7), size: 20),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF9333EA), Color(0xFF7E22CE)],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [BoxShadow(color: const Color(0xFF9333EA).withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
+          ),
+          child: const Icon(Icons.person_add_rounded, color: Colors.white, size: 22),
         ),
-        const SizedBox(width: 10),
-        const Expanded(child: Text('Add Temp Labour',
-          style: TextStyle(fontSize: 16))),
+        const SizedBox(width: 12),
+        Expanded(child: Text('Add Temp Labour',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF132B4F)))),
       ]),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -75,11 +101,8 @@ class _AddTempLabourDialogState extends State<AddTempLabourDialog> {
           TextField(
             controller: _nameCtrl,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Full Name *',
-              prefixIcon: Icon(Icons.person_outline, size: 18),
-              hintText: 'e.g. Ramesh Patel',
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+            decoration: _inputDeco('Full Name *', 'e.g. Ramesh Patel', Icons.person_outline, context),
           ),
           const SizedBox(height: 12),
 
@@ -88,12 +111,8 @@ class _AddTempLabourDialogState extends State<AddTempLabourDialog> {
             controller: _phoneCtrl,
             keyboardType: TextInputType.phone,
             maxLength: 10,
-            decoration: const InputDecoration(
-              labelText: 'Phone (optional)',
-              prefixIcon: Icon(Icons.phone_outlined, size: 18),
-              hintText: '10 digit number',
-              counterText: '',
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+            decoration: _inputDeco('Phone (optional)', '10 digit number', Icons.phone_outlined, context).copyWith(counterText: ''),
           ),
           const SizedBox(height: 12),
 
@@ -101,11 +120,8 @@ class _AddTempLabourDialogState extends State<AddTempLabourDialog> {
           TextField(
             controller: _wageCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Daily Wage (₹) *',
-              prefixIcon: Icon(Icons.currency_rupee, size: 18),
-              hintText: 'e.g. 400',
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+            decoration: _inputDeco('Daily Wage (₹) *', 'e.g. 400', Icons.currency_rupee, context),
           ),
           const SizedBox(height: 12),
 
@@ -113,11 +129,8 @@ class _AddTempLabourDialogState extends State<AddTempLabourDialog> {
           TextField(
             controller: _skillCtrl,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Skill / Role (optional)',
-              prefixIcon: Icon(Icons.construction, size: 18),
-              hintText: 'e.g. Mason, Helper, Electrician',
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+            decoration: _inputDeco('Skill / Role (optional)', 'e.g. Mason, Helper, Electrician', Icons.construction, context),
           ),
 
           if (_error != null) ...[
@@ -132,19 +145,42 @@ class _AddTempLabourDialogState extends State<AddTempLabourDialog> {
             style: TextStyle(fontSize: 11, color: Colors.grey)),
         ]),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel')),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFFA855F7)),
-          child: _saving
-              ? const SizedBox(width: 16, height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white))
-              : const Text('Add & Mark Present'),
+          style: TextButton.styleFrom(foregroundColor: const Color(0xFF64809E)),
+          child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600))),
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF9333EA), Color(0xFF7E22CE)], // Premium Purple Gradient
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF9333EA).withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              )
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _saving ? null : _save,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            child: _saving
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+                : const Text('Add & Mark Present', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
         ),
       ],
     );

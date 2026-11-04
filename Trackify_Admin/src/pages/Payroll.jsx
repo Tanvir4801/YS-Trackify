@@ -199,32 +199,38 @@ export default function Payroll() {
     toast.success('Excel downloaded');
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (report.length === 0) return toast.error('Calculate payroll first');
     const monthName = MONTHS[month - 1];
     
-    generatePDF({
-      title: 'Payroll Report',
-      subtitle: `For ${monthName} ${year}`,
-      filename: `Payroll_${monthName}_${year}.pdf`,
-      columns: ['Name', 'Days', 'OT Hrs', 'Gross', 'Advances', 'Net Due'],
-      rows: report.map((r) => [
-        r.name,
-        r.totalDays,
-        r.otHours,
-        formatCurrency(r.gross),
-        r.advances > 0 ? formatCurrency(r.advances) : '-',
-        r.net <= 0 ? 'Paid' : formatCurrency(r.net),
-      ]),
-      totals: {
-        'Total Gross': formatCurrency(totals.gross),
-        'Total Advances': formatCurrency(totals.advances),
-        'Salary Paid': formatCurrency(totals.salaryPaid),
-        'Net Remaining': formatCurrency(totals.net)
-      },
-      branding
-    });
-    toast.success('PDF downloaded');
+    // P5-5 FIX: Await generatePDF and wrap in try/catch to prevent crashes.
+    try {
+      await generatePDF({
+        title: 'Payroll Report',
+        subtitle: `For ${monthName} ${year}`,
+        filename: `Payroll_${monthName}_${year}.pdf`,
+        columns: ['Name', 'Days', 'OT Hrs', 'Gross', 'Advances', 'Net Due'],
+        rows: report.map((r) => [
+          r.name,
+          r.totalDays,
+          r.otHours,
+          formatCurrency(r.gross),
+          r.advances > 0 ? formatCurrency(r.advances) : '-',
+          r.net <= 0 ? 'Paid' : formatCurrency(r.net),
+        ]),
+        totals: {
+          'Total Gross': formatCurrency(totals.gross),
+          'Total Advances': formatCurrency(totals.advances),
+          'Salary Paid': formatCurrency(totals.salaryPaid),
+          'Net Remaining': formatCurrency(totals.net)
+        },
+        branding
+      });
+      toast.success('PDF downloaded');
+    } catch (e) {
+      console.error('PDF generation failed:', e);
+      toast.error('Failed to generate PDF. Please try again.');
+    }
   };
 
   const selectClass = "h-9 rounded-lg border border-border-strong bg-bg-input px-3 text-[13px] text-text-primary outline-none focus:border-gold focus:ring-1 focus:ring-gold";

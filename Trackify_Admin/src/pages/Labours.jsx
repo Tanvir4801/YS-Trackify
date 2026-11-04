@@ -162,6 +162,16 @@ export default function Labours() {
 
   // ── Dialog open ────────────────────────────────────────────
   const openAdd = () => {
+    // P3-5 FIX: Prevent adding a labour when there are no supervisors available.
+    // The service requires supervisorId to be valid — creating a labour without
+    // a supervisor is not supported by the data model.
+    if (supervisors.length === 0) {
+      toast.error(
+        'No supervisor available. Please create a supervisor first (via Users > Add User).',
+        { duration: 5000 },
+      );
+      return;
+    }
     setEditing(null);
     // FIX: Do NOT pre-fill supervisorId with contractor uid
     // Always start empty so user must select a real supervisor
@@ -203,10 +213,18 @@ export default function Labours() {
     const t = toast.loading(editing ? 'Saving…' : 'Adding labour…');
 
     try {
+      // Sanitize phone number to exactly 10 digits
+      let sanitizedPhone = form.phone.trim().replace(/\D/g, '');
+      if (sanitizedPhone.length === 12 && sanitizedPhone.startsWith('91')) {
+        sanitizedPhone = sanitizedPhone.substring(2);
+      } else if (sanitizedPhone.length > 10) {
+        sanitizedPhone = sanitizedPhone.substring(sanitizedPhone.length - 10);
+      }
+
       if (editing) {
         await updateLabour(editing.id, {
           name: form.name.trim(),
-          phone: form.phone.trim() || null,
+          phone: sanitizedPhone || null,
           skill: form.skill.trim() || null,
           dailyWage: form.dailyWage,
           overtimeWagePerHour: form.overtimeWagePerHour,
@@ -218,7 +236,7 @@ export default function Labours() {
       } else {
         await addLabour({
           name: form.name.trim(),
-          phone: form.phone.trim() || null,
+          phone: sanitizedPhone || null,
           skill: form.skill.trim() || null,
           dailyWage: form.dailyWage,
           overtimeWagePerHour: form.overtimeWagePerHour,
@@ -369,7 +387,11 @@ export default function Labours() {
             title={selected.size > 0 ? `Download QR for ${selected.size} selected` : 'Download QR for all active labours'}
             className="flex h-9 items-center gap-2 rounded-lg border border-border-strong bg-bg-elevated px-4 text-[13px] font-medium text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
           >
-            <Download className="h-4 w-4" />
+            {bulkDownloading ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-secondary border-t-transparent" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
             {bulkDownloading ? 'Generating…' : selected.size > 0 ? `QR (${selected.size})` : 'Bulk QR'}
           </button>
           {!isSupervisor && (

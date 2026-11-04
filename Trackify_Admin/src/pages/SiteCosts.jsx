@@ -162,7 +162,9 @@ export default function SiteCosts() {
       {/* Header */}
       <div className="rounded-xl border border-border bg-bg-card px-6 py-5 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-[16px] font-semibold tracking-wide text-text-primary uppercase">Site Cost Management</h2>
+          <h2 className="text-[16px] font-semibold tracking-wide text-text-primary uppercase">
+            {view === 'materials' ? 'Material Purchases' : view === 'expenses' ? 'Site Expenses' : 'Temp Labour Costs'}
+          </h2>
           <p className="mt-1 text-[11px] font-medium uppercase tracking-widest text-text-muted">
             Materials: <span className="font-mono text-gold">{formatCurrency(totalMat)}</span> · Expenses: <span className="font-mono text-info">{formatCurrency(totalExp)}</span> · Temp Labour Paid: <span className="font-mono text-success">{formatCurrency(totalTempPaid)}</span> · Temp Labour Liability: <span className="font-mono text-warning">{formatCurrency(totalTempLiability)}</span>
           </p>

@@ -15,23 +15,23 @@ class ISCodeBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
         horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: CalcColors.isBadgeBg,
+        color: CalcColors.isBadgeBg(context),
         border: Border.all(
-          color: CalcColors.isBadgeBorder),
+          color: CalcColors.isBadgeBorder(context)),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.info_outline_rounded,
+          Icon(Icons.info_outline_rounded,
             size: 12,
-            color: CalcColors.isBadgeIcon),
+            color: CalcColors.isBadgeIcon(context)),
           const SizedBox(width: 4),
           Text(code,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
-              color: CalcColors.isBadgeText,
+              color: CalcColors.isBadgeText(context),
             )),
         ],
       ),

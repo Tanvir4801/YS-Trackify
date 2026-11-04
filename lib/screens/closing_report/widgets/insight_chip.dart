@@ -18,17 +18,17 @@ class InsightChip extends StatelessWidget {
     Color borderColor;
 
     if (text.contains('\u{26A0}') || text.contains('\u{1F4C9}') || text.contains('\u{1F4B8}')) {
-      bgColor = AppColors.absentSurface;
-      borderColor = AppColors.absent.withValues(alpha: 0.25);
+      bgColor = AppColors.errorColor(context).withValues(alpha: 0.1);
+      borderColor = AppColors.errorColor(context).withValues(alpha: 0.25);
     } else if (text.contains('\u{2705}') || text.contains('\u{1F4C8}') || text.contains('\u{1F4B0}')) {
-      bgColor = AppColors.presentSurface;
-      borderColor = AppColors.present.withValues(alpha: 0.25);
+      bgColor = AppColors.successColor(context).withValues(alpha: 0.1);
+      borderColor = AppColors.successColor(context).withValues(alpha: 0.25);
     } else if (text.contains('\u{1F327}') || text.contains('\u{1F550}')) {
-      bgColor = AppColors.halfSurface;
-      borderColor = AppColors.halfDay.withValues(alpha: 0.25);
+      bgColor = AppColors.warningColor(context).withValues(alpha: 0.1);
+      borderColor = AppColors.warningColor(context).withValues(alpha: 0.25);
     } else {
-      bgColor = AppColors.blueBg;
-      borderColor = AppColors.blue.withValues(alpha: 0.25);
+      bgColor = AppColors.infoColor(context).withValues(alpha: 0.1);
+      borderColor = AppColors.infoColor(context).withValues(alpha: 0.25);
     }
 
     return TweenAnimationBuilder<double>(
@@ -55,10 +55,10 @@ class InsightChip extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w500,
-            color: AppColors.textPrimary,
+            color: AppColors.textPrimaryColor(context),
             height: 1.4,
           ),
         ),

@@ -32,11 +32,12 @@ import 'providers/closing_report_provider.dart';
 import 'providers/super_admin_provider.dart';
 import 'providers/toolkit_provider.dart';
 import 'providers/branding_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/app_shell.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/super_admin/super_admin_dashboard_screen.dart';
 import 'screens/labour_mode/labour_mode_shell.dart';
-import 'screens/settings/app_info_screen.dart';
+import 'screens/settings/about_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/unauthorized_screen.dart';
 import 'services/hive_service.dart';
@@ -218,6 +219,9 @@ Future<void> main() async {
         ),
         legacy_provider.ChangeNotifierProvider<BrandingProvider>(
           create: (_) => BrandingProvider(),
+        ),
+        legacy_provider.ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider(),
         ),
       ],
       child: const ProviderScope(child: TrackifyApp()),
@@ -418,8 +422,8 @@ class _TrackifyAppState extends ConsumerState<TrackifyApp>
 
   @override
   Widget build(BuildContext context) {
-    return legacy_provider.Consumer<BrandingProvider>(
-      builder: (context, brand, child) {
+    return legacy_provider.Consumer2<BrandingProvider, ThemeProvider>(
+      builder: (context, brand, themeProv, child) {
         final color = brand.branding.themeColor;
         return MaterialApp(
           navigatorKey: navigatorKey,
@@ -437,14 +441,34 @@ class _TrackifyAppState extends ConsumerState<TrackifyApp>
             AppRoutes.labourHome: (_) => const LabourModeShell(),
             AppRoutes.superAdmin: (_) => const SuperAdminDashboardScreen(),
             AppRoutes.unauthorized: (_) => const UnauthorizedScreen(),
-            AppRoutes.appInfo: (_) => const AppInfoScreen(),
+            AppRoutes.appInfo: (_) => const AboutTrackifyScreen(),
           },
+          themeMode: themeProv.themeMode,
           theme: ThemeData(
+            brightness: Brightness.light,
+            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+            colorScheme: ColorScheme.light(
+              primary: color,
+              surface: const Color(0xFFFFFFFF),
+            ),
+            datePickerTheme: const DatePickerThemeData(
+              backgroundColor: Color(0xFFFFFFFF),
+              headerBackgroundColor: Color(0xFFF8FAFC),
+              surfaceTintColor: Colors.transparent,
+            ),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
             brightness: Brightness.dark,
-            scaffoldBackgroundColor: const Color(0xFF10141C),
+            scaffoldBackgroundColor: const Color(0xFF0B1020),
             colorScheme: ColorScheme.dark(
               primary: color,
-              surface: const Color(0xFF1A2438),
+              surface: const Color(0xFF111827),
+            ),
+            datePickerTheme: const DatePickerThemeData(
+              backgroundColor: Color(0xFF111827),
+              headerBackgroundColor: Color(0xFF0B1020),
+              surfaceTintColor: Colors.transparent,
             ),
             useMaterial3: true,
           ),

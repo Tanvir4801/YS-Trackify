@@ -36,9 +36,9 @@ function StatCard({ label, value, sub, icon: Icon, color = 'blue', trend }) {
     green:  { bg: 'var(--success-bg)', icon: 'var(--success)', borderLeft: 'var(--success)' },
     red:    { bg: 'var(--danger-bg)', icon: 'var(--danger)', borderLeft: 'var(--danger)' },
     amber:  { bg: 'var(--warning-bg)', icon: 'var(--warning)', borderLeft: 'var(--warning)' },
-    purple: { bg: 'rgba(167, 139, 250, 0.1)', icon: '#A78BFA', borderLeft: '#A78BFA' },
-    slate:  { bg: 'var(--bg-elevated)', icon: 'var(--text-secondary)', borderLeft: '#94A3B8' },
-    indigo: { bg: 'rgba(129, 140, 248, 0.1)', icon: '#818CF8', borderLeft: '#818CF8' },
+    purple: { bg: 'var(--purple-bg)', icon: 'var(--purple)', borderLeft: 'var(--purple)' },
+    slate:  { bg: 'var(--bg-elevated)', icon: 'var(--text-secondary)', borderLeft: 'var(--slate-accent)' },
+    indigo: { bg: 'var(--indigo-bg)', icon: 'var(--indigo)', borderLeft: 'var(--indigo)' },
     gold:   { bg: 'var(--gold-bg)', icon: 'var(--gold)', borderLeft: 'var(--gold)' },
   };
   const c = colors[color] || colors.blue;
@@ -93,10 +93,10 @@ function QuickAction({ icon: Icon, label, desc, color, onClick }) {
 
 function SummaryChip({ icon, label, value, color }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/5 px-3.5 py-1.5 backdrop-blur-md shadow-sm">
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-card px-3.5 py-1.5 shadow-sm">
       <span className="text-sm opacity-80">{icon}</span>
-      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{label}</span>
-      <span className="text-[13px] font-mono font-bold text-white ml-1">{value}</span>
+      <span className="text-[10px] text-text-secondary font-bold uppercase tracking-wider">{label}</span>
+      <span className="text-[13px] font-mono font-bold text-text-primary ml-1">{value}</span>
     </div>
   );
 }

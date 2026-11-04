@@ -184,11 +184,20 @@ class ReportService {
       // Pending records are excluded from wage totals (wageFactor = 0).
       final totalDays   = records.fold<double>(0.0, (acc, a) => acc + a.effectiveShiftFactor);
 
-      final effectiveWage = records.isNotEmpty && records.first.wageAtTime > 0
-          ? records.first.wageAtTime
+      // PAY-001 fix: compute grossSalary per-record using each record's own
+      // wageAtTime snapshot. This correctly handles mid-month wage changes.
+      // Falls back to labour.dailyWage for records where wageAtTime was not stored.
+      final grossSalary = records.fold<double>(0.0, (acc, a) {
+        final wageForRecord = a.wageAtTime > 0 ? a.wageAtTime : labour.dailyWage;
+        return acc + wageForRecord * a.effectiveShiftFactor;
+      });
+
+      // Effective wage shown in the report header — use the most recent record's
+      // snapshot as a representative display value (or labour.dailyWage as fallback).
+      final effectiveWage = records.isNotEmpty && records.last.wageAtTime > 0
+          ? records.last.wageAtTime
           : labour.dailyWage;
 
-      final grossSalary   = totalDays * effectiveWage;
       final overtimeHours = records.fold<double>(0, (acc, a) => acc + a.overtimeHours);
       final overtimePay   = overtimeHours * labour.overtimeWagePerHour;
 

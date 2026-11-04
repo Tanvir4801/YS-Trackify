@@ -3,18 +3,30 @@ import '../utils/calc_constants.dart';
 import '../widgets/calc_input_field.dart';
 import '../widgets/calc_select_field.dart';
 import '../widgets/calc_card.dart';
+import '../widgets/calc_result_widgets.dart';
 
 class ConverterScreen extends StatefulWidget {
-  const ConverterScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const ConverterScreen({super.key, this.initialInputs});
 
   @override
   State<ConverterScreen> createState() => _ConverterScreenState();
 }
 
 class _ConverterScreenState extends State<ConverterScreen> {
-  final _valCtrl = TextEditingController(text: '1');
+  final _valCtrl = TextEditingController();
   String _fromUnit = 'Meter';
   String _toUnit = 'Feet';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialInputs != null) {
+      _valCtrl.text = widget.initialInputs!['val']?.toString() ?? '';
+      _fromUnit = widget.initialInputs!['from']?.toString() ?? 'Meter';
+      _toUnit = widget.initialInputs!['to']?.toString() ?? 'Feet';
+    }
+  }
 
   final List<String> _units = ['Meter', 'Feet', 'Inches', 'Centimeter', 'Millimeter'];
   
@@ -43,84 +55,90 @@ class _ConverterScreenState extends State<ConverterScreen> {
     final result = _convert();
 
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Converter', style: CalcTextStyles.screenTitle),
-        iconTheme: const IconThemeData(color: CalcColors.textPrimary),
+        title: Text('Converter', style: CalcTextStyles.screenTitle(context)),
+        iconTheme: IconThemeData(color: CalcColors.textPrimary(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(CalcDimens.pagePadding),
-        child: CalcCard(
-          child: Column(
-            children: [
-              const CalcCardHeader(
-                icon: Icons.swap_horiz_rounded,
-                title: 'Unit Converter',
-                description: 'Convert length units easily',
-                iconColor: CalcColors.converter,
-                iconBg: CalcColors.converterBg,
-              ),
-              Padding(
-                padding: const EdgeInsets.all(CalcDimens.cardPadding),
-                child: Column(
-                  children: [
-                    CalcInputField(
-                      label: 'Value',
-                      controller: _valCtrl,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
+        child: Column(
+          children: [
+            CalcCard(
+              child: Column(
+                children: [
+                  CalcCardHeader(
+                    icon: Icons.swap_horiz_rounded,
+                    title: 'Unit Converter',
+                    description: 'Convert length units easily',
+                    iconColor: CalcColors.converter(context),
+                    iconBg: CalcColors.converterBg(context),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(CalcDimens.cardPadding),
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: CalcSelectField(
-                            label: 'From',
-                            value: _fromUnit,
-                            items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                            onChanged: (v) { if (v != null) setState(() => _fromUnit = v); },
-                          ),
+                        CalcInputField(
+                          label: 'Value',
+                          controller: _valCtrl,
+                          onChanged: (v) => setState(() {}),
                         ),
-                        const SizedBox(width: CalcDimens.fieldGap),
-                        Expanded(
-                          child: CalcSelectField(
-                            label: 'To',
-                            value: _toUnit,
-                            items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                            onChanged: (v) { if (v != null) setState(() => _toUnit = v); },
-                          ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CalcSelectField(
+                                label: 'From',
+                                value: _fromUnit,
+                                items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                                onChanged: (v) { if (v != null) setState(() => _fromUnit = v); },
+                              ),
+                            ),
+                            const SizedBox(width: CalcDimens.fieldGap),
+                            Expanded(
+                              child: CalcSelectField(
+                                label: 'To',
+                                value: _toUnit,
+                                items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                                onChanged: (v) { if (v != null) setState(() => _toUnit = v); },
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: CalcColors.converterBg,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: CalcColors.converter.withValues(alpha: 0.3)),
-                      ),
-                      child: Column(
-                        children: [
-                          const Text('Result', style: TextStyle(color: CalcColors.textSecondary, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${result.toStringAsFixed(4)} $_toUnit',
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w600,
-                              color: CalcColors.converter,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(height: 16),
+            if (_valCtrl.text.isEmpty || (double.tryParse(_valCtrl.text) ?? 0) <= 0)
+              const CalcGuideCard(
+                title: 'UNIT CONVERTER',
+                steps: [
+                  'Enter the value to convert.',
+                  'Select the source unit.',
+                  'Select the target unit.',
+                ],
+                formula: 'Result updates automatically',
+              )
+            else ...[
+              CalcResultHeader(
+                title: 'Converted Value',
+                value: '${_convert().toStringAsFixed(4)} $_toUnit',
+                formula: '1 $_fromUnit = ${(_toMeters[_fromUnit]! / _toMeters[_toUnit]!).toStringAsFixed(4)} $_toUnit',
+              ),
+              CalcDetailSection(
+                details: {
+                  'Input Value': '${_valCtrl.text} $_fromUnit',
+                  'Conversion': '$_fromUnit ➔ $_toUnit',
+                },
+              ),
+              const SizedBox(height: 24),
             ],
-          ),
+          ],
         ),
       ),
     );

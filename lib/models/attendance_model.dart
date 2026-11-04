@@ -111,6 +111,7 @@ class Attendance extends HiveObject {
     this.tea = 0,
     this.advance = 0,
     this.shiftFactor = 0.0,
+    this.siteName,
   });
 
   static const String boxName = 'v2_attendance';
@@ -174,6 +175,9 @@ class Attendance extends HiveObject {
 
   @HiveField(19)
   double advance;
+
+  // Transient / Joined fields
+  String? siteName;
 
   @HiveField(20)
   double shiftFactor;

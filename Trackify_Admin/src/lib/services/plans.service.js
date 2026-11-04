@@ -1,0 +1,663 @@
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  onSnapshot,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '../firebase';
+
+// Helper to safely extract Date or string
+export const safeDate = (timestamp) => {
+  if (!timestamp) return null;
+  if (typeof timestamp.toDate === 'function') return timestamp.toDate();
+  if (timestamp instanceof Date) return timestamp;
+  return new Date(timestamp);
+};
+
+/**
+ * Extracts only the main important plan name, stripping out any customer/first names.
+ * e.g. "01-SHAILESHBHAI KATSWEL-FINAL PLAN" -> "01-FINAL PLAN"
+ * e.g. "01-TANVIR-FINAL PLAN" -> "01-FINAL PLAN"
+ * e.g. "02-TANVIR-CENTER LINE" -> "02-CENTER LINE"
+ */
+export function extractMainPlanName(rawName) {
+  if (!rawName) return '';
+  const parts = rawName.split('-').map((s) => s.trim());
+  if (parts.length >= 3) {
+    const num = parts[0].padStart(2, '0');
+    // Strip client/first name in parts[1], take the main plan from parts[2..]
+    const mainPlan = parts.slice(2).join('-');
+    return `${num}-${mainPlan}`;
+  } else if (parts.length === 2 && /^\d+$/.test(parts[0])) {
+    return `${parts[0].padStart(2, '0')}-${parts[1]}`;
+  }
+  return rawName.replace(/\s*-\s*/g, '-');
+}
+
+/**
+ * Returns strictly the main plan name without numbers or customer name (e.g. "FINAL PLAN", "CENTER LINE").
+ */
+export function extractPureMainName(rawName) {
+  if (!rawName) return '';
+  const parts = rawName.split('-').map((s) => s.trim());
+  if (parts.length >= 3) {
+    return parts.slice(2).join('-');
+  } else if (parts.length === 2) {
+    if (/^\d+$/.test(parts[0])) return parts[1];
+    return parts[1];
+  }
+  return rawName.replace(/^\d+[\s._-]+/, '').trim();
+}
+
+/**
+ * Returns formatted Windows file name for the client (e.g. "01-TANVIR-FINAL PLAN")
+ */
+export function formatWindowsFileName(rawName, ownerName, numPrefix) {
+  const main = extractPureMainName(rawName);
+  const cleanOwner = (ownerName || 'CLIENT').trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '');
+  const num = (numPrefix || rawName.match(/^\d+/)?.[0] || '01').padStart(2, '0');
+  return `${num}-${cleanOwner}-${main}`;
+}
+
+// ==========================================
+// DEFAULT 21 MASTER PLANS CATALOG (FROM ER DIRECTORY + EXTENDED)
+// Exact format: 01-FINAL PLAN, 02-CENTER LINE, etc. (No customer name in list)
+// ==========================================
+export const DEFAULT_MASTER_PLANS = [
+  { id: '01_final_plan', num: '01', name: '01-FINAL PLAN', mainName: 'FINAL PLAN', category: 'Architectural', desc: 'Final approved architectural plan' },
+  { id: '02_center_line', num: '02', name: '02-CENTER LINE', mainName: 'CENTER LINE', category: 'Structural', desc: 'Column center line marking layout' },
+  { id: '03_foundation_plan_details', num: '03', name: '03-FOUNDATION PLAN DETAILS', mainName: 'FOUNDATION PLAN DETAILS', category: 'Structural', desc: 'Foundation excavation & rebar plan' },
+  { id: '04_footing_typical_2', num: '04', name: '04-FOOTING TYPICAL (2)', mainName: 'FOOTING TYPICAL (2)', category: 'Structural', desc: 'Secondary footing section & schedule' },
+  { id: '05_footing_typical', num: '05', name: '05-FOOTING TYPICAL', mainName: 'FOOTING TYPICAL', category: 'Structural', desc: 'Typical footing section & rebar schedule' },
+  { id: '06_ground_beams_details', num: '06', name: '06-GROUND BEAMS DETAILS', mainName: 'GROUND BEAMS DETAILS', category: 'Structural', desc: 'Ground tie beams reinforcement layout' },
+  { id: '07_plinth_beams_details', num: '07', name: '07-PLINTH BEAMS DETAILS', mainName: 'PLINTH BEAMS DETAILS', category: 'Structural', desc: 'Plinth level beam rebar & casting drawings' },
+  { id: '08_front_side_elevation', num: '08', name: '08-FRONT SIDE ELEVATION', mainName: 'FRONT SIDE ELEVATION', category: '3D & Design', desc: 'Front architectural elevation & exterior design' },
+  { id: '09_right_side_elevation', num: '09', name: '09-RIGHT SIDE ELEVATION', mainName: 'RIGHT SIDE ELEVATION', category: '3D & Design', desc: 'Right elevation drawing & exterior details' },
+  { id: '10_left_side_elevation', num: '10', name: '10-LEFT SIDE ELEVATION', mainName: 'LEFT SIDE ELEVATION', category: '3D & Design', desc: 'Left elevation drawing & exterior details' },
+  { id: '11_gf_working', num: '11', name: '11-GF WORKING', mainName: 'GF WORKING', category: 'Architectural', desc: 'Ground floor architectural working layout' },
+  { id: '12_gf_slab_beams_details', num: '12', name: '12-GROUND FLOOR SLAB AND BEAMS DETAILS', mainName: 'GROUND FLOOR SLAB AND BEAMS DETAILS', category: 'Structural', desc: 'Ground floor roof slab casting & beam schedule' },
+  { id: '13_gf_electric', num: '13', name: '13-GF ELECTRIC', mainName: 'GF ELECTRIC', category: 'Services', desc: 'Ground floor conduits, switches & electrical layout' },
+  { id: '14_ff_working', num: '14', name: '14-FF WORKING', mainName: 'FF WORKING', category: 'Architectural', desc: 'First floor architectural working layout' },
+  { id: '15_ff_slab_beams_details', num: '15', name: '15-FIRST FLOOR SLAB AND BEAMS DETAILS', mainName: 'FIRST FLOOR SLAB AND BEAMS DETAILS', category: 'Structural', desc: 'First floor roof slab casting & beam schedule' },
+  { id: '16_ff_electric', num: '16', name: '16-FF ELECTRIC', mainName: 'FF ELECTRIC', category: 'Services', desc: 'First floor conduits, switches & electrical layout' },
+  { id: '17_plumbing_details', num: '17', name: '17-PLUMBING DETAILS', mainName: 'PLUMBING DETAILS', category: 'Services', desc: 'Plumbing, drainage & sanitary line layout' },
+  { id: '18_gf_lintel_details', num: '18', name: '18-GF Lintel Details', mainName: 'GF Lintel Details', category: 'Structural', desc: 'Ground floor lintel beam rebar details' },
+  { id: '19_ff_lintel_details', num: '19', name: '19-FF Lintel Details', mainName: 'FF Lintel Details', category: 'Structural', desc: 'First floor lintel beam rebar details' },
+  { id: '20_passing_plan', num: '20', name: '20-Passing Plan', mainName: 'Passing Plan', category: 'Municipal', desc: 'Authority / Municipal passing sanction plan' },
+  { id: '21_loan_estimate', num: '21', name: '21-Loan Estimate', mainName: 'Loan Estimate', category: 'Services', desc: 'Bank loan valuation & estimate sheet' },
+];
+
+// ==========================================
+// HOUSE PLANS SERVICE
+// ==========================================
+
+/**
+ * Real-time listener for house plans belonging to a contractor
+ */
+export function subscribeHousePlans(contractorId, callback, onError) {
+  if (!contractorId) {
+    callback([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, 'house_plans'),
+    where('contractorId', '==', contractorId)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const plans = [];
+      snapshot.docs.forEach((docSnap) => {
+        // Skip master catalog configuration doc
+        if (docSnap.id.startsWith('_catalog_') || docSnap.data().isCatalogDoc) {
+          return;
+        }
+
+        const data = docSnap.data();
+        const payments = Array.isArray(data.payments) ? data.payments : [];
+        const rawPlans = Array.isArray(data.plansList) ? data.plansList : [];
+
+        // Auto-clean plan names to remove any client names (e.g. "01-TANVIR-FINAL PLAN" -> "01-FINAL PLAN")
+        const plansList = rawPlans.map((p) => ({
+          ...p,
+          name: extractMainPlanName(p.name) || p.name,
+        }));
+
+        // Auto-upgrade owners with legacy/temporary mock plans to the standard 21 engineering plans
+        const hasLegacyPlans = rawPlans.some(
+          (p) =>
+            p.name?.includes('02-1') ||
+            p.name?.includes('03-2') ||
+            p.name?.includes('Footing & Foundation') ||
+            p.name?.includes('Plinth Beam Layout') ||
+            p.name?.includes('Typical Floor') ||
+            p.name === '1)' ||
+            p.name === '2)'
+        );
+        if (hasLegacyPlans) {
+          resetOwnerPlansToExact21(docSnap.id).catch(console.error);
+        }
+
+        // Compute total paid and pending balance
+        const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        const houseAmount = Number(data.houseAmount) || 0;
+        const pendingBalance = Math.max(0, houseAmount - totalPaid);
+
+        // Compute completed plans count
+        const completedPlansCount = plansList.filter((p) => p.status === 'completed').length;
+
+        plans.push({
+          id: docSnap.id,
+          ...data,
+          payments,
+          plansList,
+          totalPaid,
+          pendingBalance,
+          completedPlansCount,
+          createdAt: safeDate(data.createdAt),
+          updatedAt: safeDate(data.updatedAt),
+        });
+      });
+
+      // Sort newest first
+      plans.sort((a, b) => {
+        const timeA = a.createdAt ? a.createdAt.getTime() : 0;
+        const timeB = b.createdAt ? b.createdAt.getTime() : 0;
+        return timeB - timeA;
+      });
+
+      callback(plans);
+    },
+    (err) => {
+      console.error('Error subscribing to house plans:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Fetch a single house plan by ID
+ */
+export async function getHousePlan(planId) {
+  if (!planId) return null;
+  const snap = await getDoc(doc(db, 'house_plans', planId));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+  const rawPlans = Array.isArray(data.plansList) ? data.plansList : [];
+  const plansList = rawPlans.map((p) => ({
+    ...p,
+    name: extractMainPlanName(p.name) || p.name,
+  }));
+  const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const houseAmount = Number(data.houseAmount) || 0;
+  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+
+  return {
+    id: snap.id,
+    ...data,
+    payments,
+    plansList,
+    totalPaid,
+    pendingBalance,
+    completedPlansCount: plansList.filter((p) => p.status === 'completed').length,
+    createdAt: safeDate(data.createdAt),
+    updatedAt: safeDate(data.updatedAt),
+  };
+}
+
+/**
+ * Create a new house plan owner record
+ */
+export async function addHousePlan(planData) {
+  if (!planData.contractorId) {
+    throw new Error('contractorId is required to save a house plan');
+  }
+
+  const initialPlans = Array.isArray(planData.plansList) ? planData.plansList : [];
+  const initialPayments = Array.isArray(planData.payments) ? planData.payments : [];
+
+  const houseAmount = Number(planData.houseAmount) || 0;
+  const totalPaid = initialPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+  const payload = {
+    contractorId: planData.contractorId,
+    // Owner Details
+    ownerName: planData.ownerName?.trim() || '',
+    ownerPhone: planData.ownerPhone?.trim() || '',
+    ownerEmail: planData.ownerEmail?.trim() || '',
+    ownerAddress: planData.ownerAddress?.trim() || '',
+    city: planData.city?.trim() || planData.town?.trim() || '',
+    town: planData.town?.trim() || planData.city?.trim() || '',
+
+    // Plan & 3D Identifiers
+    planNumber: planData.planNumber?.trim() || '',
+    serialNumber3D: planData.serialNumber3D?.trim() || '',
+    title: planData.title?.trim() || '',
+
+    // Area & Valuation
+    totalSqFt: Number(planData.totalSqFt) || 0,
+    plotAreaSqFt: Number(planData.plotAreaSqFt) || 0,
+    houseAmount,
+    ratePerSqFt: Number(planData.ratePerSqFt) || 0,
+    totalPaid,
+    pendingBalance: Math.max(0, houseAmount - totalPaid),
+
+    // Structural & Architectural Specs
+    floors: planData.floors || 'G+1',
+    facing: planData.facing || 'East',
+    bhk: planData.bhk || '3 BHK',
+    planType: planData.planType || '3D Elevation Plan',
+    status: planData.status || 'in_progress',
+
+    // Engineer ("Er.") Details
+    engineerName: planData.engineerName?.trim() || '',
+    engineerPhone: planData.engineerPhone?.trim() || '',
+    engineerNotes: planData.engineerNotes?.trim() || '',
+
+    // Dynamic Plans Checklist for this owner
+    plansList: initialPlans,
+
+    // Self-contained Payments for this owner
+    payments: initialPayments,
+
+    // Optional 3D Model / Drawing link or file URL
+    fileUrl: planData.fileUrl?.trim() || '',
+
+    // System audit fields
+    createdBy: planData.createdBy || '',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  const docRef = await addDoc(collection(db, 'house_plans'), payload);
+  await updateDoc(docRef, { id: docRef.id });
+  return docRef.id;
+}
+
+/**
+ * Update an existing house plan record
+ */
+export async function updateHousePlan(planId, updates) {
+  if (!planId) throw new Error('planId is required for update');
+
+  const cleanUpdates = { ...updates };
+  delete cleanUpdates.id;
+  delete cleanUpdates.createdAt;
+
+  if (cleanUpdates.totalSqFt !== undefined) {
+    cleanUpdates.totalSqFt = Number(cleanUpdates.totalSqFt) || 0;
+  }
+  if (cleanUpdates.plotAreaSqFt !== undefined) {
+    cleanUpdates.plotAreaSqFt = Number(cleanUpdates.plotAreaSqFt) || 0;
+  }
+  if (cleanUpdates.houseAmount !== undefined) {
+    cleanUpdates.houseAmount = Number(cleanUpdates.houseAmount) || 0;
+  }
+  if (cleanUpdates.ratePerSqFt !== undefined) {
+    cleanUpdates.ratePerSqFt = Number(cleanUpdates.ratePerSqFt) || 0;
+  }
+
+  // Recalculate financial balance if houseAmount or payments are being updated
+  if (cleanUpdates.houseAmount !== undefined || cleanUpdates.payments !== undefined) {
+    const currentSnap = await getDoc(doc(db, 'house_plans', planId));
+    const currentData = currentSnap.data() || {};
+    const effectiveAmount = cleanUpdates.houseAmount !== undefined ? cleanUpdates.houseAmount : Number(currentData.houseAmount || 0);
+    const effectivePayments = cleanUpdates.payments !== undefined ? cleanUpdates.payments : (currentData.payments || []);
+    const totalPaid = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    cleanUpdates.totalPaid = totalPaid;
+    cleanUpdates.pendingBalance = Math.max(0, effectiveAmount - totalPaid);
+  }
+
+  const payload = {
+    ...cleanUpdates,
+    updatedAt: serverTimestamp(),
+  };
+
+  await updateDoc(doc(db, 'house_plans', planId), payload);
+}
+
+/**
+ * Delete a house plan record
+ */
+export async function deleteHousePlan(planId) {
+  if (!planId) throw new Error('planId is required for deletion');
+  await deleteDoc(doc(db, 'house_plans', planId));
+}
+
+// ==========================================
+// OWNER-SPECIFIC PLANS WORKFLOW (ADD/UPDATE/DELETE/STATUS)
+// ==========================================
+
+/**
+ * Add a new plan to this specific owner
+ */
+export async function addPlanToOwner(ownerId, planItem) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+
+  const cleanName = extractMainPlanName(planItem.name?.trim()) || 'New Plan';
+  const numMatch = planItem.num || cleanName.match(/^(\d+)/)?.[1] || '';
+  const newPlan = {
+    id: `plan_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    num: numMatch,
+    name: cleanName,
+    category: planItem.category || 'Architectural',
+    status: planItem.status || 'not_started', // 'not_started' | 'pending' | 'in_progress' | 'completed'
+    notes: planItem.notes?.trim() || '',
+    fileUrl: planItem.fileUrl?.trim() || '',
+    createdAt: new Date().toISOString(),
+    completedDate: planItem.status === 'completed' ? new Date().toISOString().split('T')[0] : null,
+  };
+
+  const updatedPlans = [...currentPlans, newPlan];
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    updatedAt: serverTimestamp(),
+  });
+
+  return newPlan;
+}
+
+/**
+ * Resets / Syncs an owner's checklist to the EXACT 21 engineering plans,
+ * removing any old/duplicate plans and removing any client names.
+ */
+export async function resetOwnerPlansToExact21(ownerId) {
+  if (!ownerId) throw new Error('ownerId is required');
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const currentPlans = Array.isArray(snap.data().plansList) ? snap.data().plansList : [];
+  const completedNums = new Set(
+    currentPlans
+      .filter((p) => p.status === 'completed')
+      .map((p) => p.num || p.name.match(/^(\d+)/)?.[1])
+      .filter(Boolean)
+  );
+
+  const exact21List = DEFAULT_MASTER_PLANS.map((template) => ({
+    id: `plan_${Date.now()}_${template.num}`,
+    num: template.num,
+    name: template.name, // e.g. "01-FINAL PLAN"
+    category: template.category,
+    status: completedNums.has(template.num) ? 'completed' : 'not_started',
+    createdAt: new Date().toISOString(),
+    completedDate: completedNums.has(template.num) ? new Date().toISOString().split('T')[0] : null,
+  }));
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: exact21List,
+    updatedAt: serverTimestamp(),
+  });
+
+  return exact21List;
+}
+
+// Backward-compatible alias
+export const resetOwnerPlansToExact16 = resetOwnerPlansToExact21;
+
+/**
+ * Update an existing plan inside this specific owner
+ */
+export async function updatePlanInOwner(ownerId, planItemId, updates) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+
+  const updatedPlans = currentPlans.map((p) => {
+    if (p.id === planItemId) {
+      const isNowCompleted = updates.status === 'completed';
+      return {
+        ...p,
+        ...updates,
+        completedDate: isNowCompleted ? (p.completedDate || new Date().toISOString().split('T')[0]) : (updates.status ? null : p.completedDate),
+      };
+    }
+    return p;
+  });
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Toggle plan status (e.g. Quick Mark Complete / Pending)
+ */
+export async function togglePlanStatus(ownerId, planItemId, currentStatus) {
+  const nextStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+  await updatePlanInOwner(ownerId, planItemId, { status: nextStatus });
+}
+
+/**
+ * Delete a plan from this specific owner
+ */
+export async function deletePlanFromOwner(ownerId, planItemId) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+  const updatedPlans = currentPlans.filter((p) => p.id !== planItemId);
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ==========================================
+// OWNER-SPECIFIC PAYMENTS (NO MIXING WITH OTHER CLIENTS)
+// ==========================================
+
+/**
+ * Add a payment installment to this specific owner
+ */
+export async function addPaymentToOwner(ownerId, paymentItem) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPayments = Array.isArray(data.payments) ? data.payments : [];
+
+  const newPayment = {
+    id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    installmentName: paymentItem.installmentName?.trim() || 'Part Payment',
+    type: paymentItem.type || 'part', // 'advance' | 'half_payment' | 'part' | 'final'
+    amount: Number(paymentItem.amount) || 0,
+    date: paymentItem.date || new Date().toISOString().split('T')[0],
+    mode: paymentItem.mode || 'UPI', // 'Cash' | 'UPI' | 'Cheque' | 'Bank Transfer'
+    referenceNo: paymentItem.referenceNo?.trim() || '',
+    notes: paymentItem.notes?.trim() || '',
+    recordedAt: new Date().toISOString(),
+  };
+
+  const updatedPayments = [...currentPayments, newPayment];
+  const totalPaid = updatedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const houseAmount = Number(data.houseAmount) || 0;
+  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+
+  // Derive payment status
+  let paymentStatus = 'pending';
+  if (totalPaid >= houseAmount && houseAmount > 0) {
+    paymentStatus = 'completed';
+  } else if (totalPaid >= houseAmount * 0.5 && houseAmount > 0) {
+    paymentStatus = 'half_paid';
+  } else if (totalPaid > 0) {
+    paymentStatus = 'advance_received';
+  }
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    payments: updatedPayments,
+    totalPaid,
+    pendingBalance,
+    paymentStatus,
+    updatedAt: serverTimestamp(),
+  });
+
+  return newPayment;
+}
+
+/**
+ * Update an existing payment inside this specific owner
+ */
+export async function updatePaymentInOwner(ownerId, paymentId, updates) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPayments = Array.isArray(data.payments) ? data.payments : [];
+
+  const updatedPayments = currentPayments.map((p) => {
+    if (p.id === paymentId) {
+      return {
+        ...p,
+        ...updates,
+        amount: updates.amount !== undefined ? Number(updates.amount) : p.amount,
+      };
+    }
+    return p;
+  });
+
+  const totalPaid = updatedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const houseAmount = Number(data.houseAmount) || 0;
+  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+
+  let paymentStatus = 'pending';
+  if (totalPaid >= houseAmount && houseAmount > 0) {
+    paymentStatus = 'completed';
+  } else if (totalPaid >= houseAmount * 0.5 && houseAmount > 0) {
+    paymentStatus = 'half_paid';
+  } else if (totalPaid > 0) {
+    paymentStatus = 'advance_received';
+  }
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    payments: updatedPayments,
+    totalPaid,
+    pendingBalance,
+    paymentStatus,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Delete a payment from this specific owner
+ */
+export async function deletePaymentFromOwner(ownerId, paymentId) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPayments = Array.isArray(data.payments) ? data.payments : [];
+  const updatedPayments = currentPayments.filter((p) => p.id !== paymentId);
+
+  const totalPaid = updatedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const houseAmount = Number(data.houseAmount) || 0;
+  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+
+  let paymentStatus = 'pending';
+  if (totalPaid >= houseAmount && houseAmount > 0) {
+    paymentStatus = 'completed';
+  } else if (totalPaid >= houseAmount * 0.5 && houseAmount > 0) {
+    paymentStatus = 'half_paid';
+  } else if (totalPaid > 0) {
+    paymentStatus = 'advance_received';
+  }
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    payments: updatedPayments,
+    totalPaid,
+    pendingBalance,
+    paymentStatus,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ==========================================
+// MASTER PLAN CATALOG (15+ CUSTOMIZABLE TEMPLATES)
+// ==========================================
+
+/**
+ * Subscribe to the contractor's customizable master plan catalog
+ */
+export function subscribeMasterPlanCatalog(contractorId, callback) {
+  if (!contractorId) {
+    callback(DEFAULT_MASTER_PLANS);
+    return () => {};
+  }
+
+  const catalogDocRef = doc(db, 'house_plans', `_catalog_${contractorId}`);
+
+  return onSnapshot(
+    catalogDocRef,
+    (snap) => {
+      if (snap.exists() && Array.isArray(snap.data()?.catalog)) {
+        const stored = snap.data().catalog;
+        // Strictly check if stored catalog has the exact 21 plans without old obsolete items
+        const needsUpdate = stored.some(
+          (item) =>
+            item.id?.startsWith('default_') ||
+            item.name?.includes('Typical Floor') ||
+            item.name?.includes('Plinth Beam Layout') ||
+            item.name?.includes(' - ') ||
+            !item.name?.startsWith('01-') ||
+            !item.num
+        );
+
+        if (!needsUpdate && stored.length === 21) {
+          callback(stored);
+        } else {
+          // Auto-migrate obsolete catalog to the exact 21 plans in Firestore
+          saveMasterPlanCatalog(contractorId, DEFAULT_MASTER_PLANS).catch(console.error);
+          callback(DEFAULT_MASTER_PLANS);
+        }
+      } else {
+        // Fallback to default 21 master plans
+        saveMasterPlanCatalog(contractorId, DEFAULT_MASTER_PLANS).catch(console.error);
+        callback(DEFAULT_MASTER_PLANS);
+      }
+    },
+    (err) => {
+      console.warn('Could not load custom catalog, using defaults:', err);
+      callback(DEFAULT_MASTER_PLANS);
+    }
+  );
+}
+
+/**
+ * Save / Update customizable master plan catalog
+ */
+export async function saveMasterPlanCatalog(contractorId, catalogList) {
+  if (!contractorId) throw new Error('contractorId is required to save master catalog');
+
+  const catalogDocRef = doc(db, 'house_plans', `_catalog_${contractorId}`);
+  await setDoc(
+    catalogDocRef,
+    {
+      contractorId,
+      isCatalogDoc: true,
+      catalog: catalogList,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}

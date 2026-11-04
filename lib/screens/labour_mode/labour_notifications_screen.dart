@@ -18,28 +18,28 @@ class LabourNotificationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.backgroundColor(context),
       appBar: AppBar(
-        backgroundColor: AppColors.navy,
-        title: const Text(
+        backgroundColor: AppColors.backgroundColor(context),
+        title: Text(
           'Notifications',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          style: TextStyle(color: AppColors.textPrimaryColor(context), fontWeight: FontWeight.w800),
         ),
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: AppColors.textPrimaryColor(context)),
       ),
       body: StreamBuilder<List<NotificationModel>>(
         stream: firestoreService.streamNotifications(labourId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+            return Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context)));
           }
 
           if (snapshot.hasError) {
             return Center(
               child: Text(
                 'Could not load notifications',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+                style: TextStyle(color: AppColors.textSecondaryColor(context)),
               ),
             );
           }
@@ -51,11 +51,11 @@ class LabourNotificationsScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.notifications_off_rounded, size: 64, color: Colors.white.withValues(alpha: 0.1)),
+                  Icon(Icons.notifications_off_rounded, size: 64, color: AppColors.textTertiaryColor(context).withValues(alpha: 0.5)),
                   const SizedBox(height: 16),
                   Text(
                     'No new notifications',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 16),
+                    style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 16),
                   ),
                 ],
               ),
@@ -134,9 +134,9 @@ class _NotificationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isUnread ? AppColors.navyLight : AppColors.navy,
+        color: isUnread ? AppColors.softGold(context) : AppColors.cardColor(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isUnread ? color.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: isUnread ? AppColors.primaryColor(context).withValues(alpha: 0.3) : AppColors.borderColor(context)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,7 +160,7 @@ class _NotificationCard extends StatelessWidget {
                       child: Text(
                         title,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimaryColor(context),
                           fontWeight: isUnread ? FontWeight.w800 : FontWeight.w600,
                           fontSize: 15,
                         ),
@@ -170,7 +170,7 @@ class _NotificationCard extends StatelessWidget {
                       Container(
                         width: 8,
                         height: 8,
-                        decoration: const BoxDecoration(color: AppColors.gold, shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: AppColors.primaryColor(context), shape: BoxShape.circle),
                       ),
                   ],
                 ),
@@ -178,7 +178,7 @@ class _NotificationCard extends StatelessWidget {
                 Text(
                   message,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: AppColors.textSecondaryColor(context),
                     fontSize: 13,
                     height: 1.4,
                   ),
@@ -187,7 +187,7 @@ class _NotificationCard extends StatelessWidget {
                 Text(
                   timeStr,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: AppColors.textTertiaryColor(context),
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),

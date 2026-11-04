@@ -23,13 +23,13 @@ class ActionButtonBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: const Border(
-          top: BorderSide(color: AppColors.border),
+        color: AppColors.surfaceColor(context),
+        border: Border(
+          top: BorderSide(color: AppColors.borderColor(context)),
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.navy.withValues(alpha: 0.06),
+            color: AppColors.textPrimaryColor(context).withValues(alpha: 0.06),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -43,7 +43,7 @@ class ActionButtonBar extends StatelessWidget {
               child: _ActionButton(
                 icon: Icons.chat_rounded,
                 label: 'WhatsApp',
-                color: AppColors.success,
+                color: AppColors.successColor(context),
                 onTap: onWhatsApp,
               ),
             ),
@@ -52,7 +52,7 @@ class ActionButtonBar extends StatelessWidget {
               child: _ActionButton(
                 icon: Icons.picture_as_pdf_rounded,
                 label: 'PDF',
-                color: AppColors.danger,
+                color: AppColors.errorColor(context),
                 onTap: onDownloadPdf,
               ),
             ),
@@ -61,7 +61,7 @@ class ActionButtonBar extends StatelessWidget {
               child: _ActionButton(
                 icon: Icons.copy_rounded,
                 label: 'Copy',
-                color: AppColors.blue,
+                color: AppColors.infoColor(context),
                 onTap: onCopy,
               ),
             ),

@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../utils/calc_constants.dart';
+import '../models/calc_history_item.dart';
+import '../services/calc_history_service.dart';
+import '../widgets/calc_result_widgets.dart';
+import 'package:uuid/uuid.dart';
 
 class LabourCostScreen extends StatefulWidget {
-  const LabourCostScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const LabourCostScreen({super.key, this.initialInputs});
 
   @override
   State<LabourCostScreen> createState() => _LabourCostScreenState();
@@ -16,15 +21,53 @@ class _LabourCostScreenState extends State<LabourCostScreen> {
   final _avgWageCtrl = TextEditingController();
 
   double _totalCost = 0;
+  bool _isCalculated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialInputs != null) {
+      _teamSizeCtrl.text = widget.initialInputs!['ts']?.toString() ?? '';
+      _durationCtrl.text = widget.initialInputs!['dur']?.toString() ?? '';
+      _avgWageCtrl.text = widget.initialInputs!['aw']?.toString() ?? '';
+    }
+  }
 
   void _calculate() {
     final teamSize = int.tryParse(_teamSizeCtrl.text) ?? 0;
     final duration = int.tryParse(_durationCtrl.text) ?? 0;
     final avgWage = double.tryParse(_avgWageCtrl.text) ?? 0;
 
+    final total = teamSize * duration * avgWage;
+
     setState(() {
-      _totalCost = teamSize * duration * avgWage;
+      _totalCost = total;
+      _isCalculated = true;
     });
+
+    final item = CalcHistoryItem(
+      id: const Uuid().v4(),
+      category: 'Labour Cost',
+      title: 'Cost: ₹${total.toStringAsFixed(2)}',
+      subtitle: '$teamSize persons, $duration days',
+      timestamp: DateTime.now(),
+      inputs: {
+        'ts': teamSize,
+        'dur': duration,
+        'aw': avgWage,
+      },
+      results: {
+        'mainTitle': 'Total Labour Cost',
+        'mainValue': '₹${total.toStringAsFixed(2)}',
+        'formula': 'Size × Days × Wage',
+        'materials': [
+          {'label': 'Team Size', 'value': '$teamSize persons'},
+          {'label': 'Duration', 'value': '$duration days'},
+          {'label': 'Average Wage', 'value': '₹${avgWage.toStringAsFixed(2)}/day'},
+        ],
+      },
+    );
+    CalcHistoryService.save(item);
   }
 
   void _clear() {
@@ -37,11 +80,11 @@ class _LabourCostScreenState extends State<LabourCostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Labour Cost Estimator', style: CalcTextStyles.screenTitle),
+        title: Text('Labour Cost Estimator', style: CalcTextStyles.screenTitle(context)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: AppColors.gold),
@@ -61,7 +104,7 @@ class _LabourCostScreenState extends State<LabourCostScreen> {
             const SizedBox(height: 16),
             _buildInputRow('Duration (days)', _durationCtrl, TextInputType.number),
             const SizedBox(height: 16),
-            _buildInputRow('Average Daily Wage (\$)', _avgWageCtrl, const TextInputType.numberWithOptions(decimal: true)),
+            _buildInputRow('Average Daily Wage (₹)', _avgWageCtrl, const TextInputType.numberWithOptions(decimal: true)),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () {
@@ -70,15 +113,40 @@ class _LabourCostScreenState extends State<LabourCostScreen> {
                 FocusScope.of(context).unfocus();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.gold,
-                foregroundColor: AppColors.navy,
+                backgroundColor: AppColors.primaryColor(context),
+                foregroundColor: AppColors.textOnPrimaryColor(context),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Calculate Labour Cost', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text('CALCULATE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
             const SizedBox(height: 24),
-            if (_totalCost > 0) _buildResult(),
+            if (!_isCalculated)
+              const CalcGuideCard(
+                title: 'HOW LABOUR COST WORKS',
+                steps: [
+                  'Enter the total number of workers.',
+                  'Enter the estimated duration of the work in days.',
+                  'Enter the average daily wage per worker.',
+                ],
+                formula: 'Total = Size × Days × Wage',
+              )
+            else ...[
+              CalcResultHeader(
+                title: 'Total Labour Cost',
+                value: '₹${_totalCost.toStringAsFixed(2)}',
+                formula: 'Size × Days × Wage',
+              ),
+              CalcDetailSection(
+                details: {
+                  'Team Size': '${_teamSizeCtrl.text} persons',
+                  'Duration': '${_durationCtrl.text} days',
+                  'Average Wage': '₹${_avgWageCtrl.text} / day',
+                },
+              ),
+              CalcActionRow(onRecalculate: _calculate, onReset: _clear),
+              const SizedBox(height: 24),
+            ],
           ],
         ),
       ),
@@ -89,24 +157,24 @@ class _LabourCostScreenState extends State<LabourCostScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.navyLight,
+        color: CalcColors.surface(context),
         borderRadius: BorderRadius.circular(CalcDimens.radiusLg),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: CalcColors.border(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(label, style: TextStyle(color: CalcColors.textPrimary(context), fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 12),
           TextField(
             controller: ctrl,
             keyboardType: inputType,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: CalcColors.textPrimary(context)),
             decoration: InputDecoration(
               hintText: 'Enter value',
-              hintStyle: const TextStyle(color: AppColors.textSecondary),
+              hintStyle: TextStyle(color: CalcColors.textSecondary(context)),
               filled: true,
-              fillColor: AppColors.navy,
+              fillColor: CalcColors.inputBg(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide.none,
@@ -119,24 +187,5 @@ class _LabourCostScreenState extends State<LabourCostScreen> {
     );
   }
 
-  Widget _buildResult() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.danger.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(CalcDimens.radiusLg),
-        border: Border.all(color: AppColors.danger),
-      ),
-      child: Column(
-        children: [
-          const Text('Total Labour Cost', style: TextStyle(color: AppColors.danger, fontSize: 14, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(
-            '\$${_totalCost.toStringAsFixed(2)}',
-            style: const TextStyle(color: AppColors.danger, fontSize: 32, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
+
 }

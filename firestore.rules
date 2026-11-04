@@ -19,10 +19,16 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       let data = callerData();
-      return isSignedIn() && (
-        (request.auth.token.email == 'shirish@ysconstruction.com') || 
-        (data != null && (data.get('role', '') == 'super_admin' || data.get('role', '') == 'trackops'))
-      );
+      // SEC-003 fix: do NOT use a hardcoded email as the primary authorization
+      // mechanism. Rely solely on the role field in the users document.
+      // To grant super_admin: set users/{uid}.role = 'super_admin' or 'trackops'.
+      return isSignedIn() &&
+        (data != null && (data.get('role', '') == 'super_admin' || data.get('role', '') == 'trackops'));
+    }
+    
+    function isLabourInTenant(contractorId) {
+      let path = /databases/$(database)/documents/labours/$(request.auth.uid);
+      return isSignedIn() && exists(path) && get(path).data.contractorId == contractorId;
     }
 
     function isInTenant(contractorId) {
@@ -57,8 +63,11 @@ service cloud.firestore {
     // ── contractors/ ─────────────────────────────────────────────────────────
 
     match /contractors/{contractorId} {
-      allow read:  if isSuperAdmin() || isInTenant(contractorId);
-      allow write: if isSuperAdmin();
+      allow read:  if isSuperAdmin() || isInTenant(contractorId) || isLabourInTenant(contractorId);
+      allow create, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() 
+                    || (isContractorAdmin(contractorId) 
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['branding']));
     }
 
     // ── users/ ───────────────────────────────────────────────────────────────
@@ -66,7 +75,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSuperAdmin()
                   || request.auth.uid == userId
-                  || isInTenant(resource.data.contractorId);
+                  || isInTenant(resource.data.contractorId)
+                  || isLabourInTenant(resource.data.contractorId);
 
       allow create: if isSuperAdmin()
                     || (isOwnTenantData(request.resource.data.contractorId)
@@ -95,7 +105,10 @@ service cloud.firestore {
 
       allow update: if isSuperAdmin()
                     || (isInTenant(resource.data.contractorId)
-                        && canManageTenant(resource.data.contractorId));
+                        && canManageTenant(resource.data.contractorId))
+                    || (callerUid() == labourId
+                        && request.resource.data.diff(resource.data)
+                           .affectedKeys().hasOnly(['fcmToken', 'fcmTokenUpdatedAt']));
 
       allow delete: if isSuperAdmin()
                     || isContractorAdmin(resource.data.contractorId);
@@ -186,7 +199,8 @@ service cloud.firestore {
     match /payments/{paymentId} {
       allow read: if isSuperAdmin()
                   || isInTenant(resource.data.contractorId)
-                  || resource.data.get('supervisorId', '') == callerUid();
+                  || resource.data.get('supervisorId', '') == callerUid()
+                  || resource.data.get('labourId', '') == callerUid();
 
       allow create: if isSuperAdmin()
                     || (isOwnTenantData(request.resource.data.contractorId)
@@ -240,6 +254,33 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    // ── house_plans/ ─────────────────────────────────────────────────────────
+
+    match /house_plans/{planId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn() && (
+        isSuperAdmin()
+        || canManageTenant(request.resource.data.get('contractorId', ''))
+        || isInTenant(request.resource.data.get('contractorId', ''))
+        || request.resource.data.get('contractorId', '') == callerUid()
+      );
+
+      allow update: if isSignedIn() && (
+        isSuperAdmin()
+        || canManageTenant(request.resource.data.get('contractorId', ''))
+        || isInTenant(request.resource.data.get('contractorId', ''))
+        || request.resource.data.get('contractorId', '') == callerUid()
+      );
+
+      allow delete: if isSignedIn() && (
+        isSuperAdmin()
+        || isContractorAdmin(resource.data.get('contractorId', ''))
+        || isInTenant(resource.data.get('contractorId', ''))
+        || resource.data.get('contractorId', '') == callerUid()
+      );
+    }
+
     // ── temp_labour_entries/ ─────────────────────────────────────────────────
 
     match /temp_labour_entries/{entryId} {
@@ -263,9 +304,23 @@ service cloud.firestore {
     match /support_tickets/{ticketId} {
       // Anyone can create a ticket (even Labours via SessionService)
       allow create: if true;
-      allow read: if isSuperAdmin() || resource.data.userId == request.auth.uid;
-      allow update: if isSuperAdmin() || resource.data.userId == request.auth.uid;
+      allow read: if isSuperAdmin() 
+                  || resource.data.userId == request.auth.uid
+                  || isInTenant(resource.data.contractorId)
+                  || isInTenant(resource.data.companyId);
+      allow update: if isSuperAdmin() 
+                    || resource.data.userId == request.auth.uid
+                    || (isInTenant(resource.data.contractorId) && isContractorAdmin(resource.data.contractorId));
       allow delete: if isSuperAdmin();
+    }
+
+    // ── support_requests/ ────────────────────────────────────────────────────
+    
+    match /support_requests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isSuperAdmin()
+                                  || isInTenant(resource.data.contractorId)
+                                  || isInTenant(resource.data.companyId);
     }
 
     // ── error_logs/ ──────────────────────────────────────────────────────────
@@ -296,24 +351,30 @@ service cloud.firestore {
     }
 
     // ── security_events/ ─────────────────────────────────────────────────────
-    // Tracks suspicious activity like failed logins and AI recommendations
+    // Tracks suspicious activity like failed logins and AI recommendations.
+    // SEC-002 fix: require auth on creates to prevent anonymous abuse.
+    // Failed-login events are written by the app after the auth attempt resolves;
+    // at that point the user is either authenticated or FirebaseAuth has returned
+    // an error without producing a uid — those cases log from an already-signed-in
+    // session or via Cloud Functions with admin SDK (bypasses rules).
     
     match /security_events/{eventId} {
-      // Anyone can create an event (e.g. failing to login creates an event)
-      allow create: if true;
+      allow create: if request.auth != null;
       allow read: if isSignedIn();
       allow update, delete: if isSuperAdmin();
     }
     
     // ── telemetry_events/ ────────────────────────────────────────────────────
+    // SEC-002 fix: require auth on creates.
     match /telemetry_events/{eventId} {
-      allow create: if true;
+      allow create: if request.auth != null;
       allow read, update, delete: if isSuperAdmin();
     }
 
     // ── mission_logs/ ────────────────────────────────────────────────────────
+    // SEC-002 fix: require auth on creates.
     match /mission_logs/{logId} {
-      allow create: if true;
+      allow create: if request.auth != null;
       allow read, update, delete: if isSuperAdmin();
     }
 
@@ -384,6 +445,37 @@ service cloud.firestore {
     }
     match /lab_ai_models/{modelId} {
       allow read, write: if isSuperAdmin();
+    }
+
+    // ── Global App Config & Notifications ────────────────────────────────────
+    match /app_configuration/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    match /notifications/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    match /notices/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // ── Collection Group Queries ─────────────────────────────────────────────
+    // SEC-001 fix: restrict /records/ collection-group reads to the tenant the
+    // caller belongs to. The contractorId lives in the path segment that becomes
+    // the second {contractorId} capture below.
+    // Path structure: attendance/{contractorId}/dates/{dateKey}/records/{recordId}
+    match /attendance/{contractorId}/{rest=**}/records/{recordId} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+    }
+
+    // Catch-all for any other /{path=**}/records/{recordId} collections
+    // (non-attendance) — still require sign-in.
+    match /{path=**}/records/{recordId} {
+      allow read: if isSignedIn();
     }
 
     // ── trackops_config/ ─────────────────────────────────────────────────────

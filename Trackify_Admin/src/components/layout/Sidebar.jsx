@@ -68,6 +68,7 @@ const CONTRACTOR_GROUPS = [
     label: 'OPERATIONS',
     links: [
       { to: '/sites',       label: 'Sites',    icon: Building2, roles: ['contractor', 'supervisor'] },
+      { to: '/plans',       label: 'House Plans', icon: Compass, roles: ['contractor', 'supervisor'] },
       { to: '/site-costs',  label: 'Site Costs', icon: Calculator, roles: ['contractor'] },
       { to: '/expenses',    label: 'Expenses', icon: Receipt,   roles: ['contractor'] },
       { to: '/clients',     label: 'Client Ledger', icon: BookOpen, roles: ['contractor'] },

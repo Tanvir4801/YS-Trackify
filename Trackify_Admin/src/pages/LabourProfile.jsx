@@ -6,7 +6,7 @@ import { useAuthStore, useScopeId } from '../store/authStore';
 import { getLabour, updateLabour } from '../lib/services/labours.service';
 import { getAttendanceRange } from '../lib/services/attendance.service';
 import { getPayments } from '../lib/services/payments.service';
-import { toDateKey, formatCurrency, initials, exportExcel, todayKey } from '../lib/utils';
+import { toDateKey, formatCurrency, initials, exportExcel, todayKey, formatDate } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -63,7 +63,7 @@ export default function LabourProfile() {
         console.error('Error fetching labour:', e);
         return null;
       }),
-      getAttendanceRange(scopeId, startOfMonth, today, id, isSupervisor, isSupervisor ? uid : null).catch((e) => {
+      getAttendanceRange(scopeId, startOfMonth, today, id).catch((e) => {
         console.error('Error fetching attendance:', e);
         return [];
       }),

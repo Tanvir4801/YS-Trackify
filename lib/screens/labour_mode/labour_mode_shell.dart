@@ -32,7 +32,7 @@ class LabourModeShell extends StatefulWidget {
 
 class _LabourModeShellState extends State<LabourModeShell>
     with SingleTickerProviderStateMixin {
-  int _currentIndex = 0;
+  int _currentIndex = 2;
   bool _isLoading = true;
   String? _error;
   late final Labour _labour;
@@ -40,7 +40,6 @@ class _LabourModeShellState extends State<LabourModeShell>
   late final LabourService _labourService;
   late final LabourFirestoreService _firestoreService;
   late AnimationController _navAnimController;
-  static const String _supervisorPhone = '+917621984915';
 
   @override
   void initState() {
@@ -104,9 +103,9 @@ class _LabourModeShellState extends State<LabourModeShell>
   }
 
   static const _navItems = [
-    _NavItem(icon: Icons.qr_code_2_rounded,   label: 'ID Card'),
     _NavItem(icon: Icons.dashboard_rounded,   label: 'Home'),
     _NavItem(icon: Icons.fact_check_rounded,  label: 'Attendance'),
+    _NavItem(icon: Icons.qr_code_2_rounded,   label: 'ID Card'),
     _NavItem(icon: Icons.account_balance_wallet_rounded, label: 'Earnings'),
     _NavItem(icon: Icons.help_rounded, label: 'સહાય'),
   ];
@@ -114,22 +113,22 @@ class _LabourModeShellState extends State<LabourModeShell>
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator(color: AppColors.gold)),
+      return Scaffold(
+        backgroundColor: AppColors.backgroundColor(context),
+        body: Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context))),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.backgroundColor(context),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, color: AppColors.absent, size: 48),
+              Icon(Icons.error_outline, color: AppColors.errorColor(context), size: 48),
               const SizedBox(height: 16),
-              Text(_error!, style: const TextStyle(color: Colors.white)),
+              Text(_error!, style: TextStyle(color: AppColors.textPrimaryColor(context))),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.login, (_) => false),
@@ -142,17 +141,17 @@ class _LabourModeShellState extends State<LabourModeShell>
     }
 
     final screens = [
-      QRScreen(labour: _labour),
       LabourDashboardScreen(labour: _labour, firestoreService: _firestoreService),
       LabourAttendanceScreen(labour: _labour, firestoreService: _firestoreService),
+      QRScreen(labour: _labour),
       LabourWalletScreen(labour: _labour, firestoreService: _firestoreService),
       LabourSupportScreen(labour: _labour, firestoreService: _firestoreService),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.backgroundColor(context),
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(80),
+        preferredSize: const Size.fromHeight(90),
         child: _PremiumAppBar(
           labour: _labour,
           firestoreService: _firestoreService,
@@ -178,11 +177,11 @@ class _LabourModeShellState extends State<LabourModeShell>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.tr('cancel')),
+            child: Text(context.tr('cancel'), style: TextStyle(color: AppColors.textSecondaryColor(context))),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.absent,
+              backgroundColor: AppColors.errorColor(context),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () {
@@ -199,24 +198,6 @@ class _LabourModeShellState extends State<LabourModeShell>
     await AuthService().logout();
     if (!context.mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
-  }
-
-  Future<void> _callSupervisor() async {
-    final phone = _supervisorPhone.trim();
-    if (phone.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(context.tr('supervisorUnavailable'))));
-      return;
-    }
-    final uri = Uri(scheme: 'tel', path: phone);
-    final launched = await launchUrl(uri);
-    if (!launched && mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(context.tr('supervisorUnavailable'))));
-    }
   }
 }
 
@@ -250,12 +231,12 @@ class _PremiumAppBar extends StatelessWidget {
         final b = brand.branding;
         return Container(
           decoration: BoxDecoration(
-            color: b.themeColorDark,
+            color: AppColors.surfaceColor(context),
           ),
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
                 children: [
                   if (b.logoUrl != null)
@@ -273,16 +254,14 @@ class _PremiumAppBar extends StatelessWidget {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: b.themeColor,
+                        color: AppColors.softGold(context),
                         borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(color: b.themeColor.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
-                        ],
+                        border: Border.all(color: AppColors.primaryColor(context).withValues(alpha: 0.3)),
                       ),
                       child: Center(
                         child: Text(
                           labour.name.isNotEmpty ? labour.name[0].toUpperCase() : 'L',
-                          style: TextStyle(color: b.themeColorDark, fontWeight: FontWeight.w800, fontSize: 20),
+                          style: TextStyle(color: AppColors.primaryColor(context), fontWeight: FontWeight.w800, fontSize: 20),
                         ),
                       ),
                     ),
@@ -292,14 +271,14 @@ class _PremiumAppBar extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text('Good Morning', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600)),
+                        Text('Good Morning', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 11, fontWeight: FontWeight.w600)),
                         Text(
                           labour.name,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                          style: TextStyle(color: AppColors.textPrimaryColor(context), fontWeight: FontWeight.w800, fontSize: 16),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        Text(dateStr, style: TextStyle(color: b.themeColor, fontSize: 11, fontWeight: FontWeight.w700)),
+                        Text(dateStr, style: TextStyle(color: AppColors.primaryColor(context), fontSize: 11, fontWeight: FontWeight.w700)),
                       ],
                     ),
                   ),
@@ -355,10 +334,11 @@ class _AppBarIconBtn extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
+                color: AppColors.cardColor(context),
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.borderColor(context)),
               ),
-              child: Icon(icon, color: Colors.white, size: 20),
+              child: Icon(icon, color: AppColors.textPrimaryColor(context), size: 20),
             ),
             if (hasIndicator)
               Positioned(
@@ -368,9 +348,9 @@ class _AppBarIconBtn extends StatelessWidget {
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: AppColors.absent,
+                    color: AppColors.errorColor(context),
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.navy, width: 2),
+                    border: Border.all(color: AppColors.backgroundColor(context), width: 2),
                   ),
                 ),
               ),
@@ -396,9 +376,10 @@ class _BottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.navy,
+        color: AppColors.surfaceColor(context),
+        border: Border(top: BorderSide(color: AppColors.borderColor(context), width: 1)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, -4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -2)),
         ],
       ),
       child: SafeArea(
@@ -416,31 +397,25 @@ class _BottomNav extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isActive ? AppColors.softGold(context) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         item.icon,
                         size: 24,
-                        color: isActive ? AppColors.gold : Colors.white38,
+                        color: isActive ? AppColors.primaryColor(context) : AppColors.textSecondaryColor(context),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         item.label,
                         style: TextStyle(
-                          color: isActive ? Colors.white : Colors.white38,
+                          color: isActive ? AppColors.primaryColor(context) : AppColors.textSecondaryColor(context),
                           fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                           fontSize: 10,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        height: 3,
-                        width: 16,
-                        decoration: BoxDecoration(
-                          color: isActive ? AppColors.gold : Colors.transparent,
-                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                     ],

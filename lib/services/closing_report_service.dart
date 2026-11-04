@@ -7,7 +7,10 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 
+import 'dart:convert';
+
 import '../models/daily_closing_report.dart';
+import 'cost_management_service.dart';
 import 'firestore_paths.dart';
 import 'session_service.dart';
 
@@ -23,6 +26,11 @@ class ClosingReportService {
 
   // ── Generate Report ────────────────────────────────────────────────────────
 
+  Future<bool> isDayClosed(String contractorId, String date, {String siteId = ''}) async {
+    final report = await _fetchReportForDate(contractorId, siteId, date);
+    return report != null;
+  }
+
   Future<DailyClosingReport> generateReport({
     required String contractorId,
     required String siteId,
@@ -35,11 +43,12 @@ class ClosingReportService {
     // 1. Fetch attendance records for this date from nested path
     final recordsSnap = await FirestorePaths.attendanceRecordsCol(contractorId, date).get();
 
-    // Also fetch flat attendance as fallback
+    // Also fetch flat attendance as fallback — filtered by date to avoid all-time reads.
     final uid = _auth.currentUser?.uid ?? '';
     final flatSnap = await _db
         .collection('attendance')
         .where('supervisorId', isEqualTo: uid)
+        .where('date', isEqualTo: date)
         .get();
 
     // Merge records, filter by siteId and date
@@ -69,7 +78,7 @@ class ClosingReportService {
     }
 
     // 2. Compute attendance counts
-    int present = 0, absent = 0, halfDay = 0;
+    int present = 0, absent = 0, halfDay = 0, threeQuarter = 0, quarter = 0;
     double totalWages = 0, totalAllowances = 0, totalAdvance = 0;
 
     for (final data in allRecords.values) {
@@ -94,13 +103,21 @@ class ClosingReportService {
           halfDay++;
           totalWages += wage * 0.5;
           break;
+        case 'three_quarter':
+          threeQuarter++;
+          totalWages += wage * 0.75;
+          break;
+        case 'quarter':
+          quarter++;
+          totalWages += wage * 0.25;
+          break;
       }
 
       totalAllowances += petrol + lunch + breakfast + tea;
       totalAdvance += advance;
     }
 
-    final totalExpense = totalWages + totalAllowances;
+    double totalExpenseBase = totalWages + totalAllowances;
 
     // 3. Fetch labour counts
     final laboursSnap = await _db
@@ -109,22 +126,110 @@ class ClosingReportService {
         .where('isActive', isEqualTo: true)
         .get();
 
-    final totalLabourCount = laboursSnap.docs.length;
+    final allLabours = laboursSnap.docs.map((d) {
+      final data = d.data();
+      return {
+        'id': d.id,
+        'siteId': data['siteId'] as String? ?? '',
+        'joiningDate': _extractDateString(data['joiningDate']),
+      };
+    }).toList();
 
-    // Count new labours (joining date == today)
-    int newLabourCount = 0;
-    for (final doc in laboursSnap.docs) {
-      final data = doc.data();
-      final joiningDate = _extractDateString(data['joiningDate']);
-      if (joiningDate == date) {
-        newLabourCount++;
+    final totalLabourCount = allLabours.where((l) => siteId.isEmpty || l['siteId'] == siteId).length;
+    int newLabourCount = allLabours.where((l) => (siteId.isEmpty || l['siteId'] == siteId) && l['joiningDate'] == date).length;
+
+    // 4. Fetch Material and Expenses
+    final costService = CostManagementService(firestore: _db);
+    final purchases = await costService.fetchMaterialPurchases(contractorId, siteId: siteId);
+    final expenses = await costService.fetchSiteExpenses(contractorId, siteId: siteId);
+
+    final todaysPurchases = purchases.where((p) => _extractDateString(p.purchaseDate) == date).toList();
+    final todaysExpenses = expenses.where((e) => _extractDateString(e.date) == date).toList();
+
+    double totalMaterialCost = todaysPurchases.fold(0.0, (sum, p) => sum + p.totalAmount);
+    double totalMachineryCost = todaysExpenses.where((e) => e.expenseType == 'machinery').fold(0.0, (sum, e) => sum + e.amount);
+    double totalTransportCost = todaysExpenses.where((e) => e.expenseType == 'transport').fold(0.0, (sum, e) => sum + e.amount);
+    double totalOtherCost = todaysExpenses.where((e) => e.expenseType == 'other').fold(0.0, (sum, e) => sum + e.amount);
+
+    final totalExpense = totalExpenseBase + totalMaterialCost + totalMachineryCost + totalTransportCost + totalOtherCost;
+
+    // 5. Build siteBreakdownJson
+    final Map<String, Map<String, dynamic>> siteBreakdown = {};
+    
+    // Initialize for requested site or all sites
+    if (siteId.isNotEmpty) {
+      siteBreakdown[siteId] = _createEmptySiteBreakdown(siteId, siteName);
+    } else {
+      // Find all unique siteIds from labours and records
+      final siteIds = <String>{};
+      for (final l in allLabours) {
+        if (l['siteId'].toString().isNotEmpty) siteIds.add(l['siteId'].toString());
+      }
+      for (final r in allRecords.values) {
+        final sid = (r['siteId'] as String?) ?? '';
+        if (sid.isNotEmpty) siteIds.add(sid);
+      }
+      for (final sid in siteIds) {
+        siteBreakdown[sid] = _createEmptySiteBreakdown(sid, 'Site $sid'); // Name will be updated below if we had a full site map, but for now fallback
       }
     }
 
-    // 4. Get supervisor name
+    // Populate labour counts
+    for (final l in allLabours) {
+      final sid = l['siteId'] as String;
+      if (siteBreakdown.containsKey(sid)) {
+        siteBreakdown[sid]!['totalLabourCount'] = (siteBreakdown[sid]!['totalLabourCount'] as int) + 1;
+      }
+    }
+
+    // Populate attendance
+    for (final data in allRecords.values) {
+      final sid = (data['siteId'] as String?) ?? '';
+      if (!siteBreakdown.containsKey(sid)) continue;
+      
+      final status = (data['status'] as String?) ?? '';
+      final wage = (data['wageAtTime'] as num?)?.toDouble() ?? 0;
+      final allowanceMap = (data['allowances'] as Map<String, dynamic>?) ?? {};
+      final petrol = (allowanceMap['petrol'] as num?)?.toDouble() ?? (data['petrol'] as num?)?.toDouble() ?? 0;
+      final lunch = (allowanceMap['lunch'] as num?)?.toDouble() ?? (data['lunch'] as num?)?.toDouble() ?? 0;
+      final breakfast = (allowanceMap['breakfast'] as num?)?.toDouble() ?? (data['breakfast'] as num?)?.toDouble() ?? 0;
+      final tea = (allowanceMap['tea'] as num?)?.toDouble() ?? (data['tea'] as num?)?.toDouble() ?? 0;
+      final advance = (data['advance'] as num?)?.toDouble() ?? 0;
+
+      double w = 0;
+      switch (status) {
+        case 'present': siteBreakdown[sid]!['presentCount'] = (siteBreakdown[sid]!['presentCount'] as int) + 1; w = wage; break;
+        case 'absent': siteBreakdown[sid]!['absentCount'] = (siteBreakdown[sid]!['absentCount'] as int) + 1; break;
+        case 'half': siteBreakdown[sid]!['halfDayCount'] = (siteBreakdown[sid]!['halfDayCount'] as int) + 1; w = wage * 0.5; break;
+        case 'three_quarter': siteBreakdown[sid]!['threeQuarterCount'] = (siteBreakdown[sid]!['threeQuarterCount'] as int) + 1; w = wage * 0.75; break;
+        case 'quarter': siteBreakdown[sid]!['quarterCount'] = (siteBreakdown[sid]!['quarterCount'] as int) + 1; w = wage * 0.25; break;
+      }
+      
+      siteBreakdown[sid]!['labourCost'] = (siteBreakdown[sid]!['labourCost'] as double) + w;
+      siteBreakdown[sid]!['allowanceCost'] = (siteBreakdown[sid]!['allowanceCost'] as double) + petrol + lunch + breakfast + tea;
+      siteBreakdown[sid]!['advanceGiven'] = (siteBreakdown[sid]!['advanceGiven'] as double) + advance;
+    }
+
+    // Populate costs
+    for (final p in todaysPurchases) {
+      if (siteBreakdown.containsKey(p.siteId)) {
+        siteBreakdown[p.siteId]!['materialCost'] = (siteBreakdown[p.siteId]!['materialCost'] as double) + p.totalAmount;
+      }
+    }
+    for (final e in todaysExpenses) {
+      if (siteBreakdown.containsKey(e.siteId)) {
+        if (e.expenseType == 'machinery') siteBreakdown[e.siteId]!['machineryCost'] = (siteBreakdown[e.siteId]!['machineryCost'] as double) + e.amount;
+        if (e.expenseType == 'transport') siteBreakdown[e.siteId]!['transportCost'] = (siteBreakdown[e.siteId]!['transportCost'] as double) + e.amount;
+        if (e.expenseType == 'other') siteBreakdown[e.siteId]!['otherCost'] = (siteBreakdown[e.siteId]!['otherCost'] as double) + e.amount;
+      }
+    }
+
+    final siteBreakdownJson = jsonEncode(siteBreakdown.values.toList());
+
+    // 6. Get supervisor name
     final supervisorName = SessionService.instance.name ?? 'Supervisor';
 
-    // 5. Build report
+    // 7. Build report
     final report = DailyClosingReport(
       id: const Uuid().v4(),
       contractorId: contractorId,
@@ -134,10 +239,17 @@ class ClosingReportService {
       presentCount: present,
       absentCount: absent,
       halfDayCount: halfDay,
+      threeQuarterCount: threeQuarter,
+      quarterCount: quarter,
       totalLabourCost: totalWages,
       totalAdvance: totalAdvance,
       totalAllowances: totalAllowances,
       totalExpense: totalExpense,
+      totalMaterialCost: totalMaterialCost,
+      totalMachineryCost: totalMachineryCost,
+      totalTransportCost: totalTransportCost,
+      totalOtherCost: totalOtherCost,
+      siteBreakdownJson: siteBreakdownJson,
       totalLabourCount: totalLabourCount,
       newLabourCount: newLabourCount,
       supervisorName: supervisorName,
@@ -145,7 +257,7 @@ class ClosingReportService {
       isRainHoliday: isRainHoliday,
     );
 
-    // 6. Generate insights by comparing with yesterday
+    // 8. Generate insights by comparing with yesterday
     final yesterday = DateFormat('yyyy-MM-dd')
         .format(DateTime.parse(date).subtract(const Duration(days: 1)));
     final yesterdayReport = await _fetchReportForDate(contractorId, siteId, yesterday);
@@ -296,9 +408,15 @@ class ClosingReportService {
     sb.writeln('\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}');
     sb.writeln('\u{1F477} ATTENDANCE');
     sb.writeln();
-    sb.writeln('\u{2705} Present  : ${report.presentCount}');
-    sb.writeln('\u{274C} Absent   : ${report.absentCount}');
-    sb.writeln('\u{1F550} Half Day : ${report.halfDayCount}');
+    sb.writeln('✅ Present  : ${report.presentCount}');
+    sb.writeln('❌ Absent   : ${report.absentCount}');
+    sb.writeln('🕒 Half Day : ${report.halfDayCount}');
+    if (report.threeQuarterCount > 0) {
+      sb.writeln('🕒 0.75 Day : ${report.threeQuarterCount}');
+    }
+    if (report.quarterCount > 0) {
+      sb.writeln('🕒 0.25 Day : ${report.quarterCount}');
+    }
     sb.writeln();
     sb.writeln('\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}');
     sb.writeln('\u{1F4B0} EXPENSE SUMMARY');
@@ -363,16 +481,17 @@ class ClosingReportService {
   ) async {
     final box = Hive.box<DailyClosingReport>(DailyClosingReport.boxName);
     final local = box.values.where(
-      (r) => r.contractorId == contractorId && r.siteId == siteId && r.date == date,
+      (r) => r.contractorId == contractorId && (siteId.isEmpty || r.siteId == siteId) && r.date == date,
     );
     if (local.isNotEmpty) return local.first;
 
     try {
-      final snap = await FirestorePaths.closingReportsCol(contractorId)
-          .where('siteId', isEqualTo: siteId)
-          .where('date', isEqualTo: date)
-          .limit(1)
-          .get();
+      var query = FirestorePaths.closingReportsCol(contractorId)
+          .where('date', isEqualTo: date);
+      if (siteId.isNotEmpty) {
+        query = query.where('siteId', isEqualTo: siteId);
+      }
+      final snap = await query.limit(1).get();
       if (snap.docs.isNotEmpty) {
         return DailyClosingReport.fromFirestore(snap.docs.first);
       }
@@ -380,6 +499,26 @@ class ClosingReportService {
       debugPrint('[ClosingReportService] fetchReportForDate error: $e');
     }
     return null;
+  }
+
+  Map<String, dynamic> _createEmptySiteBreakdown(String siteId, String siteName) {
+    return {
+      'siteId': siteId,
+      'siteName': siteName,
+      'totalLabourCount': 0,
+      'presentCount': 0,
+      'absentCount': 0,
+      'halfDayCount': 0,
+      'threeQuarterCount': 0,
+      'quarterCount': 0,
+      'labourCost': 0.0,
+      'allowanceCost': 0.0,
+      'advanceGiven': 0.0,
+      'materialCost': 0.0,
+      'machineryCost': 0.0,
+      'transportCost': 0.0,
+      'otherCost': 0.0,
+    };
   }
 
   String _extractDateString(dynamic value) {

@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import React, { useEffect, useState } from 'react';
-import { Building2, Bell, Database, RefreshCw, CheckCircle } from 'lucide-react';
+import { Building2, Bell, Database, RefreshCw, CheckCircle, Cloud } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getDocs, collection, query, where, updateDoc, doc } from 'firebase/firestore';
+import { getDocs, getDoc, setDoc, collection, query, where, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useScopeId } from '../store/authStore';
 import { Button } from '../components/ui/button';
@@ -12,12 +12,21 @@ import LoadingSpinner from '../components/shared/LoadingSpinner';
 
 const LS_KEY = 'trackify_settings';
 
-function loadSettings() {
+const DEFAULT_SETTINGS = {
+  defaultWorkingHours: 8,
+  weeklyOff: 'sunday',
+  otThreshold: 8,
+  payPeriod: 'monthly',
+  currency: 'INR',
+  absenceAlertDays: 3,
+};
+
+function loadSettingsFromLocalStorage() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
   catch { return {}; }
 }
 
-function saveSettings(data) { localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+function saveSettingsToLocalStorage(data) { localStorage.setItem(LS_KEY, JSON.stringify(data)); }
 
 function Section({ icon: Icon, title, desc, children }) {
   return (
@@ -38,20 +47,35 @@ function Section({ icon: Icon, title, desc, children }) {
 
 export default function Settings() {
   const scopeId = useScopeId();
-  const [settings, setSettings] = useState({
-    defaultWorkingHours: 8,
-    weeklyOff: 'sunday',
-    otThreshold: 8,
-    payPeriod: 'monthly',
-    currency: 'INR',
-    absenceAlertDays: 3,
-    ...loadSettings(),
-  });
+  const [settings, setSettings] = useState({ ...DEFAULT_SETTINGS, ...loadSettingsFromLocalStorage() });
+  const [settingsLoading, setSettingsLoading] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('trackify_theme') || 'dark');
   const [unsyncedCount, setUnsyncedCount] = useState(null);
   const [loadingSync, setLoadingSync] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // P3-2 FIX: Load settings from Firestore on mount (source of truth).
+  // Fall back to localStorage cache if offline.
+  useEffect(() => {
+    if (!scopeId) return;
+    setSettingsLoading(true);
+    getDoc(doc(db, 'contractors', scopeId))
+      .then((snap) => {
+        if (snap.exists()) {
+          const firestoreSettings = snap.data().settings;
+          if (firestoreSettings && typeof firestoreSettings === 'object') {
+            const merged = { ...DEFAULT_SETTINGS, ...firestoreSettings };
+            setSettings(merged);
+            saveSettingsToLocalStorage(merged); // update local cache
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Settings: could not load from Firestore, using localStorage cache:', err?.code);
+      })
+      .finally(() => setSettingsLoading(false));
+  }, [scopeId]);
 
   useEffect(() => {
     if (!scopeId) return;
@@ -67,9 +91,31 @@ export default function Settings() {
       .finally(() => setLoadingSync(false));
   }, [scopeId]);
 
-  const handleSave = () => {
-    saveSettings(settings);
-    toast.success('Settings saved');
+  const handleSave = async () => {
+    if (!scopeId) return toast.error('No contractor scope — cannot save settings');
+
+    // P3-2 FIX: Persist to Firestore so settings survive device changes.
+    // Also update localStorage as an offline cache.
+    try {
+      await setDoc(doc(db, 'contractors', scopeId), {
+        settings: {
+          defaultWorkingHours: settings.defaultWorkingHours,
+          weeklyOff: settings.weeklyOff,
+          otThreshold: settings.otThreshold,
+          payPeriod: settings.payPeriod,
+          currency: settings.currency,
+          absenceAlertDays: settings.absenceAlertDays,
+          updatedAt: serverTimestamp(),
+        },
+      }, { merge: true });
+      saveSettingsToLocalStorage(settings); // keep local cache in sync
+      toast.success('Settings saved and synced');
+    } catch (err) {
+      console.error('Settings save error:', err);
+      // Graceful degradation: save locally even if Firestore fails
+      saveSettingsToLocalStorage(settings);
+      toast.error('Could not sync to cloud — saved locally only');
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

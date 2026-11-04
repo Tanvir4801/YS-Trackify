@@ -21,20 +21,20 @@ class ResultCard extends StatelessWidget {
     this.warningText,
   });
 
-  Color get _bg => switch (type) {
-    ResultType.safe   => CalcColors.greenLight,
-    ResultType.unsafe => CalcColors.redLight,
-    ResultType.neutral=> CalcColors.greenLight,
+  Color _bg(BuildContext context) => switch (type) {
+    ResultType.safe   => CalcColors.greenLight(context),
+    ResultType.unsafe => CalcColors.redLight(context),
+    ResultType.neutral=> CalcColors.greenLight(context),
   };
-  Color get _border => switch (type) {
-    ResultType.safe   => CalcColors.greenBorder,
-    ResultType.unsafe => CalcColors.redBorder,
-    ResultType.neutral=> CalcColors.greenBorder,
+  Color _border(BuildContext context) => switch (type) {
+    ResultType.safe   => CalcColors.greenBorder(context),
+    ResultType.unsafe => CalcColors.redBorder(context),
+    ResultType.neutral=> CalcColors.greenBorder(context),
   };
-  Color get _mainColor => switch (type) {
-    ResultType.safe   => CalcColors.green,
-    ResultType.unsafe => CalcColors.red,
-    ResultType.neutral=> CalcColors.green,
+  Color _mainColor(BuildContext context) => switch (type) {
+    ResultType.safe   => CalcColors.green(context),
+    ResultType.unsafe => CalcColors.red(context),
+    ResultType.neutral=> CalcColors.green(context),
   };
 
   @override
@@ -46,8 +46,8 @@ class ResultCard extends StatelessWidget {
           margin: const EdgeInsets.only(top: 12),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: _bg,
-            border: Border.all(color: _border),
+            color: _bg(context),
+            border: Border.all(color: _border(context)),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -68,15 +68,15 @@ class ResultCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w500,
-                        color: _mainColor,
+                        color: _mainColor(context),
                       )),
                     const SizedBox(height: 2),
                     Text(mainLabel,
                       style: TextStyle(
                         fontSize: 12,
                         color: type == ResultType.unsafe
-                          ? CalcColors.redMid
-                          : CalcColors.greenMid,
+                          ? CalcColors.redMid(context)
+                          : CalcColors.greenMid(context),
                       )),
                   ],
                 ),
@@ -91,7 +91,7 @@ class ResultCard extends StatelessWidget {
               if (noteText != null) ...[
                 const SizedBox(height: 8),
                 Text(noteText!,
-                  style: CalcTextStyles.resultNote),
+                  style: CalcTextStyles.resultNote(context)),
               ],
             ],
           ),
@@ -123,7 +123,7 @@ class _ResultRow extends StatelessWidget {
           bottom: BorderSide(
             color: type == ResultType.unsafe
               ? const Color(0xFFFECACA)
-              : CalcColors.greenDivider,
+              : CalcColors.greenDivider(context),
             width: 0.5,
           ),
         ),
@@ -135,16 +135,16 @@ class _ResultRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               color: type == ResultType.unsafe
-                ? CalcColors.redMid
-                : CalcColors.greenMid,
+                ? CalcColors.redMid(context)
+                : CalcColors.greenMid(context),
             )),
           Text(data.value,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: type == ResultType.unsafe
-                ? CalcColors.redDark
-                : CalcColors.greenDark,
+                ? CalcColors.redDark(context)
+                : CalcColors.greenDark(context),
             )),
         ],
       ),
@@ -162,21 +162,21 @@ class _WarningCard extends StatelessWidget {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: CalcColors.warnBg,
-        border: Border.all(color: CalcColors.warnBorder),
+        color: CalcColors.warnBg(context),
+        border: Border.all(color: CalcColors.warnBorder(context)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded,
-            size: 16, color: CalcColors.warnIcon),
+          Icon(Icons.warning_amber_rounded,
+            size: 16, color: CalcColors.warnIcon(context)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: CalcColors.warnText,
+                color: CalcColors.warnText(context),
                 height: 1.5,
               )),
           ),

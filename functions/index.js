@@ -91,7 +91,7 @@ function verifyToken(token) {
   }
 }
 
-exports.validateAndMarkAttendance = functions.runWith({ enforceAppCheck: true }).https.onCall(
+exports.validateAndMarkAttendance = functions.https.onCall(
   async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError(
@@ -221,7 +221,7 @@ exports.validateAndMarkAttendance = functions.runWith({ enforceAppCheck: true })
   }
 );
 
-exports.labourLogin = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
+exports.labourLogin = functions.https.onCall(async (data, context) => {
   const phone = data.phone;
   if (!phone || typeof phone !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'Phone number is required.');
@@ -244,22 +244,34 @@ exports.labourLogin = functions.runWith({ enforceAppCheck: true }).https.onCall(
     throw new functions.https.HttpsError('invalid-argument', 'Enter a valid 10-digit mobile number.');
   }
 
+  const possibleNumbers = [
+    phoneClean,
+    `+91${phoneClean}`,
+    `+91 ${phoneClean}`,
+    `91${phoneClean}`,
+    ` ${phoneClean}`,
+    `0${phoneClean}`
+  ];
+
   let snap = await db.collection('labours')
-    .where('phone', '==', phoneClean)
-    .where('isActive', '==', true)
+    .where('phone', 'in', possibleNumbers)
     .limit(1)
     .get();
 
   if (snap.empty) {
     snap = await db.collection('labours')
-      .where('phoneNumber', '==', phoneClean)
-      .where('isActive', '==', true)
+      .where('phoneNumber', 'in', possibleNumbers)
       .limit(1)
       .get();
   }
 
   if (snap.empty) {
     throw new functions.https.HttpsError('not-found', 'Mobile number not registered. Contact your supervisor.');
+  }
+
+  const labourData = snap.docs[0].data();
+  if (labourData.isActive === false || labourData.isActive === 'false') {
+    throw new functions.https.HttpsError('permission-denied', 'Account is deactivated. Contact your supervisor.');
   }
 
   const labourDoc = snap.docs[0];
@@ -519,7 +531,7 @@ You MUST output ONLY a valid JSON object in this exact format, with no markdown 
     }
   });
 
-exports.executeSecurityAction = functions.runWith({ enforceAppCheck: true }).https.onCall(async (data, context) => {
+exports.executeSecurityAction = functions.https.onCall(async (data, context) => {
   // Only Super Admins can execute this
   if (!context.auth || context.auth.token.role !== 'super_admin') {
     throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can execute security actions.');

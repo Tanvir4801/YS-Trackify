@@ -10,6 +10,7 @@ import 'package:hive/hive.dart';
 import 'package:vibration/vibration.dart';
 
 import '../models/labour_model.dart';
+import 'closing_report_service.dart';
 import 'firestore_paths.dart';
 import 'qr_validator.dart';
 import 'session_service.dart';
@@ -221,15 +222,58 @@ class ScannerService {
     return _markOffline(labourId, status: status, siteId: siteId);
   }
 
+  // ── Status label helper — exhaustive mapping of all 5 attendance statuses ────
+
+  String _statusLabel(String status) {
+    return switch (status) {
+      'present'       => 'Present',
+      'three_quarter' => '3/4 Day',
+      'half'          => 'Half Day',
+      'quarter'       => '1/4 Day',
+      'absent'        => 'Absent',
+      _               => status,
+    };
+  }
+
+  // ── shiftFactor helper (mirrors AttendanceStatusX.wageFactor) ────────────────
+
+  double _statusToShiftFactor(String status) {
+    return switch (status) {
+      'present'       => 1.0,
+      'three_quarter' => 0.75,
+      'half'          => 0.5,
+      'quarter'       => 0.25,
+      _               => 0.0, // absent, pending, unknown
+    };
+  }
+
   // ── Online write: direct Firestore (no Cloud Function) ─────────────────────
 
   Future<ScanResult> _markOnline(
       String labourId, String labourName, String status, {String siteId = ''}) async {
-    final today       = _todayString();
+    final today        = _todayString();
     final contractorId = _contractorId;
     final supId        = supervisorId;
     final supRef       = FirestorePaths.userRef(supId);
-    final wageAtTime    = await _getLabourWage(labourId);
+    final wageAtTime   = await _getLabourWage(labourId);
+    final shiftFactor  = _statusToShiftFactor(status);
+
+    // QR-001: Enforce day locking — reject scan if the day has been closed.
+    try {
+      final isClosed = await ClosingReportService().isDayClosed(contractorId, today);
+      if (isClosed) {
+        return ScanResult(
+          success:    false,
+          message:    'Day is closed. Attendance cannot be modified.',
+          type:       ScanResultType.invalid,
+          labourName: labourName,
+        );
+      }
+    } catch (e) {
+      // If we cannot determine closed status (e.g. network glitch), log and
+      // fall through so legitimate online scans are not blocked unexpectedly.
+      debugPrint('isDayClosed check failed in _markOnline: $e — proceeding');
+    }
 
     try {
       // Write to nested path (new multi-tenant model)
@@ -243,6 +287,7 @@ class ScannerService {
         'supervisorRef': supRef,
         'date':          today,
         'status':        status,
+        'shiftFactor':   shiftFactor,
         'siteId':        siteId,
         'overtimeHours': 0,
         'wageAtTime':    wageAtTime,
@@ -267,7 +312,7 @@ class ScannerService {
             .limit(1)
             .get();
         if (existing.docs.isEmpty) {
-          final docRef = await _db.collection('attendance').doc('${labourId}_${today}_$siteId').set({
+          await _db.collection('attendance').doc('${labourId}_${today}_$siteId').set({
             'id':            '${labourId}_${today}_$siteId',
             'labourId':      labourId,
             'labourName':    labourName,
@@ -276,6 +321,7 @@ class ScannerService {
             'contractorId':  contractorId,
             'date':          today,
             'status':        status,
+            'shiftFactor':   shiftFactor,
             'siteId':        siteId,
             'overtimeHours': 0,
             'wageAtTime':    wageAtTime,
@@ -286,13 +332,12 @@ class ScannerService {
         }
       } catch (flatErr) {
         // Log prominently — admin panel reads the flat collection.
-        // If this fails, the admin panel's nested-path fallback will still
-        // surface the record, but the error should be visible in logs.
         debugPrint('⚠️ QR flat-collection mirror failed for $labourId on $today: $flatErr');
       }
 
       _saveToHive(labourId, status, labourName: labourName, isSynced: true, siteId: siteId);
-      final label = status == 'half' ? 'Half Day' : status == 'absent' ? 'Absent' : 'Present';
+      // ATT-001: Use exhaustive label mapping instead of a ternary chain.
+      final label = _statusLabel(status);
       return ScanResult(
           success:    true,
           message:    '$labourName marked $label ✓',
@@ -310,8 +355,12 @@ class ScannerService {
       {String? labourName, String status = 'present', String siteId = ''}) async {
     final name = labourName ?? await _getLabourName(labourId);
     final wageAtTime = await _getLabourWage(labourId);
+    // QR-001 (offline path): We cannot call isDayClosed reliably while offline
+    // so we store the scan for later sync. syncPendingScans() will check
+    // isDayClosed using the ORIGINAL scan date before writing to Firestore.
     _saveToHive(labourId, status, labourName: name, isSynced: false, wageAtTime: wageAtTime, siteId: siteId);
-    final label = status == 'half' ? 'Half Day' : status == 'absent' ? 'Absent' : 'Present';
+    // ATT-001: Use exhaustive label mapping.
+    final label = _statusLabel(status);
     return ScanResult(
         success:    true,
         message:    '$name marked $label (offline). Will sync later.',
@@ -360,25 +409,33 @@ class ScannerService {
       }
 
       try {
-        final existing = await _db
-            .collection('attendance')
-            .where('labourId',     isEqualTo: labourId)
-            .where('date',         isEqualTo: date)
-            .where('supervisorId', isEqualTo: recSupervisorId)
-            .limit(1)
-            .get();
+        // OFFLINE-001 + QR-001: Check isDayClosed using the ORIGINAL scan date
+        // (not today's date) before syncing to prevent writing to closed days.
+        bool dayIsClosed = false;
+        try {
+          dayIsClosed = await ClosingReportService().isDayClosed(recContractorId, date);
+        } catch (e) {
+          debugPrint('isDayClosed check failed during sync for $date: $e — proceeding with write');
+        }
 
-        if (existing.docs.isNotEmpty) {
-          record['isSynced'] = true;
+        if (dayIsClosed) {
+          // Day is closed — mark as synced (to remove from queue) but do not write.
+          record['isSynced']     = true;
+          record['skippedReason'] = 'day_closed';
           await box.put(key, record);
-          synced++;
+          debugPrint('⚠️ Skipped offline sync for $labourId on $date — day is closed');
           continue;
         }
+
+        final siteId      = (record['siteId'] as String?) ?? '';
+        // QR-002: compute shiftFactor from status so Firestore records are complete.
+        final shiftFactor = _statusToShiftFactor(status);
+        final wageAtTime  = (record['wageAtTime'] as num?)?.toDouble() ?? 0;
 
         // Write to nested path
         try {
           await FirestorePaths
-              .attendanceRecordRef(recContractorId, date, labourId, siteId: (record['siteId'] as String?) ?? '')
+              .attendanceRecordRef(recContractorId, date, labourId, siteId: siteId)
               .set({
             'labourId':      labourId,
             'contractorId':  recContractorId,
@@ -386,8 +443,10 @@ class ScannerService {
             'supervisorRef': FirestorePaths.userRef(recSupervisorId),
             'date':          date,
             'status':        status,
+            'shiftFactor':   shiftFactor,
+            'siteId':        siteId,
             'overtimeHours': record['overtimeHours'] ?? 0,
-            'wageAtTime':    (record['wageAtTime'] as num?)?.toDouble() ?? 0,
+            'wageAtTime':    wageAtTime,
             'markedVia':     'offline_qr',
             'markedAt':      FieldValue.serverTimestamp(),
             'offlineSync':   true,
@@ -396,15 +455,17 @@ class ScannerService {
           debugPrint('Nested path sync failed: $e — trying flat collection');
         }
 
-        // Write to flat collection
+        // Write to flat collection — include shiftFactor (QR-002).
         final docRef = await _db.collection('attendance').add({
           'labourId':      labourId,
           'supervisorId':  recSupervisorId,
           'contractorId':  recContractorId,
           'date':          date,
           'status':        status,
+          'shiftFactor':   shiftFactor,
+          'siteId':        siteId,
           'overtimeHours': record['overtimeHours'] ?? 0,
-          'wageAtTime':    (record['wageAtTime'] as num?)?.toDouble() ?? 0,
+          'wageAtTime':    wageAtTime,
           'markedVia':     'offline_qr',
           'isSynced':      true,
           'syncedAt':      FieldValue.serverTimestamp(),

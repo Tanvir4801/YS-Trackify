@@ -58,7 +58,10 @@ class SiteModel extends HiveObject {
         'contractorId': contractorId,
         'description': description,
         'isActive': isActive,
-        'createdAt': FieldValue.serverTimestamp(),
+        // Only write createdAt if we do not have a local value — this prevents
+        // overwriting the original creation timestamp on subsequent saves.
+        // Callers that use set() must use SetOptions(merge: true).
+        if (createdAt == null) 'createdAt': FieldValue.serverTimestamp(),
         'defaultAllowances': {
           'petrol': defaultPetrol,
           'lunch': defaultLunch,

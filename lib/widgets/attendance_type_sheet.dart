@@ -82,8 +82,8 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         margin: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -139,71 +139,79 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
+              child: Column(
                 children: [
-                  if (widget.remainingFactor >= 1.0)
-                    Expanded(
-                      flex: 2,
-                      child: _buildOption(
-                        type: 'present',
-                        label: 'Full Day',
-                        icon: Icons.wb_sunny_rounded,
-                        color: Colors.green,
-                        isPrimary: true,
-                        autoConfirm: true,
-                      ),
+                  if (widget.remainingFactor >= 0.75) ...[
+                    Row(
+                      children: [
+                        if (widget.remainingFactor >= 1.0)
+                          Expanded(
+                            flex: 3,
+                            child: _buildOption(
+                              type: 'present',
+                              label: 'Full Day',
+                              icon: Icons.wb_sunny_rounded,
+                              color: Colors.green,
+                              isPrimary: true,
+                              autoConfirm: true,
+                            ),
+                          ),
+                        if (widget.remainingFactor >= 1.0)
+                          const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: _buildOption(
+                            type: 'three_quarter',
+                            label: '¾ Day',
+                            icon: Icons.pie_chart_rounded,
+                            color: Colors.teal,
+                            isPrimary: widget.remainingFactor < 1.0,
+                            autoConfirm: false,
+                          ),
+                        ),
+                      ],
                     ),
-                  if (widget.remainingFactor >= 0.75 && widget.remainingFactor < 1.0)
-                    Expanded(
-                      flex: 2,
-                      child: _buildOption(
-                        type: 'three_quarter',
-                        label: '¾ Day',
-                        icon: Icons.pie_chart_rounded,
-                        color: Colors.teal,
-                        isPrimary: true,
-                        autoConfirm: false,
-                      ),
-                    ),
-                  if (widget.remainingFactor >= 0.5) ...[
-                    if (widget.remainingFactor >= 0.75) const SizedBox(width: 10),
-                    Expanded(
-                      flex: widget.remainingFactor < 0.75 ? 2 : 1,
-                      child: _buildOption(
-                        type: 'half',
-                        label: 'Half\nDay',
-                        icon: Icons.timelapse_rounded,
-                        color: Colors.orange,
-                        isPrimary: widget.remainingFactor < 0.75,
-                        autoConfirm: false,
-                      ),
-                    ),
+                    const SizedBox(height: 12),
                   ],
-                  if (widget.remainingFactor >= 0.25) ...[
-                    if (widget.remainingFactor >= 0.5) const SizedBox(width: 10),
-                    Expanded(
-                      flex: widget.remainingFactor < 0.5 ? 2 : 1,
-                      child: _buildOption(
-                        type: 'quarter',
-                        label: '1/4\nDay',
-                        icon: Icons.pie_chart_outline_rounded,
-                        color: Colors.blueGrey,
-                        isPrimary: widget.remainingFactor < 0.5,
-                        autoConfirm: false,
+                  Row(
+                    children: [
+                      if (widget.remainingFactor >= 0.5) ...[
+                        Expanded(
+                          child: _buildOption(
+                            type: 'half',
+                            label: 'Half Day',
+                            icon: Icons.timelapse_rounded,
+                            color: Colors.orange,
+                            isPrimary: widget.remainingFactor < 0.75,
+                            autoConfirm: false,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      if (widget.remainingFactor >= 0.25) ...[
+                        Expanded(
+                          child: _buildOption(
+                            type: 'quarter',
+                            label: '¼ Day',
+                            icon: Icons.pie_chart_outline_rounded,
+                            color: Colors.blueGrey,
+                            isPrimary: widget.remainingFactor < 0.5,
+                            autoConfirm: false,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: _buildOption(
+                          type: 'cancel',
+                          label: 'Cancel',
+                          icon: Icons.close_rounded,
+                          color: Colors.grey,
+                          isPrimary: false,
+                          autoConfirm: false,
+                        ),
                       ),
-                    ),
-                  ],
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 1,
-                    child: _buildOption(
-                      type: 'cancel',
-                      label: 'Cancel',
-                      icon: Icons.close_rounded,
-                      color: Colors.grey,
-                      isPrimary: false,
-                      autoConfirm: false,
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -212,7 +220,8 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
               Padding(
                 padding: const EdgeInsets.only(top: 20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.orange.shade50,
                     borderRadius: BorderRadius.circular(20),
@@ -306,7 +315,8 @@ class _AttendanceTypeSheetState extends State<AttendanceTypeSheet>
                         child: LinearProgressIndicator(
                           value: 1 - _progressController.value,
                           backgroundColor: Colors.white.withValues(alpha: 0.3),
-                          valueColor: const AlwaysStoppedAnimation(Colors.white),
+                          valueColor:
+                              const AlwaysStoppedAnimation(Colors.white),
                           minHeight: 3,
                         ),
                       ),

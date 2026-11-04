@@ -9,24 +9,30 @@ import '../widgets/result_card.dart';
 import '../widgets/calc_card.dart';
 import '../models/calc_history_item.dart';
 import '../services/calc_history_service.dart';
+import '../widgets/calc_result_widgets.dart';
 
 class EarthworkScreen extends StatefulWidget {
-  const EarthworkScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const EarthworkScreen({super.key, this.initialInputs});
 
   @override
   State<EarthworkScreen> createState() => _EarthworkScreenState();
 }
 
 class _EarthworkScreenState extends State<EarthworkScreen> {
-  final _lenCtrl = TextEditingController(text: '10');
-  final _widCtrl = TextEditingController(text: '10');
-  final _depCtrl = TextEditingController(text: '5');
+  final _lenCtrl = TextEditingController();
+  final _widCtrl = TextEditingController();
+  final _depCtrl = TextEditingController();
   Map<String, dynamic>? _result;
 
   @override
   void initState() {
     super.initState();
-    _loadLastValues();
+    if (widget.initialInputs != null) {
+      _lenCtrl.text = widget.initialInputs!['len']?.toString() ?? '';
+      _widCtrl.text = widget.initialInputs!['wid']?.toString() ?? '';
+      _depCtrl.text = widget.initialInputs!['dep']?.toString() ?? '';
+    }
   }
 
   @override
@@ -36,15 +42,6 @@ class _EarthworkScreenState extends State<EarthworkScreen> {
     _widCtrl.dispose();
     _depCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadLastValues() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _lenCtrl.text = prefs.getString('calc_earth_len') ?? '10';
-      _widCtrl.text = prefs.getString('calc_earth_wid') ?? '10';
-      _depCtrl.text = prefs.getString('calc_earth_dep') ?? '5';
-    });
   }
 
   Future<void> _saveLastValues() async {
@@ -70,19 +67,43 @@ class _EarthworkScreenState extends State<EarthworkScreen> {
       title: 'Excavation: ${res['m3']} m³',
       subtitle: '${len}x${wid}x$dep ft',
       timestamp: DateTime.now(),
+      inputs: {
+        'len': len,
+        'wid': wid,
+        'dep': dep,
+      },
+      results: {
+        'mainTitle': 'Total Excavated Volume',
+        'mainValue': '${res['m3']} m³',
+        'formula': '${res['cft']} cft',
+        'materials': [
+          {'label': 'Swell Volume (Loose)', 'value': '${res['swellM3']} m³'},
+          {'label': 'Est. Trucks (5m³)', 'value': '${res['trucks']}'},
+          {'label': 'Backfill Needed (~75%)', 'value': '${res['backfillM3']} m³'},
+        ],
+      },
     );
     CalcHistoryService.save(item);
+  }
+
+  void _reset() {
+    setState(() {
+      _lenCtrl.clear();
+      _widCtrl.clear();
+      _depCtrl.clear();
+      _result = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Earthwork', style: CalcTextStyles.screenTitle),
-        iconTheme: const IconThemeData(color: CalcColors.textPrimary),
+        title: Text('Earthwork', style: CalcTextStyles.screenTitle(context)),
+        iconTheme: IconThemeData(color: CalcColors.textPrimary(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(CalcDimens.pagePadding),
@@ -91,12 +112,12 @@ class _EarthworkScreenState extends State<EarthworkScreen> {
             CalcCard(
               child: Column(
                 children: [
-                  const CalcCardHeader(
+                  CalcCardHeader(
                     icon: Icons.terrain_rounded,
                     title: 'Excavation Calculator',
                     description: 'Calculate soil volume and trucks',
-                    iconColor: CalcColors.earthwork,
-                    iconBg: CalcColors.earthworkBg,
+                    iconColor: CalcColors.earthwork(context),
+                    iconBg: CalcColors.earthworkBg(context),
                   ),
                   Padding(
                     padding: const EdgeInsets.all(CalcDimens.cardPadding),
@@ -118,19 +139,42 @@ class _EarthworkScreenState extends State<EarthworkScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            CalcButton(label: 'CALCULATE', color: CalcColors.earthwork, onPressed: _calculate),
-            if (_result != null)
-              ResultCard(
-                mainValue: '${_result!['m3']} m³',
-                mainLabel: 'Total Excavated Volume (${_result!['cft']} cft)',
-                rows: [
-                  ResultRowData('Swell Volume (Loose)', '${_result!['swellM3']} m³'),
-                  ResultRowData('Est. Trucks (5m³)', '${_result!['trucks']}'),
-                  ResultRowData('Backfill Needed (~75%)', '${_result!['backfillM3']} m³'),
+            CalcButton(label: 'CALCULATE', color: CalcColors.earthwork(context), onPressed: _calculate),
+            const SizedBox(height: 16),
+            if (_result == null)
+              const CalcGuideCard(
+                title: 'HOW EXCAVATION WORKS',
+                steps: [
+                  'Enter the length, width, and depth of the excavation.',
+                  'Volume is calculated and converted to cubic meters.',
+                  'Soil swell factor (30%) is applied for truck estimation.',
                 ],
-                type: ResultType.neutral,
-                noteText: '* Assumes 30% soil swell factor',
+                formula: 'Volume = L × W × D',
+              )
+            else ...[
+              CalcResultHeader(
+                title: 'Total Excavated Volume',
+                value: '${_result!['m3']} m³',
+                formula: '${_result!['cft']} cft',
               ),
+              CalcMaterialTable(
+                title: 'ESTIMATES',
+                rows: [
+                  CalcMaterialRow('Swell Volume (Loose)', '${_result!['swellM3']} m³'),
+                  CalcMaterialRow('Est. Trucks (5m³)', '${_result!['trucks']}'),
+                  CalcMaterialRow('Backfill Needed (~75%)', '${_result!['backfillM3']} m³'),
+                ],
+              ),
+              CalcDetailSection(
+                details: {
+                  'Dimensions': '${_lenCtrl.text} × ${_widCtrl.text} × ${_depCtrl.text} ft',
+                  'Swell Factor': '30% (Standard)',
+                  'Backfill Assumption': '75% of excavated volume',
+                },
+              ),
+              CalcActionRow(onRecalculate: _calculate, onReset: _reset),
+              const SizedBox(height: 24),
+            ],
           ],
         ),
       ),

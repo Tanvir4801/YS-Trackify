@@ -100,25 +100,24 @@ export async function deleteTempLabourEntry(entryId) {
 }
 
 // Used for Reports
+// P2-5 FIX: Use server-side Firestore date range filtering instead of downloading
+// all entries and filtering client-side. Date is stored as YYYY-MM-DD string,
+// so lexicographic comparisons work correctly.
+// Requires composite index: temp_labour_entries (contractorId ASC, date ASC) — see firestore.indexes.json.
 export async function getTempLaboursByDateRange(contractorId, startDate, endDate) {
-  // We filter in-memory for date range to avoid missing index errors for now
+  if (!contractorId) return [];
+
   const q = query(
-    collection(db, COLLECTION_NAME), 
-    where('contractorId', '==', contractorId)
+    collection(db, COLLECTION_NAME),
+    where('contractorId', '==', contractorId),
+    where('date', '>=', startDate),
+    where('date', '<=', endDate),
   );
-  
+
   const snap = await getDocs(q);
-  
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  start.setHours(0,0,0,0);
-  end.setHours(23,59,59,999);
-  
-  return snap.docs.map(doc => {
-    const data = doc.data();
-    return { id: doc.id, ...data };
-  }).filter(entry => {
-    const entryDate = new Date(entry.date);
-    return entryDate >= start && entryDate <= end;
-  });
+  return snap.docs.map(d => ({
+    id: d.id,
+    ...d.data(),
+    createdAt: d.data().createdAt?.toDate?.() || new Date(),
+  }));
 }

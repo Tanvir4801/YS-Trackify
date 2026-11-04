@@ -43,8 +43,10 @@ export default function TempLabours() {
   }, [scopeId]);
 
   const filteredLabours = useMemo(() => {
+    const searchLower = (search || '').toLowerCase();
     return labours.filter(l => {
-      if (search && !l.name.toLowerCase().includes(search.toLowerCase()) && !l.phone.includes(search)) return false;
+      // P2-3 FIX: Safely handle undefined/null optional fields
+      if (searchLower && !String(l.name || '').toLowerCase().includes(searchLower) && !String(l.phone || '').toLowerCase().includes(searchLower)) return false;
       if (statusFilter !== 'all' && l.paymentStatus !== statusFilter) return false;
       if (siteFilter !== 'all' && l.siteId !== siteFilter) return false;
       return true;

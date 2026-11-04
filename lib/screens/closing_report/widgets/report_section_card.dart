@@ -24,12 +24,12 @@ class ReportSectionCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.surfaceColor(context),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.borderColor(context)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.navy.withValues(alpha: 0.04),
+            color: AppColors.textPrimaryColor(context).withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -40,9 +40,9 @@ class ReportSectionCard extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: AppColors.border, width: 0.5),
+                bottom: BorderSide(color: AppColors.borderColor(context), width: 0.5),
               ),
             ),
             child: Row(
@@ -60,10 +60,10 @@ class ReportSectionCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: AppColors.textPrimaryColor(context),
                       letterSpacing: 0.5,
                     ),
                   ),

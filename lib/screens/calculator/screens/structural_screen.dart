@@ -13,9 +13,11 @@ import '../widgets/is_code_badge.dart';
 import '../widgets/utilisation_bar.dart';
 import '../models/calc_history_item.dart';
 import '../services/calc_history_service.dart';
+import '../widgets/calc_result_widgets.dart';
 
 class StructuralScreen extends StatefulWidget {
-  const StructuralScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const StructuralScreen({super.key, this.initialInputs});
 
   @override
   State<StructuralScreen> createState() => _StructuralScreenState();
@@ -57,7 +59,39 @@ class _StructuralScreenState extends State<StructuralScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLastValues();
+    if (widget.initialInputs != null) {
+      _selectedSubCat = widget.initialInputs!['subCat']?.toString() ?? 'Beam';
+      if (_selectedSubCat == 'Beam') {
+        _beamSpanCtrl.text = widget.initialInputs!['beamSpan']?.toString() ?? '';
+        _beamWidthCtrl.text = widget.initialInputs!['beamWid']?.toString() ?? '';
+        _beamDepthCtrl.text = widget.initialInputs!['beamDep']?.toString() ?? '';
+        _beamLoadCtrl.text = widget.initialInputs!['beamLoad']?.toString() ?? '';
+        _beamFck = widget.initialInputs!['beamFck']?.toString() ?? '20';
+        _beamFy = widget.initialInputs!['beamFy']?.toString() ?? '415';
+      } else if (_selectedSubCat == 'Column') {
+        _colWidthCtrl.text = widget.initialInputs!['colWid']?.toString() ?? '';
+        _colDepthCtrl.text = widget.initialInputs!['colDep']?.toString() ?? '';
+        _colSteelCtrl.text = widget.initialInputs!['colSteel']?.toString() ?? '';
+        _colLoadCtrl.text = widget.initialInputs!['colLoad']?.toString() ?? '';
+        _colFck = widget.initialInputs!['colFck']?.toString() ?? '20';
+      } else if (_selectedSubCat == 'Load') {
+        _loadLenCtrl.text = widget.initialInputs!['loadLen']?.toString() ?? '';
+        _loadHtCtrl.text = widget.initialInputs!['loadHt']?.toString() ?? '';
+        _loadThickCtrl.text = widget.initialInputs!['loadThick']?.toString() ?? '';
+        _loadStrCtrl.text = widget.initialInputs!['loadStr']?.toString() ?? '';
+        _loadAppCtrl.text = widget.initialInputs!['loadApp']?.toString() ?? '';
+      } else if (_selectedSubCat == 'Staircase') {
+        _stairHtCtrl.text = widget.initialInputs!['stairHt']?.toString() ?? '';
+        _stairRiseCtrl.text = widget.initialInputs!['stairRise']?.toString() ?? '';
+        _stairTreadCtrl.text = widget.initialInputs!['stairTread']?.toString() ?? '';
+        _stairWidCtrl.text = widget.initialInputs!['stairWid']?.toString() ?? '';
+      }
+    } else {
+      _beamSpanCtrl.text = ''; _beamWidthCtrl.text = ''; _beamDepthCtrl.text = ''; _beamLoadCtrl.text = '';
+      _colWidthCtrl.text = ''; _colDepthCtrl.text = ''; _colSteelCtrl.text = ''; _colLoadCtrl.text = '';
+      _loadLenCtrl.text = ''; _loadHtCtrl.text = ''; _loadThickCtrl.text = ''; _loadStrCtrl.text = ''; _loadAppCtrl.text = '';
+      _stairHtCtrl.text = ''; _stairRiseCtrl.text = ''; _stairTreadCtrl.text = ''; _stairWidCtrl.text = '';
+    }
   }
 
   @override
@@ -83,28 +117,9 @@ class _StructuralScreenState extends State<StructuralScreen> {
     super.dispose();
   }
 
-  Future<void> _loadLastValues() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _selectedSubCat = prefs.getString('calc_struct_cat') ?? 'Beam';
-      _beamSpanCtrl.text = prefs.getString('calc_beam_span') ?? '6';
-      _beamWidthCtrl.text = prefs.getString('calc_beam_wid') ?? '230';
-      _beamDepthCtrl.text = prefs.getString('calc_beam_dep') ?? '450';
-      _beamLoadCtrl.text = prefs.getString('calc_beam_load') ?? '25';
-      _beamFck = prefs.getString('calc_beam_fck') ?? '20';
-      _beamFy = prefs.getString('calc_beam_fy') ?? '415';
-    });
-  }
-
   Future<void> _saveLastValues() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('calc_struct_cat', _selectedSubCat);
-    await prefs.setString('calc_beam_span', _beamSpanCtrl.text);
-    await prefs.setString('calc_beam_wid', _beamWidthCtrl.text);
-    await prefs.setString('calc_beam_dep', _beamDepthCtrl.text);
-    await prefs.setString('calc_beam_load', _beamLoadCtrl.text);
-    await prefs.setString('calc_beam_fck', _beamFck);
-    await prefs.setString('calc_beam_fy', _beamFy);
   }
 
   void _calculate() {
@@ -127,10 +142,28 @@ class _StructuralScreenState extends State<StructuralScreen> {
       
       final item = CalcHistoryItem(
         id: const Uuid().v4(),
-        category: 'Structural',
+        category: 'Structural - Beam',
         title: 'Beam: ${res['safe'] ? "Safe" : "Unsafe"} (Mu: ${res['Mu']})',
         subtitle: subtitle,
         timestamp: DateTime.now(),
+        inputs: {
+          'subCat': 'Beam',
+          'beamSpan': span,
+          'beamWid': w,
+          'beamDep': d,
+          'beamLoad': load,
+          'beamFck': _beamFck,
+          'beamFy': _beamFy,
+        },
+        results: {
+          'mainTitle': 'Status',
+          'mainValue': res['safe'] ? "Safe" : "Unsafe",
+          'formula': 'Mu: ${res['Mu']} kN·m',
+          'materials': [
+            {'label': 'Limiting Mu,lim', 'value': '${res['Mulim']} kN·m'},
+            {'label': 'Slenderness (L/d)', 'value': '${res['slenderness']}'},
+          ],
+        },
       );
       CalcHistoryService.save(item);
 
@@ -146,6 +179,32 @@ class _StructuralScreenState extends State<StructuralScreen> {
       res = ColumnFormulas.calculate(widthMm: w, depthMm: d, fck: fck, steelPct: steel, appliedKN: load);
       subtitle = 'Size: ${w}x${d}mm | $steel% steel | M$fck';
 
+      final item = CalcHistoryItem(
+        id: const Uuid().v4(),
+        category: 'Structural - Column',
+        title: 'Column: ${res['safe'] ? "Safe" : "Unsafe"}',
+        subtitle: subtitle,
+        timestamp: DateTime.now(),
+        inputs: {
+          'subCat': 'Column',
+          'colWid': w,
+          'colDep': d,
+          'colSteel': steel,
+          'colLoad': load,
+          'colFck': _colFck,
+        },
+        results: {
+          'mainTitle': 'Status',
+          'mainValue': res['safe'] ? "Safe" : "Unsafe",
+          'formula': 'Capacity: ${res['capacity']} kN',
+          'materials': [
+            {'label': 'Gross Area', 'value': '${res['grossArea']} cm²'},
+            {'label': 'Steel Area', 'value': '${res['steelArea']} mm²'},
+          ],
+        },
+      );
+      CalcHistoryService.save(item);
+
     } else if (_selectedSubCat == 'Load') {
       final len = double.tryParse(_loadLenCtrl.text) ?? 0;
       final ht = double.tryParse(_loadHtCtrl.text) ?? 0;
@@ -157,6 +216,32 @@ class _StructuralScreenState extends State<StructuralScreen> {
 
       res = LoadBearingFormulas.calculate(lengthM: len, heightM: ht, thicknessMm: thick, brickStrengthMPa: str, appliedKNm: app);
       subtitle = 'Wall: ${len}x${ht}m | ${thick}mm thk';
+      
+      final item = CalcHistoryItem(
+        id: const Uuid().v4(),
+        category: 'Structural - Wall',
+        title: 'Wall: ${res['safe'] ? "Safe" : "Unsafe"}',
+        subtitle: subtitle,
+        timestamp: DateTime.now(),
+        inputs: {
+          'subCat': 'Load',
+          'loadLen': len,
+          'loadHt': ht,
+          'loadThick': thick,
+          'loadStr': str,
+          'loadApp': app,
+        },
+        results: {
+          'mainTitle': 'Status',
+          'mainValue': res['safe'] ? "Safe" : "Unsafe",
+          'formula': 'Cap: ${res['capacity']} kN/m',
+          'materials': [
+            {'label': 'Slenderness Ratio', 'value': '${res['sr']}'},
+            {'label': 'Mod Factor ks', 'value': '${res['ks']}'},
+          ],
+        },
+      );
+      CalcHistoryService.save(item);
 
     } else {
       final ht = double.tryParse(_stairHtCtrl.text) ?? 0;
@@ -168,9 +253,45 @@ class _StructuralScreenState extends State<StructuralScreen> {
 
       res = StaircaseFormulas.calculate(heightFt: ht, riserIn: r, treadIn: t, widthFt: w);
       subtitle = 'Stair: ht ${ht}ft | Rise: ${r}in | Tread: ${t}in';
+      
+      final item = CalcHistoryItem(
+        id: const Uuid().v4(),
+        category: 'Structural - Stair',
+        title: 'Stairs: ${res['risers']} Risers',
+        subtitle: subtitle,
+        timestamp: DateTime.now(),
+        inputs: {
+          'subCat': 'Staircase',
+          'stairHt': ht,
+          'stairRise': r,
+          'stairTread': t,
+          'stairWid': w,
+        },
+        results: {
+          'mainTitle': 'Treads/Risers',
+          'mainValue': '${res['risers']} Risers',
+          'formula': '${res['treads']} Treads',
+          'materials': [
+            {'label': 'Actual Riser', 'value': '${res['actualRiser']} in'},
+            {'label': 'Going Distance', 'value': '${res['goingFt']} ft'},
+          ],
+        },
+      );
+      CalcHistoryService.save(item);
     }
 
     setState(() => _result = res);
+  }
+
+  void _reset() {
+    setState(() {
+      _beamSpanCtrl.clear(); _beamWidthCtrl.clear(); _beamDepthCtrl.clear(); _beamLoadCtrl.clear();
+      _colWidthCtrl.clear(); _colDepthCtrl.clear(); _colSteelCtrl.clear(); _colLoadCtrl.clear();
+      _loadLenCtrl.clear(); _loadHtCtrl.clear(); _loadThickCtrl.clear(); _loadStrCtrl.clear(); _loadAppCtrl.clear();
+      _stairHtCtrl.clear(); _stairRiseCtrl.clear(); _stairTreadCtrl.clear(); _stairWidCtrl.clear();
+      _beamFck = '20'; _beamFy = '415'; _colFck = '20';
+      _result = null;
+    });
   }
 
   Widget _buildBeamInputs() {
@@ -303,79 +424,111 @@ class _StructuralScreenState extends State<StructuralScreen> {
   }
 
   Widget _buildResult() {
-    if (_result == null) return const SizedBox.shrink();
+    if (_result == null) {
+      if (_selectedSubCat == 'Beam') {
+        return const CalcGuideCard(title: 'BEAM ANALYSIS', steps: ['Enter beam span and section details.', 'Select concrete grade and steel type.', 'Calculate limit state moment capacity.'], formula: 'Mu = 0.87 × fy × Ast × d (Limit State)');
+      } else if (_selectedSubCat == 'Column') {
+        return const CalcGuideCard(title: 'COLUMN ANALYSIS', steps: ['Enter column section details.', 'Provide steel % and axial load.', 'Checks safe axial load capacity.'], formula: 'Pu = 0.4×fck×Ac + 0.67×fy×Asc');
+      } else if (_selectedSubCat == 'Load') {
+        return const CalcGuideCard(title: 'WALL ANALYSIS', steps: ['Enter wall length, height and thickness.', 'Provide brick compressive strength.', 'Verifies load bearing capacity.'], formula: 'Stress ≤ Allowable Bearing');
+      } else {
+        return const CalcGuideCard(title: 'STAIRCASE ANALYSIS', steps: ['Enter total floor height.', 'Provide desired riser and tread.', 'Calculates total steps required.'], formula: 'Risers = Height / Riser Height');
+      }
+    }
 
     if (_selectedSubCat == 'Beam') {
       final safe = _result!['safe'] as bool;
-      final type = safe ? ResultType.safe : ResultType.unsafe;
       return Column(
         children: [
-          ResultCard(
-            mainValue: '${safe ? "Safe" : "Unsafe"} — ${_result!['Mu']} kN·m',
-            mainLabel: 'Design moment | Capacity ${_result!['Mulim']} kN·m',
-            rows: [
-              ResultRowData('Factored moment Mu', '${_result!['Mu']} kN·m'),
-              ResultRowData('Limiting Mu,lim', '${_result!['Mulim']} kN·m'),
-              ResultRowData('Slenderness (L/d)', '${_result!['slenderness']}'),
-            ],
-            type: type,
-            warningText: safe ? null : 'Section overstressed by ${_result!['utilisationPct']}%. Increase depth to at least ${_result!['minDepthNeeded']} mm effective depth.',
-            noteText: '* For preliminary sizing only',
+          CalcResultHeader(
+            title: 'Design Status',
+            value: safe ? "Safe" : "Unsafe",
+            formula: 'Capacity: ${_result!['Mulim']} kN·m',
+            isWarning: !safe,
+            warningText: safe ? null : 'Overstressed by ${_result!['utilisationPct']}%. Min depth: ${_result!['minDepthNeeded']}mm',
           ),
           UtilisationBar(utilisation: _result!['ratio'] as double),
+          const SizedBox(height: 16),
+          CalcMaterialTable(
+            rows: [
+              CalcMaterialRow('Factored moment Mu', '${_result!['Mu']} kN·m'),
+              CalcMaterialRow('Limiting Mu,lim', '${_result!['Mulim']} kN·m'),
+              CalcMaterialRow('Slenderness (L/d)', '${_result!['slenderness']}'),
+            ],
+          ),
+          CalcActionRow(onRecalculate: _calculate, onReset: _reset),
+          const SizedBox(height: 24),
         ],
       );
     } else if (_selectedSubCat == 'Column') {
       final safe = _result!['safe'] as bool;
-      final type = safe ? ResultType.safe : ResultType.unsafe;
       return Column(
         children: [
-          ResultCard(
-            mainValue: '${safe ? "Safe" : "Unsafe"} — ${_colLoadCtrl.text} kN',
-            mainLabel: 'Applied Load | Capacity ${_result!['capacity']} kN',
-            rows: [
-              ResultRowData('Axial Capacity', '${_result!['capacity']} kN'),
-              ResultRowData('Gross Area', '${_result!['grossArea']} cm²'),
-              ResultRowData('Steel Area', '${_result!['steelArea']} mm²'),
-            ],
-            type: type,
+          CalcResultHeader(
+            title: 'Design Status',
+            value: safe ? "Safe" : "Unsafe",
+            formula: 'Capacity: ${_result!['capacity']} kN',
+            isWarning: !safe,
             warningText: safe ? null : 'Section inadequate. Increase section size or steel %.',
           ),
           UtilisationBar(utilisation: _result!['utilisation'] as double),
+          const SizedBox(height: 16),
+          CalcMaterialTable(
+            rows: [
+              CalcMaterialRow('Axial Capacity', '${_result!['capacity']} kN'),
+              CalcMaterialRow('Gross Area', '${_result!['grossArea']} cm²'),
+              CalcMaterialRow('Steel Area', '${_result!['steelArea']} mm²'),
+            ],
+          ),
+          CalcActionRow(onRecalculate: _calculate, onReset: _reset),
+          const SizedBox(height: 24),
         ],
       );
     } else if (_selectedSubCat == 'Load') {
       final safe = _result!['safe'] as bool;
-      final type = safe ? ResultType.safe : ResultType.unsafe;
       return Column(
         children: [
-          ResultCard(
-            mainValue: safe ? "Safe" : "Unsafe",
-            mainLabel: 'Capacity ${_result!['capacity']} kN/m',
-            rows: [
-              ResultRowData('Wall Capacity', '${_result!['capacity']} kN/m'),
-              ResultRowData('Slenderness Ratio', '${_result!['sr']}'),
-              ResultRowData('Modification factor ks', '${_result!['ks']}'),
-            ],
-            type: type,
+          CalcResultHeader(
+            title: 'Design Status',
+            value: safe ? "Safe" : "Unsafe",
+            formula: 'Capacity: ${_result!['capacity']} kN/m',
+            isWarning: !safe,
             warningText: safe ? null : 'Wall overstressed.',
           ),
           UtilisationBar(utilisation: _result!['utilisation'] as double),
+          const SizedBox(height: 16),
+          CalcMaterialTable(
+            rows: [
+              CalcMaterialRow('Wall Capacity', '${_result!['capacity']} kN/m'),
+              CalcMaterialRow('Slenderness Ratio', '${_result!['sr']}'),
+              CalcMaterialRow('Mod factor ks', '${_result!['ks']}'),
+            ],
+          ),
+          CalcActionRow(onRecalculate: _calculate, onReset: _reset),
+          const SizedBox(height: 24),
         ],
       );
     } else {
       final safe = _result!['checkOK'] as bool;
-      final type = safe ? ResultType.safe : ResultType.unsafe;
-      return ResultCard(
-        mainValue: '${_result!['risers']} Risers',
-        mainLabel: '${_result!['treads']} Treads',
-        rows: [
-          ResultRowData('Actual Riser', '${_result!['actualRiser']} in'),
-          ResultRowData('Going Distance', '${_result!['goingFt']} ft'),
-          ResultRowData('Rule Check', '${_result!['check']} (Target: 24-25.5)'),
+      return Column(
+        children: [
+          CalcResultHeader(
+            title: 'Treads/Risers',
+            value: '${_result!['risers']} Risers',
+            formula: '${_result!['treads']} Treads',
+            isWarning: !safe,
+            warningText: safe ? null : 'Falls outside standard comfort rule (2*R + T).',
+          ),
+          CalcMaterialTable(
+            rows: [
+              CalcMaterialRow('Actual Riser', '${_result!['actualRiser']} in'),
+              CalcMaterialRow('Going Distance', '${_result!['goingFt']} ft'),
+              CalcMaterialRow('Rule Check', '${_result!['check']} (Target: 24-25.5)'),
+            ],
+          ),
+          CalcActionRow(onRecalculate: _calculate, onReset: _reset),
+          const SizedBox(height: 24),
         ],
-        type: type,
-        warningText: safe ? null : 'Proportions fall outside standard comfort rule (2*R + T).',
       );
     }
   }
@@ -383,12 +536,12 @@ class _StructuralScreenState extends State<StructuralScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Structural', style: CalcTextStyles.screenTitle),
-        iconTheme: const IconThemeData(color: CalcColors.textPrimary),
+        title: Text('Structural', style: CalcTextStyles.screenTitle(context)),
+        iconTheme: IconThemeData(color: CalcColors.textPrimary(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(CalcDimens.pagePadding),
@@ -399,13 +552,13 @@ class _StructuralScreenState extends State<StructuralScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  CategoryChip(label: 'Beam', isActive: _selectedSubCat == 'Beam', onTap: () { setState(() { _selectedSubCat = 'Beam'; _result = null; }); }, activeColor: CalcColors.structural),
+                  CategoryChip(label: 'Beam', isActive: _selectedSubCat == 'Beam', onTap: () { setState(() { _selectedSubCat = 'Beam'; _result = null; }); }, activeColor: CalcColors.structural(context)),
                   const SizedBox(width: 8),
-                  CategoryChip(label: 'Column', isActive: _selectedSubCat == 'Column', onTap: () { setState(() { _selectedSubCat = 'Column'; _result = null; }); }, activeColor: CalcColors.structural),
+                  CategoryChip(label: 'Column', isActive: _selectedSubCat == 'Column', onTap: () { setState(() { _selectedSubCat = 'Column'; _result = null; }); }, activeColor: CalcColors.structural(context)),
                   const SizedBox(width: 8),
-                  CategoryChip(label: 'Load bearing', isActive: _selectedSubCat == 'Load', onTap: () { setState(() { _selectedSubCat = 'Load'; _result = null; }); }, activeColor: CalcColors.structural),
+                  CategoryChip(label: 'Load bearing', isActive: _selectedSubCat == 'Load', onTap: () { setState(() { _selectedSubCat = 'Load'; _result = null; }); }, activeColor: CalcColors.structural(context)),
                   const SizedBox(width: 8),
-                  CategoryChip(label: 'Staircase', isActive: _selectedSubCat == 'Staircase', onTap: () { setState(() { _selectedSubCat = 'Staircase'; _result = null; }); }, activeColor: CalcColors.structural),
+                  CategoryChip(label: 'Staircase', isActive: _selectedSubCat == 'Staircase', onTap: () { setState(() { _selectedSubCat = 'Staircase'; _result = null; }); }, activeColor: CalcColors.structural(context)),
                 ],
               ),
             ),
@@ -423,7 +576,8 @@ class _StructuralScreenState extends State<StructuralScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            CalcButton(label: 'CALCULATE', color: CalcColors.structural, onPressed: _calculate),
+            CalcButton(label: 'CALCULATE', color: CalcColors.structural(context), onPressed: _calculate),
+            const SizedBox(height: 16),
             _buildResult(),
           ],
         ),

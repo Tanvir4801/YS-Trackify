@@ -9,24 +9,30 @@ import '../widgets/result_card.dart';
 import '../widgets/calc_card.dart';
 import '../models/calc_history_item.dart';
 import '../services/calc_history_service.dart';
+import '../widgets/calc_result_widgets.dart';
 
 class SteelScreen extends StatefulWidget {
-  const SteelScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const SteelScreen({super.key, this.initialInputs});
 
   @override
   State<SteelScreen> createState() => _SteelScreenState();
 }
 
 class _SteelScreenState extends State<SteelScreen> {
-  final _diaCtrl = TextEditingController(text: '12');
-  final _lenCtrl = TextEditingController(text: '6');
-  final _nosCtrl = TextEditingController(text: '100');
+  final _diaCtrl = TextEditingController();
+  final _lenCtrl = TextEditingController();
+  final _nosCtrl = TextEditingController();
   Map<String, dynamic>? _result;
 
   @override
   void initState() {
     super.initState();
-    _loadLastValues();
+    if (widget.initialInputs != null) {
+      _diaCtrl.text = widget.initialInputs!['dia']?.toString() ?? '';
+      _lenCtrl.text = widget.initialInputs!['length']?.toString() ?? '';
+      _nosCtrl.text = widget.initialInputs!['nos']?.toString() ?? '';
+    }
   }
 
   @override
@@ -36,15 +42,6 @@ class _SteelScreenState extends State<SteelScreen> {
     _lenCtrl.dispose();
     _nosCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadLastValues() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _diaCtrl.text = prefs.getString('calc_steel_dia') ?? '12';
-      _lenCtrl.text = prefs.getString('calc_steel_len') ?? '6';
-      _nosCtrl.text = prefs.getString('calc_steel_nos') ?? '100';
-    });
   }
 
   Future<void> _saveLastValues() async {
@@ -70,19 +67,43 @@ class _SteelScreenState extends State<SteelScreen> {
       title: 'Weight: ${res['totalKg']} kg',
       subtitle: '${dia}mm dia | ${len}m x $nos',
       timestamp: DateTime.now(),
+      inputs: {
+        'dia': dia,
+        'length': len,
+        'nos': nos,
+      },
+      results: {
+        'mainTitle': 'Total Weight',
+        'mainValue': '${res['totalKg']} kg',
+        'formula': 'D² / 162.28 × Length × Nos',
+        'materials': [
+          {'label': 'Total Length', 'value': '${res['totalLength']} m'},
+          {'label': 'Approx Bundles', 'value': '${res['bundles']} (45kg/bdl)'},
+          {'label': 'Cost Estimate', 'value': '₹${res['costEst']} (@ ₹65/kg)'},
+        ],
+      },
     );
     CalcHistoryService.save(item);
+  }
+
+  void _reset() {
+    setState(() {
+      _diaCtrl.clear();
+      _lenCtrl.clear();
+      _nosCtrl.clear();
+      _result = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Steel Weight', style: CalcTextStyles.screenTitle),
-        iconTheme: const IconThemeData(color: CalcColors.textPrimary),
+        title: Text('Steel Weight', style: CalcTextStyles.screenTitle(context)),
+        iconTheme: IconThemeData(color: CalcColors.textPrimary(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(CalcDimens.pagePadding),
@@ -91,12 +112,12 @@ class _SteelScreenState extends State<SteelScreen> {
             CalcCard(
               child: Column(
                 children: [
-                  const CalcCardHeader(
+                  CalcCardHeader(
                     icon: Icons.linear_scale_rounded,
                     title: 'Bar Weight Calculator',
                     description: 'Calculate weight of rebars',
-                    iconColor: CalcColors.steel,
-                    iconBg: CalcColors.steelBg,
+                    iconColor: CalcColors.steel(context),
+                    iconBg: CalcColors.steelBg(context),
                   ),
                   Padding(
                     padding: const EdgeInsets.all(CalcDimens.cardPadding),
@@ -118,18 +139,45 @@ class _SteelScreenState extends State<SteelScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            CalcButton(label: 'CALCULATE', color: CalcColors.steel, onPressed: _calculate),
-            if (_result != null)
-              ResultCard(
-                mainValue: '${_result!['totalKg']} kg',
-                mainLabel: 'Total Weight | Unit: ${_result!['wpm']} kg/m',
-                rows: [
-                  ResultRowData('Total Length', '${_result!['totalLength']} m'),
-                  ResultRowData('Approx Bundles', '${_result!['bundles']} bundles (45kg/bdl)'),
-                  ResultRowData('Cost Estimate', '₹${_result!['costEst']} (@ ₹65/kg)'),
+            CalcButton(label: 'CALCULATE', color: CalcColors.steel(context), onPressed: _calculate),
+            const SizedBox(height: 16),
+            if (_result == null)
+              const CalcGuideCard(
+                title: 'HOW STEEL WEIGHT WORKS',
+                steps: [
+                  'Enter the diameter of the rebar in mm.',
+                  'Enter the length of one single bar in meters.',
+                  'Enter the total number of bars required.',
                 ],
-                type: ResultType.neutral,
+                formula: 'Weight = (D² / 162.28) × L',
+              )
+            else ...[
+              CalcResultHeader(
+                title: 'Total Weight',
+                value: '${_result!['totalKg']} kg',
+                formula: 'Unit: ${_result!['wpm']} kg/m',
               ),
+              CalcMaterialTable(
+                title: 'ESTIMATES',
+                rows: [
+                  CalcMaterialRow('Total Length', '${_result!['totalLength']} m'),
+                  CalcMaterialRow('Approx Bundles', '${_result!['bundles']} (45kg/bdl)'),
+                  CalcMaterialRow('Cost Estimate', '₹${_result!['costEst']} (@ ₹65/kg)'),
+                ],
+              ),
+              CalcDetailSection(
+                details: {
+                  'Diameter': '${_diaCtrl.text} mm',
+                  'Length per bar': '${_lenCtrl.text} m',
+                  'Number of bars': _nosCtrl.text,
+                },
+              ),
+              CalcActionRow(
+                onRecalculate: _calculate,
+                onReset: _reset,
+              ),
+              const SizedBox(height: 24),
+            ],
           ],
         ),
       ),

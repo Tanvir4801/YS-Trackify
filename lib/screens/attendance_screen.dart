@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:intl/intl.dart';
 
@@ -20,6 +21,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/shimmer_loader.dart';
 import '../widgets/add_temp_labour_dialog.dart';
 import '../widgets/loading_button.dart';
+import '../widgets/attendance_site_row.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -31,6 +33,11 @@ class AttendanceScreen extends StatefulWidget {
 class _AttendanceScreenState extends State<AttendanceScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  
+  final TextEditingController _siteSearchController = TextEditingController();
+  String _siteSearchQuery = '';
+  String _siteFilter = 'all'; // all, pending, completed
+  
   bool _safetyNetExpanded = false;
 
   // Sites feature: null = All Sites
@@ -46,11 +53,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.toLowerCase().trim());
     });
+    _siteSearchController.addListener(() {
+      setState(() => _siteSearchQuery = _siteSearchController.text.toLowerCase().trim());
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _siteSearchController.dispose();
     super.dispose();
   }
 
@@ -95,9 +106,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             return Container(
               margin: EdgeInsets.only(bottom: keyboardHeight),
               padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: AppColors.cardColor(context),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -107,29 +118,29 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.payment, color: AppColors.primary, size: 20),
+                        decoration: BoxDecoration(color: AppColors.primaryColor(context).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Icon(Icons.payment, color: AppColors.primaryColor(context), size: 20),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Manage Payment',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimaryColor(context)),
                         ),
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(ctx),
-                        icon: const Icon(Icons.close, color: AppColors.textTertiary),
+                        icon: Icon(Icons.close, color: AppColors.textTertiaryColor(context)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Text('Worker: ${entry.name}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
-                  Text('Total Wage: ₹${entry.totalWage.toStringAsFixed(0)}', style: const TextStyle(color: AppColors.gold, fontSize: 13, fontWeight: FontWeight.w700, fontFamily: 'monospace')),
+                  Text('Worker: ${entry.name}', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 13, fontWeight: FontWeight.w500)),
+                  Text('Total Wage: ₹${entry.totalWage.toStringAsFixed(0)}', style: TextStyle(color: AppColors.primaryColor(context), fontSize: 13, fontWeight: FontWeight.w700, fontFamily: 'monospace')),
                   const SizedBox(height: 16),
                   TextField(
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                    style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 14),
                     decoration: _inputDecoration('Amount Paid (₹)', Icons.currency_rupee),
                     controller: TextEditingController(text: paidAmount > 0 ? paidAmount.toStringAsFixed(0) : '')..selection = TextSelection.collapsed(offset: paidAmount > 0 ? paidAmount.toStringAsFixed(0).length : 0),
                     onChanged: (v) => paidAmount = double.tryParse(v) ?? 0,
@@ -137,8 +148,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: paymentMethod,
-                    dropdownColor: AppColors.surfaceElevated,
-                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                    dropdownColor: AppColors.surfaceElevatedColor(context),
+                    style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 14),
                     decoration: _inputDecoration('Payment Method', Icons.account_balance_wallet_outlined),
                     items: ['Cash', 'UPI', 'Bank Transfer', 'Other'].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
                     onChanged: (v) {
@@ -147,7 +158,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                    style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 14),
                     decoration: _inputDecoration('Payment Remark (Optional)', Icons.notes),
                     controller: TextEditingController(text: paymentRemark)..selection = TextSelection.collapsed(offset: paymentRemark.length),
                     onChanged: (v) => paymentRemark = v,
@@ -155,7 +166,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   const SizedBox(height: 24),
                   LoadingButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: AppColors.primaryColor(context),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -186,14 +197,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   InputDecoration _inputDecoration(String hint, IconData icon) {
     return InputDecoration(
       hintText: hint,
-      prefixIcon: Icon(icon, size: 18, color: AppColors.textTertiary),
+      prefixIcon: Icon(icon, size: 18, color: AppColors.textTertiaryColor(context)),
       filled: true,
-      fillColor: AppColors.surface,
+      fillColor: AppColors.cardColor(context),
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderColor(context))),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderColor(context))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.primaryColor(context), width: 1.5)),
     );
   }
 
@@ -203,6 +214,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       builder: (context, data, sitesData, _) {
         final attendanceByLabour = data.attendanceMap;
         final sites = sitesData.sites;
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
 
         // All labours are available every morning — no permanent site assignment.
         // Site is only recorded on the attendance record for that day.
@@ -288,8 +301,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         }
 
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: isDark ? Colors.transparent : AppColors.backgroundColor(context),
           body: SafeArea(
+            bottom: false,
             child: Column(
               children: [
               _buildDateBar(context, data),
@@ -323,7 +337,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               subtitle: 'Add labours first to mark attendance.',
                             )
                           : RefreshIndicator(
-                              color: AppColors.primary,
+                              color: AppColors.primaryColor(context),
                               onRefresh: data.initialize,
                               child: ListView(
                                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
@@ -341,12 +355,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                       final hasBothEmpty = groupA.isEmpty && groupB.isEmpty;
 
                                       if (hasBothEmpty && _searchQuery.isEmpty) {
-                                        return const Center(
+                                        return Center(
                                           child: Padding(
-                                            padding: EdgeInsets.all(20),
+                                            padding: const EdgeInsets.all(20),
                                             child: Text(
                                               'No labours for this site',
-                                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textSecondaryColor(context)),
                                               textAlign: TextAlign.center,
                                             ),
                                           ),
@@ -363,29 +377,30 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                                 children: [
                                                   Text(
                                                     'Available here — ${groupA.length}',
-                                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondaryColor(context)),
                                                   ),
                                                   const Spacer(),
-                                                  const Text('Not marked anywhere today', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                                                  Text('Not marked anywhere today', style: TextStyle(fontSize: 11, color: AppColors.textTertiaryColor(context))),
                                                 ],
                                               ),
                                             ),
 
-                                          ...groupA.map((labour) => Padding(
-                                                key: ValueKey('card_groupA_${labour.id}_$_selectedSiteId'),
+                                          ...groupA.asMap().entries.map((entry) => Padding(
+                                                key: ValueKey('card_groupA_${entry.value.id}_$_selectedSiteId'),
                                                 padding: const EdgeInsets.only(bottom: 10),
                                                 child: _AttendanceCard(
-                                                  labour: labour,
-                                                  status: getStatusAtSelectedSite(labour.id),
-                                                  remark: data.remarkMap[labour.id] ?? '',
+                                                  labour: entry.value,
+                                                  status: getStatusAtSelectedSite(entry.value.id),
+                                                  remark: data.remarkMap[entry.value.id] ?? '',
                                                   data: data,
                                                   siteId: _selectedSiteId ?? '',
+                                                  index: entry.key,
                                                 ),
                                               )),
 
                                           if (_searchQuery.isEmpty && groupB.isNotEmpty) ...[
                                             const SizedBox(height: 12),
-                                            _buildSectionHeader('Marked here today', Icons.check_circle_outline, AppColors.present),
+                                            _buildSectionHeader('Marked here today', Icons.check_circle_outline, AppColors.successColor(context)),
                                             const SizedBox(height: 8),
                                             ...groupB.map((labour) => Padding(
                                                   key: ValueKey('card_groupB_${labour.id}_$_selectedSiteId'),
@@ -406,17 +421,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                                 decoration: BoxDecoration(
-                                                  color: AppColors.primarySurface.withValues(alpha: 0.12),
+                                                  color: AppColors.softGold(context).withValues(alpha: 0.12),
                                                   borderRadius: BorderRadius.circular(14),
-                                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+                                                  border: Border.all(color: AppColors.primaryColor(context).withValues(alpha: 0.25)),
                                                 ),
-                                                child: const Row(
+                                                child: Row(
                                                   children: [
-                                                    Icon(Icons.verified_rounded, color: AppColors.primary, size: 20),
-                                                    SizedBox(width: 10),
+                                                    Icon(Icons.verified_rounded, color: AppColors.primaryColor(context), size: 20),
+                                                    const SizedBox(width: 10),
                                                     Text(
                                                       'Site Complete',
-                                                      style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 14),
+                                                      style: TextStyle(color: AppColors.primaryColor(context), fontWeight: FontWeight.w700, fontSize: 14),
                                                     ),
                                                   ],
                                                 ),
@@ -473,7 +488,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
-        color: AppColors.navy,
+        color: AppColors.textPrimaryColor(context),
         boxShadow: [
           BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, -10)),
         ],
@@ -496,12 +511,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Total Cost', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                Text('₹${totalCost.toStringAsFixed(0)}', style: const TextStyle(color: AppColors.gold, fontSize: 16, fontWeight: FontWeight.w800)),
+                Text('₹${totalCost.toStringAsFixed(0)}', style: TextStyle(color: AppColors.primaryColor(context), fontSize: 16, fontWeight: FontWeight.w800)),
               ],
             ),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.primaryColor(context),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -529,10 +544,47 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     required bool isLoading,
     required int totalLabours,
   }) {
+    // Apply search and filters
+    final filteredSites = sites.where((s) {
+      if (_siteSearchQuery.isNotEmpty && !s.name.toLowerCase().contains(_siteSearchQuery)) {
+        return false;
+      }
+      final count = markedBySite[s.id] ?? 0;
+      if (_siteFilter == 'pending' && count > 0) return false;
+      if (_siteFilter == 'completed' && count == 0) return false;
+      return true;
+    }).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildGlobalSummary(data, sites.length, totalLabours, totalMarkedToday),
+        
+        // Search and Filters
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              TextField(
+                controller: _siteSearchController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: _inputDecoration('Search sites...', Icons.search),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _buildFilterChip('All', 'all'),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Pending', 'pending'),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('Completed', 'completed'),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
         if (isLoading)
           const Expanded(child: Center(child: CircularProgressIndicator()))
         else if (sites.isEmpty)
@@ -543,33 +595,26 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               subtitle: 'Ask your admin to create sites first.',
             ),
           )
+        else if (filteredSites.isEmpty)
+          const Expanded(
+            child: EmptyState(
+              icon: Icons.search_off_rounded,
+              title: 'No Sites Found',
+              subtitle: 'Try adjusting your search or filters.',
+            ),
+          )
         else
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-              itemCount: sites.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+              itemCount: filteredSites.length,
               itemBuilder: (_, i) {
-                final site = sites[i];
+                final site = filteredSites[i];
                 final count = markedBySite[site.id] ?? 0;
-                double siteCost = 0;
-                for (final summary in data.dailyShiftMap.values) {
-                  final thisSiteVisit = summary.siteVisits.where((v) => v.siteId == site.id).firstOrNull;
-                  if (thisSiteVisit != null && thisSiteVisit.factor > 0) {
-                    final l = data.labours.where((l) => l.id == summary.labourId).firstOrNull;
-                    if (l != null) {
-                      siteCost += l.dailyWage * thisSiteVisit.factor;
-                    }
-                  }
-                }
 
-                final effectiveTotal = count;
-
-                return _SitePickerCard(
+                return AttendanceSiteRow(
                   site: site,
                   markedCount: count,
-                  totalLabours: effectiveTotal,
-                  todayCost: siteCost,
                   onTap: () {
                     HapticUtils.light();
                     setState(() => _selectedSiteId = site.id);
@@ -579,6 +624,35 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildFilterChip(String label, String value) {
+    final isSelected = _siteFilter == value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: () {
+        HapticUtils.light();
+        setState(() => _siteFilter = value);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryColor(context) : AppColors.surfaceElevatedColor(context),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isSelected ? AppColors.primaryColor(context) : AppColors.borderColor(context)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected 
+                ? (isDark ? AppColors.textPrimaryColor(context) : const Color(0xFFFFFFFF)) 
+                : (isDark ? Colors.white70 : AppColors.textSecondaryColor(context)),
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 
@@ -600,39 +674,43 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         children: [
           Text(
             '${DateTime.now().day} ${_monthName(DateTime.now().month)} ${DateTime.now().year}',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimaryColor(context)),
           ),
           const SizedBox(height: 12),
-          Container(height: 1, color: AppColors.border),
+          Container(height: 1, color: AppColors.borderColor(context)),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _summaryItem('$totalSites Sites', Icons.business_rounded, AppColors.textPrimary),
-              _summaryItem('$totalLabours Labour', Icons.people_alt_rounded, AppColors.textPrimary),
-              _summaryItem('$completed Completed', Icons.check_circle_outline, AppColors.present),
-              _summaryItem('$pending Pending', Icons.schedule_rounded, AppColors.textTertiary),
+              _summaryItem('$totalSites Sites', Icons.business_rounded, AppColors.textPrimaryColor(context)),
+              _summaryItem('$totalLabours Labour', Icons.people_alt_rounded, AppColors.textPrimaryColor(context)),
+              _summaryItem('$completed Completed', Icons.check_circle_outline, AppColors.successColor(context)),
+              _summaryItem('$pending Pending', Icons.schedule_rounded, AppColors.textTertiaryColor(context)),
             ],
           ),
           const SizedBox(height: 12),
-          Container(height: 1, color: AppColors.border),
+          Container(height: 1, color: AppColors.borderColor(context)),
         ],
       ),
     );
   }
 
   Widget _summaryItem(String text, IconData icon, Color color) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(height: 6),
-        Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-      ],
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 6),
+          Text(text, 
+               textAlign: TextAlign.center,
+               style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 
   String _monthName(int month) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return months[month - 1];
   }
 
@@ -646,9 +724,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: AppColors.cardColor(context),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: AppColors.borderColor(context)),
         ),
         child: Row(
           children: [
@@ -657,15 +735,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 HapticUtils.light();
                 setState(() { _selectedSiteId = null; _searchController.clear(); });
               },
-              child: const Icon(Icons.chevron_left, size: 20, color: AppColors.textSecondary),
+              child: Icon(Icons.chevron_left, size: 20, color: AppColors.textSecondaryColor(context)),
             ),
             const SizedBox(width: 6),
-            const Icon(Icons.location_on_rounded, size: 16, color: AppColors.goldDark),
+            Icon(Icons.location_on_rounded, size: 16, color: AppColors.primaryColor(context)),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 site?.name ?? _selectedSiteId ?? '',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimaryColor(context)),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -679,8 +757,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Widget _buildActionMenu(AttendanceProvider data, List<Labour> availableLabours, List<SiteModel> sites) {
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary, size: 20),
-      color: AppColors.surfaceElevated,
+      icon: Icon(Icons.more_vert_rounded, color: AppColors.textSecondaryColor(context), size: 20),
+      color: AppColors.surfaceElevatedColor(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       offset: const Offset(0, 40),
       onSelected: (val) async {
@@ -753,22 +831,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         }
       },
       itemBuilder: (ctx) => [
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'allowances',
-          child: Row(children: [Icon(Icons.payments_outlined, color: AppColors.goldDark, size: 18), SizedBox(width: 8), Text('Allowances', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.payments_outlined, color: AppColors.primaryColor(context), size: 18), const SizedBox(width: 8), Text('Allowances', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 13))]),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'mark_all',
-          child: Row(children: [Icon(Icons.done_all_rounded, color: AppColors.present, size: 18), SizedBox(width: 8), Text('Mark All Present', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.done_all_rounded, color: AppColors.successColor(context), size: 18), const SizedBox(width: 8), Text('Mark All Present', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 13))]),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'copy',
-          child: Row(children: [Icon(Icons.copy_rounded, color: AppColors.textTertiary, size: 18), SizedBox(width: 8), Text('Copy Yesterday', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.copy_rounded, color: AppColors.textTertiaryColor(context), size: 18), const SizedBox(width: 8), Text('Copy Yesterday', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 13))]),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'reset',
-          child: Row(children: [Icon(Icons.refresh_rounded, color: AppColors.absent, size: 18), SizedBox(width: 8), Text('Reset Attendance', style: TextStyle(color: Colors.white, fontSize: 13))]),
+          child: Row(children: [Icon(Icons.refresh_rounded, color: AppColors.errorColor(context), size: 18), const SizedBox(width: 8), Text('Reset Attendance', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 13))]),
         ),
       ],
     );
@@ -804,8 +882,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       alignment: Alignment.centerRight,
       child: TextButton.icon(
         onPressed: () { HapticUtils.light(); _showAddTempLabourDialog(data); },
-        icon: const Icon(Icons.person_add_alt_1_rounded, size: 14, color: AppColors.gold),
-        label: const Text('Add Temp Labour', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700, fontSize: 12)),
+        icon: Icon(Icons.person_add_alt_1_rounded, size: 14, color: AppColors.primaryColor(context)),
+        label: Text('Add Temp Labour', style: TextStyle(color: AppColors.primaryColor(context), fontWeight: FontWeight.w700, fontSize: 12)),
       ),
     );
   }
@@ -822,11 +900,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Widget _buildSafetyNetPanel(BuildContext context, AttendanceProvider data, List<Labour> markedList, List<SiteModel> sites) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final containerBg = isDark ? AppColors.surfaceColor(context) : const Color(0xFFEEF4FA);
+    final borderColor = isDark ? AppColors.primaryColor(context).withValues(alpha: 0.2) : const Color(0xFFD4E1EE);
+    final headingColor = isDark ? AppColors.primaryColor(context) : const Color(0xFF132B4F);
+    final accentColor = isDark ? AppColors.primaryColor(context) : const Color(0xFFF2A900);
+
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.navyLight,
+        color: containerBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         children: [
@@ -834,23 +918,23 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             onTap: () { HapticUtils.light(); setState(() => _safetyNetExpanded = !_safetyNetExpanded); },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(color: AppColors.navyLight, borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(color: containerBg, borderRadius: BorderRadius.circular(16)),
               child: Row(
                 children: [
-                  const Icon(Icons.security_rounded, size: 18, color: AppColors.gold),
+                  Icon(Icons.security_rounded, size: 18, color: accentColor),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Already Marked Today — ${markedList.length}',
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gold)),
-                        const Text('Tap to review & fix before day locks',
-                            style: TextStyle(fontSize: 11, color: AppColors.goldLight)),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: headingColor)),
+                        Text('Tap to review & fix before day locks',
+                            style: TextStyle(fontSize: 11, color: isDark ? AppColors.primaryColor(context) : const Color(0xFF64809E))),
                       ],
                     ),
                   ),
-                  Icon(_safetyNetExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: AppColors.gold),
+                  Icon(_safetyNetExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: accentColor),
                 ],
               ),
             ),
@@ -885,28 +969,28 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         height: 36,
         child: TextField(
           controller: _searchController,
-          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 13, color: AppColors.textPrimaryColor(context)),
           decoration: InputDecoration(
             hintText: 'Search labour...',
-            hintStyle: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
-            prefixIcon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textTertiary),
+            hintStyle: TextStyle(fontSize: 12, color: AppColors.textTertiaryColor(context)),
+            prefixIcon: Icon(Icons.search_rounded, size: 16, color: AppColors.textTertiaryColor(context)),
             prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.textTertiary),
+                    icon: Icon(Icons.close_rounded, size: 16, color: AppColors.textTertiaryColor(context)),
                     onPressed: () { _searchController.clear(); HapticUtils.light(); },
                   )
                 : null,
             suffixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             filled: true,
-            fillColor: AppColors.surface,
+            fillColor: AppColors.cardColor(context),
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderColor(context))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderColor(context))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.primaryColor(context), width: 1.5)),
           ),
         ),
       ),
@@ -922,11 +1006,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       child: Wrap(
         spacing: 6, runSpacing: 6,
         children: [
-          _statChip('$total Labour', AppColors.primary),
-          _statChip('$unmarked Pending', AppColors.textTertiary),
-          _statChip('$present Present', AppColors.present),
-          _statChip('$half Half Day', AppColors.halfDay),
-          _statChip('$absent Absent', AppColors.absent),
+          _statChip('$total Labour', AppColors.primaryColor(context)),
+          _statChip('$unmarked Pending', AppColors.textTertiaryColor(context)),
+          _statChip('$present Present', AppColors.successColor(context)),
+          _statChip('$half Half Day', AppColors.warningColor(context)),
+          _statChip('$absent Absent', AppColors.errorColor(context)),
         ],
       ),
     );
@@ -954,9 +1038,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.calendar_today_outlined, size: 14, color: AppColors.primary),
+              Icon(Icons.calendar_today_outlined, size: 14, color: AppColors.primaryColor(context)),
               const SizedBox(width: 6),
-              Text(AppDateUtils.toDisplay(data.selectedDate), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              Text(AppDateUtils.toDisplay(data.selectedDate), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimaryColor(context))),
             ],
           ),
           GestureDetector(
@@ -967,20 +1051,33 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 initialDate: data.selectedDate,
                 firstDate: DateTime(2020),
                 lastDate: DateTime(2100),
-                builder: (ctx, child) => Theme(
-                  data: Theme.of(ctx).copyWith(
-                    colorScheme: const ColorScheme.dark(
-                      primary: AppColors.gold,
-                      surface: AppColors.navyLight,
-                      onSurface: Colors.white,
+                builder: (ctx, child) {
+                  final isDark = Theme.of(ctx).brightness == Brightness.dark;
+                  return BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                    child: Theme(
+                      data: Theme.of(ctx).copyWith(
+                        colorScheme: isDark 
+                          ? ColorScheme.dark(
+                              primary: AppColors.primaryColor(context),
+                              surface: AppColors.surfaceColor(context),
+                              onSurface: AppColors.textPrimaryColor(context),
+                            )
+                          : ColorScheme.light(
+                              primary: AppColors.primaryColor(context),
+                              surface: AppColors.surfaceColor(context),
+                              onSurface: AppColors.textPrimaryColor(context),
+                            ),
+                        dialogBackgroundColor: AppColors.surfaceColor(context),
+                      ),
+                      child: child!,
                     ),
-                  ),
-                  child: child!,
-                ),
+                  );
+                },
               );
               if (picked != null) data.changeDate(picked);
             },
-            child: const Text('Change', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary)),
+            child: Text('Change', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primaryColor(context))),
           ),
         ],
       ),
@@ -992,159 +1089,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Row(
         children: [
-          Expanded(child: _SummaryChip(label: 'Present', count: present, color: AppColors.present, bg: AppColors.presentSurface)),
+          Expanded(child: _SummaryChip(label: 'Present', count: present, color: AppColors.successColor(context), bg: AppColors.successColor(context).withValues(alpha: 0.15))),
           const SizedBox(width: 8),
-          Expanded(child: _SummaryChip(label: 'Absent', count: absent, color: AppColors.absent, bg: AppColors.absentSurface)),
+          Expanded(child: _SummaryChip(label: 'Absent', count: absent, color: AppColors.errorColor(context), bg: AppColors.errorColor(context).withValues(alpha: 0.15))),
           const SizedBox(width: 8),
-          Expanded(child: _SummaryChip(label: 'Half Day', count: half, color: AppColors.halfDay, bg: AppColors.halfSurface)),
+          Expanded(child: _SummaryChip(label: 'Half Day', count: half, color: AppColors.warningColor(context), bg: AppColors.warningColor(context).withValues(alpha: 0.15))),
         ],
       ),
     );
   }
 }
 
-// Site picker list card — shown on the fullscreen site selection view
-class _SitePickerCard extends StatelessWidget {
-  const _SitePickerCard({
-    required this.site,
-    required this.markedCount,
-    required this.totalLabours,
-    required this.todayCost,
-    required this.onTap,
-  });
 
-  final SiteModel site;
-  final int markedCount;
-  final int totalLabours;
-  final double todayCost;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = totalLabours > 0 ? (markedCount / totalLabours) : 0.0;
-    
-    // Status Logic
-    String status = 'PENDING';
-    Color statusColor = AppColors.textTertiary;
-    if (markedCount > 0 && markedCount < totalLabours) {
-      status = 'IN PROGRESS';
-      statusColor = AppColors.gold;
-    } else if (markedCount > 0 && markedCount >= totalLabours) {
-      status = 'COMPLETED';
-      statusColor = AppColors.present;
-    }
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.navyLight,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // TOP SECTION
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          site.name.toUpperCase(),
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Status Chip
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _infoText('$totalLabours Labour'),
-                      const Spacer(),
-                      const Text('Today\'s Cost ', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                      Text(
-                        '₹${todayCost.toStringAsFixed(0)}',
-                        style: const TextStyle(color: AppColors.gold, fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Marked count (without total or percentage)
-                  Row(
-                    children: [
-                      Text(markedCount > 0 ? '$markedCount Marked' : '0 Marked', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
-                      const Spacer(),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
-            // BOTTOM BUTTON SECTION
-            Container(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.border)),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text('Mark Attendance', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-                        SizedBox(width: 6),
-                        Icon(Icons.arrow_forward_ios_rounded, color: Colors.white54, size: 12),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _infoText(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
-    );
-  }
-}
 
 class _SummaryChip extends StatelessWidget {
   const _SummaryChip({required this.label, required this.count, required this.color, required this.bg});
@@ -1197,11 +1153,11 @@ class _SafetyNetCard extends StatelessWidget {
     final totalOtherFactor = (summary?.totalShiftFactor ?? 0.0) - factorHere;
     final availableCapacity = 1.0 - totalOtherFactor;
 
-    final color = status == 'present' ? AppColors.present :
+    final color = status == 'present' ? AppColors.successColor(context) :
                   status == 'three_quarter' ? Colors.teal :
-                  status == 'half' ? AppColors.halfDay :
+                  status == 'half' ? AppColors.warningColor(context) :
                   status == 'quarter' ? Colors.orangeAccent :
-                  AppColors.absent;
+                  AppColors.errorColor(context);
     final label = status == 'present' ? 'Present (1.0)' :
                   status == 'three_quarter' ? '3/4 Day' :
                   status == 'half' ? 'Half Day' :
@@ -1212,7 +1168,7 @@ class _SafetyNetCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
+        color: AppColors.surfaceElevatedColor(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
@@ -1239,7 +1195,7 @@ class _SafetyNetCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(labour.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textPrimary)),
+                    Text(labour.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textPrimaryColor(context))),
                     const SizedBox(height: 4),
                     Wrap(
                       spacing: 6,
@@ -1253,14 +1209,14 @@ class _SafetyNetCard extends StatelessWidget {
                         if (siteName.isNotEmpty)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: AppColors.primarySurface, borderRadius: BorderRadius.circular(6)),
-                            child: Text(siteName, style: const TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                            decoration: BoxDecoration(color: AppColors.softGold(context), borderRadius: BorderRadius.circular(6)),
+                            child: Text(siteName, style: TextStyle(fontSize: 10, color: AppColors.primaryColor(context), fontWeight: FontWeight.w600)),
                           ),
                         if (remark.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
                             child: Text('"$remark"',
-                                style: const TextStyle(fontSize: 10, color: AppColors.textTertiary, fontStyle: FontStyle.italic)),
+                                style: TextStyle(fontSize: 10, color: AppColors.textTertiaryColor(context), fontStyle: FontStyle.italic)),
                           ),
                       ],
                     ),
@@ -1274,7 +1230,7 @@ class _SafetyNetCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (availableCapacity >= 1.0) ...[
-                _miniStatusBtn('1', status == 'present', AppColors.present, () => data.markAttendance(labour.id, 'present', siteId: siteId)),
+                _miniStatusBtn('1', status == 'present', AppColors.successColor(context), () => data.markAttendance(labour.id, 'present', siteId: siteId)),
                 const SizedBox(width: 4),
               ],
               if (availableCapacity >= 0.75) ...[
@@ -1282,14 +1238,14 @@ class _SafetyNetCard extends StatelessWidget {
                 const SizedBox(width: 4),
               ],
               if (availableCapacity >= 0.5) ...[
-                _miniStatusBtn('½', status == 'half', AppColors.halfDay, () => data.markAttendance(labour.id, 'half', siteId: siteId)),
+                _miniStatusBtn('½', status == 'half', AppColors.warningColor(context), () => data.markAttendance(labour.id, 'half', siteId: siteId)),
                 const SizedBox(width: 4),
               ],
               if (availableCapacity >= 0.25) ...[
                 _miniStatusBtn('¼', status == 'quarter', Colors.orangeAccent, () => data.markAttendance(labour.id, 'quarter', siteId: siteId)),
                 const SizedBox(width: 4),
               ],
-              _miniStatusBtn('0', status == 'absent', AppColors.absent, () => data.markAttendance(labour.id, 'absent', siteId: siteId)),
+              _miniStatusBtn('0', status == 'absent', AppColors.errorColor(context), () => data.markAttendance(labour.id, 'absent', siteId: siteId)),
               const Spacer(),
               // Reset-to-pending undo button
               _miniResetBtn(context),
@@ -1326,23 +1282,23 @@ class _SafetyNetCard extends StatelessWidget {
           context: context,
           builder: (ctx) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.undo_rounded, color: AppColors.textSecondary, size: 20),
-                SizedBox(width: 8),
-                Text('Reset Attendance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                Icon(Icons.undo_rounded, color: AppColors.textSecondaryColor(context), size: 20),
+                const SizedBox(width: 8),
+                const Text('Reset Attendance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ],
             ),
             content: Text(
               'This will reset ${labour.name}\'s attendance to Pending (unmarked). '
               'They will reappear in the available list. No data is deleted.',
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondaryColor(context)),
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.textSecondary,
+                  backgroundColor: AppColors.textSecondaryColor(context),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -1359,16 +1315,16 @@ class _SafetyNetCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
+          color: AppColors.surfaceElevatedColor(context),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border, width: 1.5),
+          border: Border.all(color: AppColors.borderColor(context), width: 1.5),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.undo_rounded, size: 16, color: AppColors.textSecondary),
-            SizedBox(width: 6),
-            Text('Reset', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w700)),
+            Icon(Icons.undo_rounded, size: 16, color: AppColors.textSecondaryColor(context)),
+            const SizedBox(width: 6),
+            Text('Reset', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 12, fontWeight: FontWeight.w700)),
           ],
         ),
       ),
@@ -1448,7 +1404,7 @@ class _TempLabourCard extends StatelessWidget {
                   runSpacing: 4,
                   children: [
                     _buildInfoBadge(Icons.currency_rupee, '₹${entry.totalWage.toStringAsFixed(0)}', Colors.greenAccent),
-                    _buildInfoBadge(Icons.timer_outlined, '${entry.attendanceUnit} Day', AppColors.gold),
+                    _buildInfoBadge(Icons.timer_outlined, '${entry.attendanceUnit} Day', AppColors.primaryColor(context)),
                     if (entry.paymentStatus == 'paid')
                       _buildInfoBadge(Icons.check_circle_outline, 'Paid', Colors.green)
                     else if (entry.paymentStatus == 'partial_paid')
@@ -1525,6 +1481,7 @@ class _AttendanceCard extends StatefulWidget {
     required this.data,
     this.siteId = '',
     this.isTemp = false,
+    this.index = 0,
   });
 
   final Labour labour;
@@ -1533,9 +1490,39 @@ class _AttendanceCard extends StatefulWidget {
   final AttendanceProvider data;
   final bool isTemp;
   final String siteId;
+  final int index;
 
   @override
   State<_AttendanceCard> createState() => _AttendanceCardState();
+}
+
+class AttendanceStyle {
+  final Color fg;
+  final Color bg;
+  final Color border;
+  final Color cardBg;
+  const AttendanceStyle(this.fg, this.bg, this.border, this.cardBg);
+
+  static AttendanceStyle get(BuildContext context, String status) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (isDark) {
+      Color fg = status == 'present' ? const Color(0xFF00C985) :
+                 status == 'three_quarter' ? Colors.teal :
+                 status == 'half' ? const Color(0xFFF2A900) :
+                 status == 'quarter' ? Colors.orangeAccent :
+                 const Color(0xFFFF4D5A);
+      return AttendanceStyle(fg, fg.withValues(alpha: 0.1), fg.withValues(alpha: 0.3), AppColors.cardColor(context));
+    } else {
+      switch (status) {
+        case 'present': return const AttendanceStyle(Color(0xFF00A878), Color(0xFFE7F8F2), Color(0xFF9DE5D0), Color(0xFFF0FBF7));
+        case 'three_quarter': return const AttendanceStyle(Color(0xFF008F95), Color(0xFFE5F6F7), Color(0xFF8FD8DB), Color(0xFFF2FAFB));
+        case 'half': return const AttendanceStyle(Color(0xFFE39A00), Color(0xFFFFF4D9), Color(0xFFF2C56A), Color(0xFFFFF9EC));
+        case 'quarter': return const AttendanceStyle(Color(0xFFE68A00), Color(0xFFFFF0DF), Color(0xFFFFD49A), Color(0xFFFFF8EE));
+        case 'absent': return const AttendanceStyle(Color(0xFFE83D5B), Color(0xFFFFE9EE), Color(0xFFFF9CAF), Color(0xFFFFF4F6));
+        default: return const AttendanceStyle(Color(0xFF64809E), Color(0xFFF0F4F8), Color(0xFFC8D6E3), Color(0xFFFFFFFF));
+      }
+    }
+  }
 }
 
 class _AttendanceCardState extends State<_AttendanceCard> {
@@ -1589,9 +1576,9 @@ class _AttendanceCardState extends State<_AttendanceCard> {
           bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
           top: 24, left: 24, right: 24,
         ),
-        decoration: const BoxDecoration(
-          color: AppColors.navy,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: AppColors.textPrimaryColor(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1610,7 +1597,7 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: AppColors.navyLight, borderRadius: BorderRadius.circular(20)),
+                    decoration: BoxDecoration(color: AppColors.surfaceColor(context), borderRadius: BorderRadius.circular(20)),
                     child: Text(tag, style: const TextStyle(color: Colors.white70, fontSize: 13)),
                   ),
                 );
@@ -1623,7 +1610,7 @@ class _AttendanceCardState extends State<_AttendanceCard> {
               decoration: InputDecoration(
                 hintText: 'Or type custom remark (Optional)',
                 hintStyle: const TextStyle(color: Colors.white38),
-                filled: true, fillColor: AppColors.navyLight,
+                filled: true, fillColor: AppColors.surfaceColor(context),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
               ),
               onSubmitted: (val) {
@@ -1638,24 +1625,25 @@ class _AttendanceCardState extends State<_AttendanceCard> {
   }
 
   void _showLabourDetailsSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        decoration: BoxDecoration(color: isDark ? AppColors.textPrimaryColor(context) : Colors.white, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.labour.name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+            Text(widget.labour.name, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF132B4F), fontSize: 22, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            Text('Worker ID #${widget.labour.id.substring(0, min(5, widget.labour.id.length)).toUpperCase()}', style: const TextStyle(color: AppColors.gold, fontSize: 14)),
+            Text('Worker ID #${widget.labour.id.substring(0, min(5, widget.labour.id.length)).toUpperCase()}', style: TextStyle(color: AppColors.primaryColor(context), fontSize: 14)),
             const SizedBox(height: 24),
-            _buildDetailRow('Current Site:', _resolveSiteName(widget.siteId)),
-            _buildDetailRow('Labour Type:', widget.labour.type.toString().split('.').last.toUpperCase()),
-            _buildDetailRow('Daily Wage:', '₹${widget.labour.dailyWage}'),
-            _buildDetailRow('Joining date', DateFormat('dd MMM yyyy').format(widget.labour.joiningDate)),
+            _buildDetailRow('Current Site:', _resolveSiteName(widget.siteId), isDark),
+            _buildDetailRow('Labour Type:', widget.labour.type.toString().split('.').last.toUpperCase(), isDark),
+            _buildDetailRow('Daily Wage:', '₹${widget.labour.dailyWage}', isDark),
+            _buildDetailRow('Joining date', DateFormat('dd MMM yyyy').format(widget.labour.joiningDate), isDark),
             const SizedBox(height: 20),
             if (widget.isTemp)
               Center(
@@ -1680,14 +1668,14 @@ class _AttendanceCardState extends State<_AttendanceCard> {
     return site?.name ?? id;
   }
 
-  Widget _buildDetailRow(String label, String val) {
+  Widget _buildDetailRow(String label, String val, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 14)),
-          Text(val, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(color: isDark ? Colors.white54 : const Color(0xFF64809E), fontSize: 14)),
+          Text(val, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF132B4F), fontSize: 14, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -1726,11 +1714,8 @@ class _AttendanceCardState extends State<_AttendanceCard> {
 
     // SLIM STATE WHEN MARKED
     if (isMarked) {
-      Color statusColor = status == 'present' ? AppColors.present :
-                          status == 'three_quarter' ? Colors.teal :
-                          status == 'half' ? AppColors.halfDay :
-                          status == 'quarter' ? Colors.orangeAccent :
-                          AppColors.absent;
+      final style = AttendanceStyle.get(context, status ?? '');
+      Color statusColor = style.fg;
       String statusLabel = status == 'present' ? '🟢 1.0 DAY' :
                            status == 'three_quarter' ? '🟢 0.75 DAY' :
                            status == 'half' ? '🟡 0.5 DAY' :
@@ -1742,9 +1727,9 @@ class _AttendanceCardState extends State<_AttendanceCard> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: widget.isTemp ? Colors.purple.shade900.withValues(alpha: 0.3) : AppColors.surface,
+            color: widget.isTemp ? Colors.purple.shade900.withValues(alpha: 0.3) : style.cardBg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+            border: Border.all(color: style.border),
           ),
           child: Row(
             children: [
@@ -1754,17 +1739,17 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(labour.name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text(labour.name, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
-                    Text('₹${labour.dailyWage.toStringAsFixed(0)}/day', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text('₹${labour.dailyWage.toStringAsFixed(0)}/day', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 12)),
                     if (otherVisits.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Wrap(
                         spacing: 4, runSpacing: 4,
                         children: otherVisits.map((v) => Container(
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(4)),
-                          child: Text('${getSiteName(v.siteId)} (${v.factor} shift)', style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                          decoration: BoxDecoration(color: AppColors.primaryColor(context).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                          child: Text('${getSiteName(v.siteId)} (${v.factor} shift)', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 9)),
                         )).toList(),
                       ),
                     ],
@@ -1778,7 +1763,7 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                   const SizedBox(height: 4),
                   GestureDetector(
                     onTap: _showRemarksSheet,
-                    child: Text(widget.remark.isNotEmpty ? 'View Remark' : 'Remarks ▼', style: const TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w600)),
+                    child: Text(widget.remark.isNotEmpty ? 'View Remark' : 'Remarks ▼', style: TextStyle(color: AppColors.primaryColor(context), fontSize: 11, fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),
@@ -1791,15 +1776,15 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceElevated,
+                    color: AppColors.surfaceElevatedColor(context),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border, width: 1.5),
+                    border: Border.all(color: AppColors.borderColor(context), width: 1.5),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.undo_rounded, color: AppColors.textSecondary, size: 14),
-                      SizedBox(width: 4),
-                      Text('Undo', style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w700)),
+                      Icon(Icons.undo_rounded, color: AppColors.textSecondaryColor(context), size: 14),
+                      const SizedBox(width: 4),
+                      Text('Undo', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 11, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -1810,14 +1795,13 @@ class _AttendanceCardState extends State<_AttendanceCard> {
       );
     }
 
-    // EXPANDED STATE WHEN PENDING (with Dismissible)
+    // EXPANDED STATE WHEN PENDING
     return GestureDetector(
       onTap: _showLabourDetailsSheet,
-      onLongPress: () => _mark('half', availableCapacity),
       child: Dismissible(
         key: ValueKey('dismiss_${labour.id}_${widget.siteId}'),
-        background: _buildSwipeBg(AppColors.present, Icons.check_circle_outline, Alignment.centerLeft),
-        secondaryBackground: _buildSwipeBg(AppColors.absent, Icons.cancel_outlined, Alignment.centerRight),
+        background: _buildSwipeBg(AppColors.successColor(context), Icons.check_circle_outline, Alignment.centerLeft),
+        secondaryBackground: _buildSwipeBg(AppColors.errorColor(context), Icons.cancel_outlined, Alignment.centerRight),
         confirmDismiss: (direction) async {
           final targetStatus = (direction == DismissDirection.startToEnd) ? 'present' : 'absent';
           return _canMark(targetStatus, availableCapacity);
@@ -1830,25 +1814,39 @@ class _AttendanceCardState extends State<_AttendanceCard> {
           _performMark(targetStatus);
         },
         child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: widget.isTemp ? Colors.purple.shade900.withValues(alpha: 0.3) : AppColors.surfaceElevated,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: widget.isTemp ? Colors.purple.shade500 : AppColors.border),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          gradient: widget.isTemp ? null : (Theme.of(context).brightness == Brightness.dark ? null : LinearGradient(
+            colors: widget.index % 4 == 0 ? const [Color(0xFFF8FBFF), Color(0xFFEFF5FA)] :
+                    widget.index % 4 == 1 ? const [Color(0xFFFCFAFF), Color(0xFFF7F5FC)] :
+                    widget.index % 4 == 2 ? const [Color(0xFFF8FEFB), Color(0xFFF2FAF8)] :
+                                            const [Color(0xFFFAFCFF), Color(0xFFF5F7FA)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          )),
+          color: widget.isTemp ? Colors.purple.shade900.withValues(alpha: 0.3) : (Theme.of(context).brightness == Brightness.dark ? AppColors.surfaceElevatedColor(context) : null),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: widget.isTemp ? Colors.purple.shade500 : (Theme.of(context).brightness == Brightness.dark ? AppColors.borderColor(context) : const Color(0xFFD5E2EF))),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
                     width: 36, height: 36,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: widget.isTemp ? [Colors.purple.shade500, Colors.purple.shade700] : [AppColors.navyLight, AppColors.navy],
+                      gradient: widget.isTemp ? LinearGradient(
+                        colors: [Colors.purple.shade500, Colors.purple.shade700],
                         begin: Alignment.topLeft, end: Alignment.bottomRight,
-                      ),
+                      ) : (Theme.of(context).brightness == Brightness.dark 
+                          ? LinearGradient(
+                              colors: [AppColors.surfaceColor(context), AppColors.textPrimaryColor(context)],
+                              begin: Alignment.topLeft, end: Alignment.bottomRight,
+                            ) 
+                          : null),
+                      color: (!widget.isTemp && Theme.of(context).brightness != Brightness.dark) ? const Color(0xFF173A61) : null,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(child: Text(initial, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800))),
@@ -1860,7 +1858,7 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                       children: [
                         Row(
                           children: [
-                            Expanded(child: Text(labour.name, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+                            Expanded(child: Text(labour.name, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 17, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
                             if (widget.isTemp)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1870,8 +1868,8 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                             if (!widget.isTemp && availableCapacity < 1.0)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                                child: Text('Cap: $availableCapacity', style: const TextStyle(fontSize: 9, color: AppColors.gold, fontWeight: FontWeight.w800)),
+                                decoration: BoxDecoration(color: AppColors.primaryColor(context).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
+                                child: Text('Cap: $availableCapacity', style: TextStyle(fontSize: 9, color: AppColors.primaryColor(context), fontWeight: FontWeight.w800)),
                               ),
                           ],
                         ),
@@ -1879,15 +1877,15 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                         Text(widget.isTemp 
                           ? 'Added at 10:45 AM • ₹${labour.dailyWage.toStringAsFixed(0)}/day'
                           : 'Worker ID #${labour.id.substring(0, min(5, labour.id.length)).toUpperCase()} • ₹${labour.dailyWage.toStringAsFixed(0)}/day', 
-                          style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? AppColors.textSecondaryColor(context) : const Color(0xFF6685A4), fontSize: 12)),
                         if (otherVisits.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Wrap(
                             spacing: 4, runSpacing: 4,
                             children: otherVisits.map((v) => Container(
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(4)),
-                              child: Text('${getSiteName(v.siteId)} (${v.factor} shift)', style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                              decoration: BoxDecoration(color: AppColors.primaryColor(context).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                              child: Text('${getSiteName(v.siteId)} (${v.factor} shift)', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 9)),
                             )).toList(),
                           ),
                         ],
@@ -1897,19 +1895,23 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (availableCapacity >= 1.0)
-                    _actionBtn('1.0', 'present', AppColors.present, availableCapacity),
-                  if (availableCapacity >= 0.75)
-                    _actionBtn('0.75', 'three_quarter', Colors.teal, availableCapacity),
-                  if (availableCapacity >= 0.5)
-                    _actionBtn('0.5', 'half', AppColors.halfDay, availableCapacity),
-                  if (availableCapacity >= 0.25)
-                    _actionBtn('0.25', 'quarter', Colors.orangeAccent, availableCapacity),
-                  _actionBtn('0.0', 'absent', AppColors.absent, availableCapacity),
-                ],
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragStart: (_) {},
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (availableCapacity >= 1.0)
+                      _actionBtn('1.0', 'present', availableCapacity),
+                    if (availableCapacity >= 0.75)
+                      _actionBtn('0.75', 'three_quarter', availableCapacity),
+                    if (availableCapacity >= 0.5)
+                      _actionBtn('0.5', 'half', availableCapacity),
+                    if (availableCapacity >= 0.25)
+                      _actionBtn('0.25', 'quarter', availableCapacity),
+                    _actionBtn('0.0', 'absent', availableCapacity),
+                  ],
+                ),
               )
             ],
           ),
@@ -1928,7 +1930,8 @@ class _AttendanceCardState extends State<_AttendanceCard> {
     );
   }
 
-  Widget _actionBtn(String label, String status, Color color, double availableCapacity) {
+  Widget _actionBtn(String label, String status, double availableCapacity) {
+    final style = AttendanceStyle.get(context, status);
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -1937,12 +1940,12 @@ class _AttendanceCardState extends State<_AttendanceCard> {
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: style.bg,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: color.withValues(alpha: 0.3)),
+              border: Border.all(color: style.border),
             ),
             alignment: Alignment.center,
-            child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
+            child: Text(label, style: TextStyle(color: style.fg, fontWeight: FontWeight.w800, fontSize: 13)),
           ),
         ),
       ),
@@ -2010,15 +2013,15 @@ class _OvertimeFieldState extends State<_OvertimeField> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.halfSurface,
+        color: AppColors.warningColor(context).withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.halfDay.withValues(alpha: 0.2)),
+        border: Border.all(color: AppColors.warningColor(context).withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.bolt_outlined, size: 15, color: AppColors.halfDay),
+          Icon(Icons.bolt_outlined, size: 15, color: AppColors.warningColor(context)),
           const SizedBox(width: 6),
-          const Text('OT hrs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.halfDay)),
+          Text('OT hrs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.warningColor(context))),
           const SizedBox(width: 10),
           SizedBox(
             width: 64, height: 34,
@@ -2027,7 +2030,7 @@ class _OvertimeFieldState extends State<_OvertimeField> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d{0,2}(\.\d{0,1})?'))],
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimaryColor(context)),
               onChanged: _scheduleSend,
               decoration: InputDecoration(
                 isDense: true,
@@ -2037,14 +2040,14 @@ class _OvertimeFieldState extends State<_OvertimeField> {
                 fillColor: Colors.white,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.halfDay)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.warningColor(context))),
               ),
             ),
           ),
           if (widget.overtimeRate > 0 && hours > 0) ...[
             const SizedBox(width: 10),
             Text('= ₹${pay.toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.halfDay)),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.warningColor(context))),
           ],
         ],
       ),
@@ -2082,9 +2085,9 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
   final Set<String> _saving = {};
   final Set<String> _saved = {};
 
-  static const _types = ['petrol', 'lunch', 'breakfast', 'tea'];
-  static const _typeEmoji = {'petrol': '🚗', 'lunch': '🍽', 'breakfast': '🍳', 'tea': '☕'};
-  static const _typeLabel = {'petrol': 'Petrol', 'lunch': 'Lunch', 'breakfast': 'Breakfast', 'tea': 'Tea'};
+  static final _types = ['petrol', 'lunch', 'breakfast', 'tea'];
+  static final _typeEmoji = {'petrol': '🚗', 'lunch': '🍽', 'breakfast': '🍳', 'tea': '☕'};
+  static final _typeLabel = {'petrol': 'Petrol', 'lunch': 'Lunch', 'breakfast': 'Breakfast', 'tea': 'Tea'};
 
   @override
   void initState() {
@@ -2167,7 +2170,7 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
         keyboardType: TextInputType.number,
         textAlign: TextAlign.right,
         onChanged: (_) => setState(() {}),
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: enabled ? AppColors.textPrimary : AppColors.textTertiary),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: enabled ? AppColors.textPrimaryColor(context) : AppColors.textTertiaryColor(context)),
         decoration: InputDecoration(
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -2176,7 +2179,7 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
           filled: true,
           fillColor: enabled ? Colors.white : Colors.grey.shade100,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: isAdvance ? Colors.red.shade300 : AppColors.primary.withValues(alpha: 0.4))),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: isAdvance ? Colors.red.shade300 : AppColors.primaryColor(context).withValues(alpha: 0.4))),
           disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
         ),
       ),
@@ -2194,9 +2197,9 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.navyLight,
+        color: AppColors.surfaceColor(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isSavedThis ? AppColors.present.withValues(alpha: 0.4) : AppColors.gold.withValues(alpha: 0.1)),
+        border: Border.all(color: isSavedThis ? AppColors.successColor(context).withValues(alpha: 0.4) : AppColors.primaryColor(context).withValues(alpha: 0.1)),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 6, offset: const Offset(0, 2))],
       ),
       child: Column(
@@ -2206,27 +2209,27 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
             children: [
               Container(
                 width: 36, height: 36,
-                decoration: BoxDecoration(gradient: const LinearGradient(colors: [AppColors.primary, AppColors.primaryLight]), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.primaryColor(context), AppColors.primaryColor(context)]), borderRadius: BorderRadius.circular(10)),
                 child: Center(child: Text(initial, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700))),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(l.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary), overflow: TextOverflow.ellipsis),
+                  Text(l.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimaryColor(context)), overflow: TextOverflow.ellipsis),
                   if (total > 0)
                     Text('Total: ₹${total.toStringAsFixed(0)}${advance > 0 ? ' · Advance: ₹${advance.toStringAsFixed(0)}' : ''}',
-                        style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                        style: TextStyle(fontSize: 11, color: AppColors.primaryColor(context), fontWeight: FontWeight.w600)),
                 ]),
               ),
               if (isSavedThis)
-                const Icon(Icons.check_circle_rounded, color: AppColors.present, size: 18)
+                Icon(Icons.check_circle_rounded, color: AppColors.successColor(context), size: 18)
               else
                 GestureDetector(
                   onTap: isSavingThis ? null : () => _saveLabour(l),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: isSavingThis ? Colors.grey.shade200 : AppColors.primary,
+                      color: isSavingThis ? Colors.grey.shade200 : AppColors.primaryColor(context),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: isSavingThis
@@ -2252,14 +2255,14 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
                     child: Switch.adaptive(
                       value: on,
                       onChanged: (v) => setState(() => _enabled[key] = v),
-                      activeThumbColor: AppColors.primary,
+                      activeThumbColor: AppColors.primaryColor(context),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                   const SizedBox(width: 4),
                   Text(_typeEmoji[type]!, style: const TextStyle(fontSize: 16)),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(_typeLabel[type]!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: on ? AppColors.textPrimary : AppColors.textSecondary))),
+                  Expanded(child: Text(_typeLabel[type]!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: on ? AppColors.textPrimaryColor(context) : AppColors.textSecondaryColor(context)))),
                   _amountField(l.id, type),
                 ],
               ),
@@ -2285,9 +2288,9 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
 
   Widget _buildByTypeTab() {
     if (widget.presentLabours.isEmpty) {
-      return const Center(child: Padding(
-        padding: EdgeInsets.all(32),
-        child: Text('No present labours at this site', style: TextStyle(color: AppColors.textSecondary)),
+      return Center(child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text('No present labours at this site', style: TextStyle(color: AppColors.textSecondaryColor(context))),
       ));
     }
     return ListView(
@@ -2299,9 +2302,9 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(children: [
-                Text('${_typeEmoji[type]!} ${_typeLabel[type]!}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                Text('${_typeEmoji[type]!} ${_typeLabel[type]!}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimaryColor(context))),
                 const SizedBox(width: 10),
-                Expanded(child: Container(height: 1, color: AppColors.border)),
+                Expanded(child: Container(height: 1, color: AppColors.borderColor(context))),
               ]),
             ),
             ...widget.presentLabours.map((l) {
@@ -2314,18 +2317,18 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: AppColors.borderColor(context)),
                   ),
                   child: Row(
                     children: [
                       Switch.adaptive(
                         value: on,
                         onChanged: (v) => setState(() => _enabled[key] = v),
-                        activeThumbColor: AppColors.primary,
+                        activeThumbColor: AppColors.primaryColor(context),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       const SizedBox(width: 4),
-                      Expanded(child: Text(l.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary), overflow: TextOverflow.ellipsis)),
+                      Expanded(child: Text(l.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimaryColor(context)), overflow: TextOverflow.ellipsis)),
                       _amountField(l.id, type),
                     ],
                   ),
@@ -2347,35 +2350,35 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
       minChildSize: 0.5,
       maxChildSize: 0.95,
       builder: (ctx, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.navy,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: AppColors.textPrimaryColor(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           children: [
             // Handle
-            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppColors.borderColor(context), borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 12),
             // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  const Icon(Icons.monetization_on_rounded, color: AppColors.primary, size: 20),
+                  Icon(Icons.monetization_on_rounded, color: AppColors.primaryColor(context), size: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Daily Allowances', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      Text('Daily Allowances', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimaryColor(context))),
                       Text('${widget.siteName} · ${widget.presentLabours.length} labour${widget.presentLabours.length == 1 ? '' : 's'}',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                          style: TextStyle(fontSize: 12, color: AppColors.textSecondaryColor(context))),
                     ]),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
                       padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: AppColors.navyLight, borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
+                      decoration: BoxDecoration(color: AppColors.surfaceColor(context), borderRadius: BorderRadius.circular(8)),
+                      child: Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondaryColor(context)),
                     ),
                   ),
                 ],
@@ -2386,15 +2389,15 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: AppColors.navyLight,
+                color: AppColors.surfaceColor(context),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: TabBar(
                 controller: _tabController,
-                indicator: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
+                indicator: BoxDecoration(color: AppColors.primaryColor(context), borderRadius: BorderRadius.circular(10)),
                 indicatorSize: TabBarIndicatorSize.tab,
                 labelColor: Colors.white,
-                unselectedLabelColor: AppColors.textSecondary,
+                unselectedLabelColor: AppColors.textSecondaryColor(context),
                 labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                 tabs: const [Tab(text: 'By Labour'), Tab(text: 'By Type')],
               ),
@@ -2409,9 +2412,9 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
                           Icon(Icons.people_outline_rounded, size: 48, color: Colors.grey.shade400),
                           const SizedBox(height: 12),
-                          const Text('No present labours at this site', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                          Text('No present labours at this site', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 14)),
                           const SizedBox(height: 6),
-                          const Text('Mark labours as present first, then set their allowances here.', style: TextStyle(color: AppColors.textTertiary, fontSize: 12), textAlign: TextAlign.center),
+                          Text('Mark labours as present first, then set their allowances here.', style: TextStyle(color: AppColors.textTertiaryColor(context), fontSize: 12), textAlign: TextAlign.center),
                         ]),
                       ),
                     )
@@ -2434,22 +2437,22 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
             Container(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               decoration: BoxDecoration(
-                color: AppColors.navyLight,
-                border: const Border(top: BorderSide(color: AppColors.border)),
+                color: AppColors.surfaceColor(context),
+                border: Border(top: BorderSide(color: AppColors.borderColor(context))),
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8, offset: const Offset(0, -2))],
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Total (all labours)', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                      Text('₹${grandTotal.toStringAsFixed(0)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.primary)),
+                      Text('Total (all labours)', style: TextStyle(fontSize: 11, color: AppColors.textSecondaryColor(context))),
+                      Text('₹${grandTotal.toStringAsFixed(0)}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.primaryColor(context))),
                     ]),
                   ),
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+                    child: Text('Cancel', style: TextStyle(color: AppColors.textSecondaryColor(context))),
                   ),
                   const SizedBox(width: 8),
                   LoadingButton(
@@ -2457,7 +2460,7 @@ class _PerLabourAllowanceSheetState extends State<_PerLabourAllowanceSheet> with
                       await _saveAll();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: AppColors.primaryColor(context),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

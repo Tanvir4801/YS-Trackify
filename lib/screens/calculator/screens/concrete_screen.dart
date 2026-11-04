@@ -10,9 +10,11 @@ import '../widgets/result_card.dart';
 import '../widgets/calc_card.dart';
 import '../models/calc_history_item.dart';
 import '../services/calc_history_service.dart';
+import '../widgets/calc_result_widgets.dart';
 
 class ConcreteScreen extends StatefulWidget {
-  const ConcreteScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const ConcreteScreen({super.key, this.initialInputs});
 
   @override
   State<ConcreteScreen> createState() => _ConcreteScreenState();
@@ -35,7 +37,12 @@ class _ConcreteScreenState extends State<ConcreteScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLastValues();
+    if (widget.initialInputs != null) {
+      _lengthCtrl.text = widget.initialInputs!['length']?.toString() ?? '';
+      _widthCtrl.text = widget.initialInputs!['width']?.toString() ?? '';
+      _depthCtrl.text = widget.initialInputs!['depth']?.toString() ?? '';
+      _mixRatio = widget.initialInputs!['mixRatio']?.toString() ?? '1:1.5:3';
+    }
   }
 
   @override
@@ -47,15 +54,7 @@ class _ConcreteScreenState extends State<ConcreteScreen> {
     super.dispose();
   }
 
-  Future<void> _loadLastValues() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _lengthCtrl.text = prefs.getString('calc_conc_len') ?? '';
-      _widthCtrl.text = prefs.getString('calc_conc_wid') ?? '';
-      _depthCtrl.text = prefs.getString('calc_conc_dep') ?? '';
-      _mixRatio = prefs.getString('calc_conc_mix') ?? '1:1.5:3';
-    });
-  }
+
 
   Future<void> _saveLastValues() async {
     final prefs = await SharedPreferences.getInstance();
@@ -94,19 +93,46 @@ class _ConcreteScreenState extends State<ConcreteScreen> {
       title: 'Volume: ${result['wetM3']} m³',
       subtitle: '${length}x${width}x$depth ft | Mix: $_mixRatio',
       timestamp: DateTime.now(),
+      inputs: {
+        'length': length,
+        'width': width,
+        'depth': depth,
+        'mixRatio': _mixRatio,
+      },
+      results: {
+        'mainTitle': 'Concrete Volume',
+        'mainValue': '${result['wetM3']} m³',
+        'formula': 'L × W × D × (1 + Waste)',
+        'materials': [
+          {'label': 'Cement', 'value': '${result['cementBags']} bags (${result['cementKg']} kg)'},
+          {'label': 'Sand (Fine Agg)', 'value': '${result['sandCft']} cft (${result['sandM3']} m³)'},
+          {'label': 'Coarse Agg', 'value': '${result['aggCft']} cft (${result['aggM3']} m³)'},
+          {'label': 'Water', 'value': '${result['waterL']} L'},
+        ],
+      },
     );
     CalcHistoryService.save(item);
+  }
+
+  void _reset() {
+    setState(() {
+      _lengthCtrl.clear();
+      _widthCtrl.clear();
+      _depthCtrl.clear();
+      _mixRatio = '1:1.5:3';
+      _result = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Concrete', style: CalcTextStyles.screenTitle),
-        iconTheme: const IconThemeData(color: CalcColors.textPrimary),
+        title: Text('Concrete', style: CalcTextStyles.screenTitle(context)),
+        iconTheme: IconThemeData(color: CalcColors.textPrimary(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(CalcDimens.pagePadding),
@@ -115,12 +141,12 @@ class _ConcreteScreenState extends State<ConcreteScreen> {
             CalcCard(
               child: Column(
                 children: [
-                  const CalcCardHeader(
+                  CalcCardHeader(
                     icon: Icons.domain_rounded,
                     title: 'Concrete Quantity',
                     description: 'Calculate materials needed for concrete',
-                    iconColor: CalcColors.concrete,
-                    iconBg: CalcColors.concreteBg,
+                    iconColor: CalcColors.concrete(context),
+                    iconBg: CalcColors.concreteBg(context),
                   ),
                   Padding(
                     padding: const EdgeInsets.all(CalcDimens.cardPadding),
@@ -152,19 +178,44 @@ class _ConcreteScreenState extends State<ConcreteScreen> {
             ),
             const SizedBox(height: 8),
             CalcButton(label: 'CALCULATE', onPressed: _calculate),
-            if (_result != null)
-              ResultCard(
-                mainValue: '${_result!['wetM3']} m³',
-                mainLabel: 'Wet Volume | Area: ${_result!['areaSqFt']} sq ft',
-                rows: [
-                  ResultRowData('Cement Bags', '${_result!['cementBags']} bags (${_result!['cementKg']} kg)'),
-                  ResultRowData('Sand (Fine Agg)', '${_result!['sandCft']} cft (${_result!['sandM3']} m³)'),
-                  ResultRowData('Coarse Agg', '${_result!['aggCft']} cft (${_result!['aggM3']} m³)'),
-                  ResultRowData('Water', '${_result!['waterL']} Liters'),
+            const SizedBox(height: 16),
+            if (_result == null)
+              const CalcGuideCard(
+                title: 'HOW CONCRETE WORKS',
+                steps: [
+                  'Enter the dimensions of your concrete slab or volume in feet.',
+                  'Select a standard mix ratio based on strength requirements.',
+                  'Calculate exactly how much cement, sand, and aggregate you need.',
                 ],
-                noteText: '* Assumes 50kg cement bags and 1.54 dry volume factor',
-                type: ResultType.neutral,
+                formula: 'Volume = Length × Width × Depth',
+              )
+            else ...[
+              CalcResultHeader(
+                title: 'Concrete Volume',
+                value: '${_result!['wetM3']} m³',
+                formula: 'Area: ${_result!['areaSqFt']} sq ft',
               ),
+              CalcMaterialTable(
+                rows: [
+                  CalcMaterialRow('Cement', '${_result!['cementBags']} bags (${_result!['cementKg']} kg)'),
+                  CalcMaterialRow('Sand (Fine Agg)', '${_result!['sandCft']} cft (${_result!['sandM3']} m³)'),
+                  CalcMaterialRow('Coarse Agg', '${_result!['aggCft']} cft (${_result!['aggM3']} m³)'),
+                  CalcMaterialRow('Water', '${_result!['waterL']} Liters'),
+                ],
+              ),
+              CalcDetailSection(
+                details: {
+                  'Mix Ratio': _mixRatio,
+                  'Dimensions': '${_lengthCtrl.text} × ${_widthCtrl.text} × ${_depthCtrl.text} ft',
+                  'Dry Volume Factor': '1.54 (Standard)',
+                },
+              ),
+              CalcActionRow(
+                onRecalculate: _calculate,
+                onReset: _reset,
+              ),
+              const SizedBox(height: 24),
+            ],
           ],
         ),
       ),

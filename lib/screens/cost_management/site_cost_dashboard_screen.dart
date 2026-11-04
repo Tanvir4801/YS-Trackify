@@ -39,11 +39,6 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
 
   Future<void> _loadData() async {
     if (_selectedSiteId == null) return;
-    final costProv = context.read<CostManagementProvider>();
-    await costProv.loadDashboardData(siteId: _selectedSiteId);
-    
-    // Also load closing reports for the site to get Labour Cost
-    final reportProv = context.read<ClosingReportProvider>();
     final now = DateTime.now();
     final formatter = DateFormat('yyyy-MM-dd');
     String startDate = '';
@@ -54,10 +49,22 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
     } else {
       startDate = formatter.format(DateTime(now.year, now.month, 1));
     }
+    
+    final endDate = formatter.format(now);
+
+    final costProv = context.read<CostManagementProvider>();
+    await costProv.loadDashboardData(
+      siteId: _selectedSiteId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    
+    // Also load closing reports for the site to get Labour Cost
+    final reportProv = context.read<ClosingReportProvider>();
     await reportProv.loadHistory(
       siteId: _selectedSiteId, 
       startDate: startDate,
-      endDate: formatter.format(now),
+      endDate: endDate,
     );
   }
 
@@ -81,22 +88,24 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
     final grandTotal = totalLabourCost + totalMaterial + totalMachinery + totalTransport + totalMisc;
     final currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: AppColors.navy, // Deep navy
+      backgroundColor: AppColors.backgroundColor(context),
       appBar: AppBar(
-        title: const Text('Site Cost Management', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.navyLight,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text('Site Cost Management', style: TextStyle(color: AppColors.textPrimaryColor(context), fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.surfaceElevatedColor(context),
+        iconTheme: IconThemeData(color: AppColors.textPrimaryColor(context)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.people_alt, color: AppColors.gold),
+            icon: Icon(Icons.people_alt, color: AppColors.primaryColor(context)),
             tooltip: 'Suppliers',
             onPressed: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SupplierManagementScreen()));
             },
           ),
           IconButton(
-            icon: const Icon(Icons.inventory, color: AppColors.gold),
+            icon: Icon(Icons.inventory, color: AppColors.primaryColor(context)),
             tooltip: 'Materials',
             onPressed: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => MaterialManagementScreen(siteId: _selectedSiteId)));
@@ -105,10 +114,10 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
         ],
       ),
       body: (costProv.isLoading || reportProv.isLoading) && costProv.materialPurchases.isEmpty && costProv.siteExpenses.isEmpty && reportProv.savedReports.isEmpty
-          ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+          ? Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context)))
           : RefreshIndicator(
               onRefresh: _loadData,
-              color: AppColors.gold,
+              color: AppColors.primaryColor(context),
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                 children: [
@@ -118,6 +127,7 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
                       Expanded(
                         flex: 2,
                         child: _buildDropdown(
+                          context: context,
                           value: _selectedSiteId,
                           items: sitesProv.sites.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
                           onChanged: (val) {
@@ -130,6 +140,7 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
                       Expanded(
                         flex: 1,
                         child: _buildDropdown(
+                          context: context,
                           value: _timeFilter,
                           items: ['Daily', 'Weekly', 'Monthly'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
                           onChanged: (val) {
@@ -146,22 +157,22 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
                   Center(
                     child: Column(
                       children: [
-                        Text('$_timeFilter Cost'.toUpperCase(), style: const TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1.2)),
+                        Text('$_timeFilter Cost'.toUpperCase(), style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 12, letterSpacing: 1.2)),
                         const SizedBox(height: 8),
-                        Text(currency.format(grandTotal), style: const TextStyle(color: AppColors.gold, fontSize: 36, fontWeight: FontWeight.bold)),
+                        Text(currency.format(grandTotal), style: TextStyle(color: AppColors.primaryColor(context), fontSize: 36, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.1),
+                            color: isDark ? AppColors.successColor(context).withValues(alpha: 0.15) : const Color(0xFFDDF7EF),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.arrow_upward_rounded, color: Colors.green, size: 14),
-                              SizedBox(width: 4),
-                              Text('12% from yesterday', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)),
+                              Icon(Icons.arrow_upward_rounded, color: isDark ? AppColors.successColor(context) : const Color(0xFF00A878), size: 14),
+                              const SizedBox(width: 4),
+                              Text('12% from yesterday', style: TextStyle(color: isDark ? AppColors.successColor(context) : const Color(0xFF00A878), fontSize: 12, fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ),
@@ -171,26 +182,28 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
                   const SizedBox(height: 32),
 
                   // Analytics List
-                  const Text('COST BREAKDOWN', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+                  Text('COST BREAKDOWN', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
                   const SizedBox(height: 12),
                   Container(
                     decoration: BoxDecoration(
-                      color: AppColors.navyLight,
+                      color: AppColors.surfaceElevatedColor(context),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: AppColors.borderColor(context)),
                     ),
                     child: Column(
                       children: [
-                        _buildListTile('Labour', totalLabourCost, Icons.engineering, const Color(0xFF22C55E)),
-                        const Divider(height: 1, color: AppColors.border, indent: 56),
-                        _buildListTile('Materials', totalMaterial, Icons.foundation, const Color(0xFF3B82F6)),
-                        const Divider(height: 1, color: AppColors.border, indent: 56),
-                        _buildListTile('Machinery', totalMachinery, Icons.precision_manufacturing, const Color(0xFFF59E0B)),
-                        const Divider(height: 1, color: AppColors.border, indent: 56),
-                        _buildListTile('Transport', totalTransport, Icons.local_shipping, const Color(0xFF8B5CF6)),
+                        _buildListTile(context, 'Labour', totalLabourCost, Icons.engineering, isDark ? AppColors.successColor(context) : const Color(0xFF00A878), isDark ? AppColors.successColor(context).withValues(alpha: 0.15) : const Color(0xFFDDF7EF)),
+                        Divider(height: 1, color: AppColors.borderColor(context), indent: 56),
+                        _buildListTile(context, 'Materials', totalMaterial, Icons.foundation, isDark ? AppColors.infoColor(context) : const Color(0xFF3B82F6), isDark ? AppColors.infoColor(context).withValues(alpha: 0.15) : const Color(0xFFEAF2FF)),
+                        Divider(height: 1, color: AppColors.borderColor(context), indent: 56),
+                        _buildListTile(context, 'Machinery', totalMachinery, Icons.precision_manufacturing, isDark ? AppColors.warningColor(context) : const Color(0xFFD88A00), isDark ? AppColors.warningColor(context).withValues(alpha: 0.15) : const Color(0xFFFFF5D9)),
+                        Divider(height: 1, color: AppColors.borderColor(context), indent: 56),
+                        _buildListTile(context, 'Transport', totalTransport, Icons.local_shipping,
+                            AppColors.violetColor(context),
+                            isDark ? AppColors.violetColor(context).withValues(alpha: 0.15) : const Color(0xFFF0E7FF)),
                         if (totalMisc > 0) ...[
-                          const Divider(height: 1, color: AppColors.border, indent: 56),
-                          _buildListTile('Misc', totalMisc, Icons.receipt_long, Colors.grey),
+                          Divider(height: 1, color: AppColors.borderColor(context), indent: 56),
+                          _buildListTile(context, 'Misc', totalMisc, Icons.receipt_long, AppColors.textSecondaryColor(context), AppColors.textSecondaryColor(context).withValues(alpha: 0.1)),
                         ]
                       ],
                     ),
@@ -199,9 +212,9 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
 
                   // Top Purchased Materials
                   if (costProv.materialPurchases.isNotEmpty) ...[
-                    const Text('TOP PURCHASED MATERIALS', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+                    Text('TOP PURCHASED MATERIALS', style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
                     const SizedBox(height: 12),
-                    _buildTopMaterials(costProv.materialPurchases),
+                    _buildTopMaterials(context, costProv.materialPurchases),
                     const SizedBox(height: 32),
                   ],
 
@@ -213,13 +226,14 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
                       height: 250,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppColors.navyLight,
+                        color: AppColors.surfaceElevatedColor(context),
                         borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.borderColor(context)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Expense Distribution', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text('Expense Distribution', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 16),
                           Expanded(
                             child: PieChart(
@@ -227,11 +241,11 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
                                 sectionsSpace: 2,
                                 centerSpaceRadius: 40,
                                 sections: [
-                                  if (totalLabourCost > 0) _pieSection(totalLabourCost, grandTotal, const Color(0xFF22C55E), 'Labour'),
-                                  if (totalMaterial > 0) _pieSection(totalMaterial, grandTotal, const Color(0xFF3B82F6), 'Mat'),
-                                  if (totalMachinery > 0) _pieSection(totalMachinery, grandTotal, const Color(0xFFF59E0B), 'Mach'),
-                                  if (totalTransport > 0) _pieSection(totalTransport, grandTotal, const Color(0xFF8B5CF6), 'Trans'),
-                                  if (totalMisc > 0) _pieSection(totalMisc, grandTotal, Colors.grey, 'Misc'),
+                                  if (totalLabourCost > 0) _pieSection(context, totalLabourCost, grandTotal, isDark ? AppColors.successColor(context) : const Color(0xFF00A878), 'Labour'),
+                                  if (totalMaterial > 0) _pieSection(context, totalMaterial, grandTotal, isDark ? AppColors.infoColor(context) : const Color(0xFF3B82F6), 'Mat'),
+                                  if (totalMachinery > 0) _pieSection(context, totalMachinery, grandTotal, isDark ? AppColors.warningColor(context) : const Color(0xFFD88A00), 'Mach'),
+                                  if (totalTransport > 0) _pieSection(context, totalTransport, grandTotal, AppColors.violetColor(context), 'Trans'),
+                                  if (totalMisc > 0) _pieSection(context, totalMisc, grandTotal, AppColors.textSecondaryColor(context), 'Misc'),
                                 ],
                               ),
                             ),
@@ -245,21 +259,21 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
     );
   }
 
-  Widget _buildDropdown({required String? value, required List<DropdownMenuItem<String>> items, required Function(String?) onChanged}) {
+  Widget _buildDropdown({required BuildContext context, required String? value, required List<DropdownMenuItem<String>> items, required Function(String?) onChanged}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: AppColors.navyLight,
+        color: AppColors.surfaceElevatedColor(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.borderColor(context)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
-          dropdownColor: AppColors.navyLight,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-          icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.gold),
+          dropdownColor: AppColors.surfaceElevatedColor(context),
+          style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 14),
+          icon: Icon(Icons.keyboard_arrow_down, color: AppColors.primaryColor(context)),
           items: items,
           onChanged: onChanged,
         ),
@@ -267,39 +281,40 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
     );
   }
 
-  Widget _buildListTile(String title, double amount, IconData icon, Color color) {
-    final currency = NumberFormat.compactCurrency(locale: 'en_IN', symbol: '₹');
+  Widget _buildListTile(BuildContext context, String title, double amount, IconData icon, Color color, Color bgColor) {
+    final currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
             child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(width: 16),
-          Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600))),
-          Text(currency.format(amount), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          Expanded(child: Text(title, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16, fontWeight: FontWeight.w600))),
+          Text(currency.format(amount), style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Widget _buildTopMaterials(List<dynamic> purchases) {
+  Widget _buildTopMaterials(BuildContext context, List<dynamic> purchases) {
     final Map<String, double> materialTotals = {};
     for (var p in purchases) {
       materialTotals[p.materialName] = (materialTotals[p.materialName] ?? 0) + p.totalAmount;
     }
     final topMaterials = materialTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     final displayList = topMaterials.take(4).toList();
-    final currency = NumberFormat.compactCurrency(locale: 'en_IN', symbol: '₹');
+    final currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.navyLight,
+        color: AppColors.surfaceElevatedColor(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.borderColor(context)),
       ),
       child: Column(
         children: displayList.asMap().entries.map((entry) {
@@ -313,16 +328,19 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
                   children: [
                     Container(
                       width: 40, height: 40,
-                      decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                      child: Center(child: Text(mat.key.substring(0, 1).toUpperCase(), style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold))),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.primaryColor(context).withValues(alpha: 0.15) : const Color(0xFFFFF5D9), 
+                        borderRadius: BorderRadius.circular(10)
+                      ),
+                      child: Center(child: Text(mat.key.substring(0, 1).toUpperCase(), style: TextStyle(color: isDark ? AppColors.primaryColor(context) : const Color(0xFFD88A00), fontWeight: FontWeight.bold))),
                     ),
                     const SizedBox(width: 16),
-                    Expanded(child: Text(mat.key, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600))),
-                    Text(currency.format(mat.value), style: const TextStyle(color: AppColors.gold, fontSize: 15, fontWeight: FontWeight.bold)),
+                    Expanded(child: Text(mat.key, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 15, fontWeight: FontWeight.w600))),
+                    Text(currency.format(mat.value), style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 15, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
-              if (idx < displayList.length - 1) const Divider(height: 1, color: AppColors.border, indent: 72),
+              if (idx < displayList.length - 1) Divider(height: 1, color: AppColors.borderColor(context), indent: 72),
             ],
           );
         }).toList(),
@@ -330,14 +348,14 @@ class _SiteCostDashboardScreenState extends State<SiteCostDashboardScreen> {
     );
   }
 
-  PieChartSectionData _pieSection(double value, double total, Color color, String title) {
+  PieChartSectionData _pieSection(BuildContext context, double value, double total, Color color, String title) {
     final percentage = (value / total * 100).toStringAsFixed(0);
     return PieChartSectionData(
       color: color,
       value: value,
       title: '$percentage%',
       radius: 50,
-      titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+      titleStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.surfaceElevatedColor(context)),
     );
   }
 }

@@ -31,7 +31,6 @@ class SessionScannerScreen extends StatefulWidget {
 
 class _SessionScannerScreenState extends State<SessionScannerScreen>
     with WidgetsBindingObserver {
-
   final MobileScannerController _cam = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
@@ -52,6 +51,7 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
 
   List<Labour> _allLabours = [];
   Set<String> _markedLabourIds = {};
+  Map<String, double> _markedFactors = {};
   StreamSubscription? _markedSub;
 
   @override
@@ -65,9 +65,7 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
   }
 
   void _startSessionStream() {
-    _sessionSub = _sessionSvc
-        .streamSession(widget.session.id)
-        .listen((s) {
+    _sessionSub = _sessionSvc.streamSession(widget.session.id).listen((s) {
       if (mounted && s != null) setState(() => _liveSession = s);
     });
   }
@@ -81,7 +79,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     try {
       final box = Hive.box<Labour>(Labour.boxName);
       labours = box.values
-          .where((l) => l.isActive && !l.isTemporary &&
+          .where((l) =>
+              l.isActive &&
+              !l.isTemporary &&
               (l.supervisorId == uid || l.contractorId == contractorId))
           .toList();
     } catch (_) {}
@@ -137,12 +137,31 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
         .listen((snap) {
       if (!mounted) return;
       setState(() {
-        _markedLabourIds = snap.docs
-            .where((d) => (d.data()['siteId'] as String?) == widget.session.siteId)
-            .map((d) {
+        final Set<String> ids = {};
+        final Map<String, double> factors = {};
+
+        for (final d in snap.docs) {
           final data = d.data();
-          return (data['labourId'] as String?) ?? d.id;
-        }).toSet();
+          if ((data['siteId'] as String?) == widget.session.siteId) {
+            final labourId = (data['labourId'] as String?) ?? d.id;
+            final status = (data['status'] as String?) ?? 'present';
+
+            double factor = 1.0;
+            if (status == 'three_quarter')
+              factor = 0.75;
+            else if (status == 'half')
+              factor = 0.5;
+            else if (status == 'quarter')
+              factor = 0.25;
+            else if (status == 'absent' || status == 'pending') factor = 0.0;
+
+            ids.add(labourId);
+            factors[labourId] = factor;
+          }
+        }
+
+        _markedLabourIds = ids;
+        _markedFactors = factors;
       });
     });
   }
@@ -151,7 +170,7 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
   Map<String, dynamic>? _decodeQr(String raw) {
     try {
       final parsed = jsonDecode(raw) as Map<String, dynamic>;
-      final type     = parsed['type']     as String?;
+      final type = parsed['type'] as String?;
       final labourId = (parsed['labourId'] as String?)?.trim() ?? '';
 
       if (labourId.isEmpty) return null;
@@ -159,23 +178,25 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
       // Admin format: {"type":"labour_qr","labourId":"...","name":"...","appId":"..."}
       if (type == 'labour_qr') {
         return {
-          'labourId':   labourId,
+          'labourId': labourId,
           'labourName': (parsed['name'] as String?) ?? 'Labour',
         };
       }
 
       // V2 format: {"labourId":"...","contractorId":"...","labourName":"...","expiresAt": অবস্থার...}
       final contractorId = (parsed['contractorId'] as String?)?.trim() ?? '';
-      final expiresAt    = (parsed['expiresAt']    as num?)?.toInt() ?? 0;
+      final expiresAt = (parsed['expiresAt'] as num?)?.toInt() ?? 0;
       if (expiresAt > 0 && DateTime.now().millisecondsSinceEpoch > expiresAt) {
         return {'error': 'expired'};
       }
       if (contractorId.isNotEmpty) {
         final myContractorId = SessionService.instance.contractorId ??
-            FirebaseAuth.instance.currentUser?.uid ?? '';
-        if (contractorId != myContractorId) return {'error': 'wrong_contractor'};
+            FirebaseAuth.instance.currentUser?.uid ??
+            '';
+        if (contractorId != myContractorId)
+          return {'error': 'wrong_contractor'};
         return {
-          'labourId':   labourId,
+          'labourId': labourId,
           'labourName': (parsed['labourName'] as String?) ?? 'Labour',
         };
       }
@@ -191,14 +212,19 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     final raw = capture.barcodes.first.rawValue;
     if (raw == null || raw.isEmpty) return;
 
-    setState(() { _isProcessing = true; _cooldown = true; });
+    setState(() {
+      _isProcessing = true;
+      _cooldown = true;
+    });
     await _cam.stop();
 
     final decoded = _decodeQr(raw);
 
     if (decoded == null) {
       await _playError();
-      _showFlash(const _ScanFlash(color: AppColors.absent, icon: Icons.cancel_rounded,
+      _showFlash(const _ScanFlash(
+          color: AppColors.absent,
+          icon: Icons.cancel_rounded,
           message: 'Invalid QR code'));
       await Future.delayed(const Duration(seconds: 2));
       _endFlash();
@@ -210,7 +236,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     final err = decoded['error'] as String?;
     if (err == 'expired') {
       await _playError();
-      _showFlash(const _ScanFlash(color: AppColors.absent, icon: Icons.cancel_rounded,
+      _showFlash(const _ScanFlash(
+          color: AppColors.absent,
+          icon: Icons.cancel_rounded,
           message: 'QR expired — ask labour to refresh'));
       await Future.delayed(const Duration(seconds: 2));
       _endFlash();
@@ -220,7 +248,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     }
     if (err != null) {
       await _playError();
-      _showFlash(const _ScanFlash(color: AppColors.absent, icon: Icons.cancel_rounded,
+      _showFlash(const _ScanFlash(
+          color: AppColors.absent,
+          icon: Icons.cancel_rounded,
           message: 'Invalid QR — wrong contractor'));
       await Future.delayed(const Duration(seconds: 2));
       _endFlash();
@@ -229,7 +259,7 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
       return;
     }
 
-    final labourId   = decoded['labourId']   as String;
+    final labourId = decoded['labourId'] as String;
     final labourName = decoded['labourName'] as String? ?? 'Labour';
 
     // Duplicate in this session
@@ -248,9 +278,11 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     }
 
     // Capacity Check
-    final summaries = await _attendanceSvc.getDailyShiftSummary(DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    final summaries = await _attendanceSvc
+        .getDailyShiftSummary(DateFormat('yyyy-MM-dd').format(DateTime.now()));
     final summary = summaries[labourId];
-    final remainingFactor = summary == null ? 1.0 : (1.0 - summary.totalShiftFactor);
+    final remainingFactor =
+        summary == null ? 1.0 : (1.0 - summary.totalShiftFactor);
 
     if (remainingFactor <= 0) {
       await _playError();
@@ -269,7 +301,7 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     // Select Shift Type
     await _playSuccess();
     if (!mounted) return;
-    
+
     final selectedType = await AttendanceTypeSheet.show(
       context,
       labourName: labourName,
@@ -322,61 +354,78 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     final today = _today();
     final session = _liveSession ?? widget.session;
 
+    double factor = 1.0;
+    if (status == 'three_quarter')
+      factor = 0.75;
+    else if (status == 'half')
+      factor = 0.5;
+    else if (status == 'quarter')
+      factor = 0.25;
+    else if (status == 'absent' || status == 'pending') factor = 0.0;
+
     try {
       // ── Primary write: nested multi-tenant path (source of truth) ─────────
-      final nestedRef = FirestorePaths.attendanceRecordRef(contractorId, today, labourId, siteId: session.siteId);
+      final nestedRef = FirestorePaths.attendanceRecordRef(
+          contractorId, today, labourId,
+          siteId: session.siteId);
       await nestedRef.set({
-        'labourId':     labourId,
-        'labourName':   labourName,
+        'labourId': labourId,
+        'labourName': labourName,
         'contractorId': contractorId,
         'supervisorId': uid,
         'supervisorRef': FirestorePaths.userRef(uid),
-        'siteId':       session.siteId,
-        'siteName':     session.siteName,
-        'sessionId':    session.id,
-        'date':         today,
-        'status':       status,
+        'siteId': session.siteId,
+        'siteName': session.siteName,
+        'sessionId': session.id,
+        'date': today,
+        'status': status,
+        'shiftFactor': factor,
         'overtimeHours': 0,
-        'markedVia':    markedVia,
-        'markedAt':     FieldValue.serverTimestamp(),
+        'markedVia': markedVia,
+        'markedAt': FieldValue.serverTimestamp(),
         'wageAtTime': _allLabours
-    .where((l) => l.id == labourId)
-    .map((l) => l.dailyWage)
-    .firstOrNull ?? 0,
+                .where((l) => l.id == labourId)
+                .map((l) => l.dailyWage)
+                .firstOrNull ??
+            0,
       }, SetOptions(merge: true));
 
       // Date-level metadata doc
       await FirestorePaths.attendanceDateDoc(contractorId, today).set({
-        'date': today, 'contractorId': contractorId,
+        'date': today,
+        'contractorId': contractorId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       // ── Secondary write: flat collection (for admin panel reads) ──────────
       // Uses a deterministic doc ID so the write is idempotent (no query needed)
-      final flatDocId = '${contractorId}_${today}_${labourId}_${session.siteId}';
+      final flatDocId =
+          '${contractorId}_${today}_${labourId}_${session.siteId}';
       final flatRef = _db.collection('attendance').doc(flatDocId);
       try {
         final wageAtTime = _allLabours
-            .where((l) => l.id == labourId)
-            .map((l) => l.dailyWage)
-            .firstOrNull ?? 0.0;
+                .where((l) => l.id == labourId)
+                .map((l) => l.dailyWage)
+                .firstOrNull ??
+            0.0;
         await flatRef.set({
-          'id':           flatDocId,
-          'labourId':     labourId,
-          'labourName':   labourName,
+          'id': flatDocId,
+          'labourId': labourId,
+          'labourName': labourName,
           'supervisorId': uid,
           'contractorId': contractorId,
-          'siteId':       session.siteId,
-          'siteName':     session.siteName,
-          'sessionId':    session.id,
-          'date':         today,
-          'status':       status,
+          'siteId': session.siteId,
+          'siteName': session.siteName,
+          'sessionId': session.id,
+          'date': today,
+          'status': status,
+          'shiftFactor': factor,
           'overtimeHours': 0,
-          'markedVia':    markedVia,
-          'wageAtTime':   wageAtTime,
-          'isSynced':     true,
-          'syncedAt':     FieldValue.serverTimestamp(),
-          'updatedAt':    FieldValue.serverTimestamp(),
+          'markedVia': markedVia,
+          'wageAtTime': wageAtTime,
+          'isSynced': true,
+          'syncedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
         debugPrint('⚠️ flat write failed (non-critical): $e');
@@ -386,11 +435,17 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
       try {
         final box = Hive.box('pending_attendance');
         box.put('${labourId}_$today', {
-          'labourId': labourId, 'labourName': labourName,
-          'supervisorId': uid, 'contractorId': contractorId,
-          'siteId': session.siteId, 'sessionId': session.id,
-          'date': today, 'status': status, 'markedVia': markedVia,
-          'isSynced': true, 'scannedAt': DateTime.now().toIso8601String(),
+          'labourId': labourId,
+          'labourName': labourName,
+          'supervisorId': uid,
+          'contractorId': contractorId,
+          'siteId': session.siteId,
+          'sessionId': session.id,
+          'date': today,
+          'status': status,
+          'markedVia': markedVia,
+          'isSynced': true,
+          'scannedAt': DateTime.now().toIso8601String(),
         });
       } catch (_) {}
 
@@ -401,11 +456,17 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
       try {
         final box = Hive.box('pending_attendance');
         box.put('${labourId}_$today', {
-          'labourId': labourId, 'labourName': labourName,
-          'supervisorId': uid, 'contractorId': contractorId,
-          'siteId': session.siteId, 'sessionId': session.id,
-          'date': today, 'status': status, 'markedVia': markedVia,
-          'isSynced': false, 'scannedAt': DateTime.now().toIso8601String(),
+          'labourId': labourId,
+          'labourName': labourName,
+          'supervisorId': uid,
+          'contractorId': contractorId,
+          'siteId': session.siteId,
+          'sessionId': session.id,
+          'date': today,
+          'status': status,
+          'markedVia': markedVia,
+          'isSynced': false,
+          'scannedAt': DateTime.now().toIso8601String(),
         });
         return true;
       } catch (_) {}
@@ -415,7 +476,11 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
 
   void _showFlash(_ScanFlash flash) {
     _flashTimer?.cancel();
-    if (mounted) setState(() { _flash = flash; _isProcessing = false; });
+    if (mounted)
+      setState(() {
+        _flash = flash;
+        _isProcessing = false;
+      });
     if (!flash.showActions) {
       _flashTimer = Timer(const Duration(seconds: 3), _endFlash);
     }
@@ -438,7 +503,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
         Vibration.vibrate(duration: 150, amplitude: 128);
       }
     } catch (_) {}
-    try { await SystemSound.play(SystemSoundType.click); } catch (_) {}
+    try {
+      await SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
   }
 
   Future<void> _playError() async {
@@ -460,7 +527,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
+          left: 20,
+          right: 20,
+          top: 20,
           bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
         ),
         child: Column(
@@ -469,7 +538,8 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
           children: [
             Text(labourName, style: AppTextStyles.headingMedium),
             const SizedBox(height: 4),
-            Text('What work did $labourName do?', style: AppTextStyles.bodyMedium),
+            Text('What work did $labourName do?',
+                style: AppTextStyles.bodyMedium),
             const SizedBox(height: 12),
             TextField(
               controller: ctrl,
@@ -477,7 +547,8 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
               maxLines: 2,
               decoration: InputDecoration(
                 hintText: 'e.g. shuttering work, tile fixing 2nd floor',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 contentPadding: const EdgeInsets.all(12),
               ),
             ),
@@ -493,13 +564,15 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                    style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary),
                     onPressed: () async {
                       final remark = ctrl.text.trim();
                       Navigator.pop(ctx);
                       if (remark.isNotEmpty) {
                         await _attendanceSvc.updateAttendanceRemark(
-                            labourId, _today(), remark, siteId: widget.session.siteId);
+                            labourId, _today(), remark,
+                            siteId: widget.session.siteId);
                       }
                     },
                     child: const Text('Save Remark'),
@@ -532,14 +605,16 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
   Future<void> _startEndSession() async {
     final session = _liveSession ?? widget.session;
     final presentCount = _markedLabourIds.length;
-    
+
     // Close the session in the backend
     await _sessionSvc.endSession(session.id, totalPresent: presentCount);
 
-    // Calc base wages for present
+    // Calc base wages for present based on their shift factor
     double baseWages = 0;
     for (final l in _allLabours) {
-      if (_markedLabourIds.contains(l.id)) baseWages += l.dailyWage;
+      if (_markedFactors.containsKey(l.id)) {
+        baseWages += l.dailyWage * _markedFactors[l.id]!;
+      }
     }
 
     if (!mounted) return;
@@ -563,7 +638,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
-          left: 20, right: 20, top: 30,
+          left: 20,
+          right: 20,
+          top: 30,
           bottom: MediaQuery.of(ctx).padding.bottom + 20,
         ),
         child: Column(
@@ -574,18 +651,25 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.15), 
+                    color: AppColors.primary.withValues(alpha: 0.15),
                     shape: BoxShape.circle),
                 child: const Icon(Icons.check_circle_rounded,
                     color: AppColors.primary, size: 60),
               ),
             ),
             const SizedBox(height: 24),
-            const Center(child: Text('Session Complete', 
-                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800))),
+            const Center(
+                child: Text('Session Complete',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800))),
             const SizedBox(height: 8),
-            Center(child: Text('All records have been saved securely', 
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14))),
+            Center(
+                child: Text('All records have been saved securely',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 14))),
             const SizedBox(height: 32),
             Container(
               padding: const EdgeInsets.all(20),
@@ -597,10 +681,13 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
               child: Column(
                 children: [
                   _summaryRow('Site', session.siteName),
-                  _summaryRow('Date', DateFormat('d MMM yyyy').format(DateTime.now())),
+                  _summaryRow(
+                      'Date', DateFormat('d MMM yyyy').format(DateTime.now())),
                   const Divider(height: 32, color: Colors.white10),
-                  _summaryRow('Present Workers', '$presentCount', color: AppColors.primary, bold: true),
-                  _summaryRow('Total Wages', '₹${baseWages.toStringAsFixed(0)}', bold: true),
+                  _summaryRow('Present Workers', '$presentCount',
+                      color: AppColors.primary, bold: true),
+                  _summaryRow('Total Wages', '₹${baseWages.toStringAsFixed(0)}',
+                      bold: true),
                 ],
               ),
             ),
@@ -612,13 +699,16 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
                 onPressed: () {
                   Navigator.pop(ctx);
                   if (mounted) Navigator.pop(context);
                 },
-                child: const Text('Back to Dashboard', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                child: const Text('Back to Dashboard',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
             ),
           ],
@@ -627,13 +717,16 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
     );
   }
 
-  Widget _summaryRow(String label, String value, {Color? color, bool bold = false}) {
+  Widget _summaryRow(String label, String value,
+      {Color? color, bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
+          Text(label,
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
           Text(value,
               style: TextStyle(
                 fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
@@ -657,7 +750,7 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
 
   String _today() {
     final n = DateTime.now();
-    return '${n.year}-${n.month.toString().padLeft(2,'0')}-${n.day.toString().padLeft(2,'0')}';
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -681,7 +774,8 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
             Row(
               children: [
                 Container(
-                  width: 8, height: 8,
+                  width: 8,
+                  height: 8,
                   decoration: const BoxDecoration(
                       color: AppColors.primary, shape: BoxShape.circle),
                 ),
@@ -689,7 +783,9 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
                 Flexible(
                   child: Text(
                     session.siteName,
-                    style: const TextStyle(color: Colors.white, fontSize: 18,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
                         fontWeight: FontWeight.w800),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -697,8 +793,11 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
               ],
             ),
             Text('SCANNING ACTIVE',
-                style: TextStyle(color: AppColors.primary.withValues(alpha: 0.8),
-                    fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                style: TextStyle(
+                    color: AppColors.primary.withValues(alpha: 0.8),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5)),
           ],
         ),
         actions: [
@@ -712,11 +811,16 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
               style: TextButton.styleFrom(
                 backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: _startEndSession,
               child: const Text('END',
-                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1)),
+                  style: TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                      letterSpacing: 1)),
             ),
           ),
         ],
@@ -732,30 +836,47 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('TOTAL MARKED', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    Text('TOTAL MARKED',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1)),
                     const SizedBox(height: 4),
-                    Text('$markedCount', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, height: 1)),
+                    Text('$markedCount',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            height: 1)),
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                    border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3)),
                   ),
                   child: const Row(
                     children: [
                       Icon(Icons.animation, size: 14, color: AppColors.primary),
                       SizedBox(width: 6),
-                      Text('AI DETECT', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                      Text('AI DETECT',
+                          style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5)),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          
+
           Expanded(child: _buildQrTab()),
         ],
       ),
@@ -768,7 +889,10 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
-          BoxShadow(color: AppColors.primary.withValues(alpha: 0.2), blurRadius: 40, spreadRadius: -10),
+          BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.2),
+              blurRadius: 40,
+              spreadRadius: -10),
         ],
       ),
       child: ClipRRect(
@@ -780,7 +904,8 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
             // Civil Engineer Blueprint Grid Overlay
             Positioned.fill(
               child: CustomPaint(
-                painter: _GridPainter(color: Colors.white.withValues(alpha: 0.1)),
+                painter:
+                    _GridPainter(color: Colors.white.withValues(alpha: 0.1)),
               ),
             ),
             // Corner overlay
@@ -810,10 +935,13 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
                       final lid = _flash!.labourId!;
                       _endFlash();
                       try {
-                        final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-                        final contractorId = SessionService.instance.contractorId ?? uid;
-                        await FirestorePaths
-                            .attendanceRecordRef(contractorId, _today(), lid, siteId: widget.session.siteId)
+                        final uid =
+                            FirebaseAuth.instance.currentUser?.uid ?? '';
+                        final contractorId =
+                            SessionService.instance.contractorId ?? uid;
+                        await FirestorePaths.attendanceRecordRef(
+                                contractorId, _today(), lid,
+                                siteId: widget.session.siteId)
                             .delete();
                       } catch (_) {}
                     }
@@ -824,7 +952,8 @@ class _SessionScannerScreenState extends State<SessionScannerScreen>
             if (_isProcessing)
               Container(
                 color: Colors.black.withValues(alpha: 0.5),
-                child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                child: const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary)),
               ),
           ],
         ),
@@ -876,7 +1005,8 @@ class _FlashCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: flash.color.withValues(alpha: 0.4),
-            blurRadius: 20, offset: const Offset(0, 8),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -895,12 +1025,15 @@ class _FlashCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(flash.message,
-                    style: const TextStyle(color: Colors.white,
-                        fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
               ),
               GestureDetector(
                 onTap: onDismiss,
-                child: Icon(Icons.close, color: Colors.white.withValues(alpha: 0.8), size: 20),
+                child: Icon(Icons.close,
+                    color: Colors.white.withValues(alpha: 0.8), size: 20),
               ),
             ],
           ),
@@ -912,11 +1045,13 @@ class _FlashCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
-                      side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                      side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.5)),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
                     icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('Add Remark', style: TextStyle(fontSize: 13)),
+                    label: const Text('Add Remark',
+                        style: TextStyle(fontSize: 13)),
                     onPressed: onRemark,
                   ),
                 ),
@@ -925,7 +1060,8 @@ class _FlashCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
-                      side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                      side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.5)),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
                     icon: const Icon(Icons.undo_rounded, size: 16),
@@ -967,10 +1103,10 @@ class _AllowancesSheetState extends State<_AllowancesSheet> {
     super.initState();
     _form = Map.from(widget.form);
     _enabled = {
-      'petrol':    _form['petrol']    != 0,
-      'lunch':     _form['lunch']     != 0,
+      'petrol': _form['petrol'] != 0,
+      'lunch': _form['lunch'] != 0,
       'breakfast': _form['breakfast'] != 0,
-      'tea':       _form['tea']       != 0,
+      'tea': _form['tea'] != 0,
     };
     for (final key in _form.keys) {
       _controllers[key] = TextEditingController(
@@ -990,7 +1126,9 @@ class _AllowancesSheetState extends State<_AllowancesSheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left: 20, right: 20, top: 24,
+        left: 20,
+        right: 20,
+        top: 24,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Column(
@@ -1028,7 +1166,8 @@ class _AllowancesSheetState extends State<_AllowancesSheet> {
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary),
                   onPressed: () {
                     for (final key in _form.keys) {
                       if (!(_enabled[key] ?? false)) _form[key] = 0;
@@ -1078,7 +1217,8 @@ class _AllowanceRow extends StatelessWidget {
             child: Text(label,
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: enabled ? AppColors.textPrimary : AppColors.textTertiary,
+                  color:
+                      enabled ? AppColors.textPrimary : AppColors.textTertiary,
                 )),
           ),
           if (enabled)
@@ -1091,8 +1231,10 @@ class _AllowanceRow extends StatelessWidget {
                 decoration: InputDecoration(
                   prefixText: '₹',
                   hintText: '0',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 ),
               ),
             ),
@@ -1122,26 +1264,32 @@ class _CornerPainter extends CustomPainter {
     canvas.drawLine(const Offset(0, 0), const Offset(0, length), paint);
 
     // Top-Right
-    canvas.drawLine(Offset(size.width, 0), Offset(size.width - length, 0), paint);
+    canvas.drawLine(
+        Offset(size.width, 0), Offset(size.width - length, 0), paint);
     canvas.drawLine(Offset(size.width, 0), Offset(size.width, length), paint);
 
     // Bottom-Left
     canvas.drawLine(Offset(0, size.height), Offset(length, size.height), paint);
-    canvas.drawLine(Offset(0, size.height), Offset(0, size.height - length), paint);
+    canvas.drawLine(
+        Offset(0, size.height), Offset(0, size.height - length), paint);
 
     // Bottom-Right
-    canvas.drawLine(Offset(size.width, size.height), Offset(size.width - length, size.height), paint);
-    canvas.drawLine(Offset(size.width, size.height), Offset(size.width, size.height - length), paint);
-    
+    canvas.drawLine(Offset(size.width, size.height),
+        Offset(size.width - length, size.height), paint);
+    canvas.drawLine(Offset(size.width, size.height),
+        Offset(size.width, size.height - length), paint);
+
     // Add crosshair center
     final crossPaint = Paint()
       ..color = color.withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
-      
+
     final center = Offset(size.width / 2, size.height / 2);
-    canvas.drawLine(Offset(center.dx - 15, center.dy), Offset(center.dx + 15, center.dy), crossPaint);
-    canvas.drawLine(Offset(center.dx, center.dy - 15), Offset(center.dx, center.dy + 15), crossPaint);
+    canvas.drawLine(Offset(center.dx - 15, center.dy),
+        Offset(center.dx + 15, center.dy), crossPaint);
+    canvas.drawLine(Offset(center.dx, center.dy - 15),
+        Offset(center.dx, center.dy + 15), crossPaint);
   }
 
   @override
@@ -1158,9 +1306,9 @@ class _GridPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 1.0;
-      
+
     const spacing = 30.0;
-    
+
     for (double i = 0; i < size.width; i += spacing) {
       canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
     }

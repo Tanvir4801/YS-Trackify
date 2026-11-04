@@ -8,6 +8,7 @@ class CalcInputField extends StatefulWidget {
   final String? hint;
   final TextEditingController controller;
   final TextInputType keyboardType;
+  final ValueChanged<String>? onChanged;
   
   const CalcInputField({
     super.key,
@@ -15,6 +16,7 @@ class CalcInputField extends StatefulWidget {
     required this.controller,
     this.initialValue,
     this.hint,
+    this.onChanged,
     this.keyboardType = const TextInputType.numberWithOptions(decimal: true),
   });
 
@@ -32,7 +34,7 @@ class _CalcInputFieldState extends State<CalcInputField> {
       children: [
         Text(
           widget.label.toUpperCase(),
-          style: CalcTextStyles.inputLabel,
+          style: CalcTextStyles.inputLabel(context),
         ),
         const SizedBox(height: 4),
         Focus(
@@ -40,6 +42,7 @@ class _CalcInputFieldState extends State<CalcInputField> {
           child: TextFormField(
             controller: widget.controller,
             keyboardType: widget.keyboardType,
+            onChanged: widget.onChanged,
             inputFormatters: [
               FilteringTextInputFormatter.allow(
                 RegExp(r'^\d*\.?\d*')),
@@ -50,34 +53,34 @@ class _CalcInputFieldState extends State<CalcInputField> {
                 extentOffset: widget.controller.text.length,
               );
             },
-            style: CalcTextStyles.inputText,
+            style: CalcTextStyles.inputText(context),
             decoration: InputDecoration(
               hintText: widget.hint,
-              hintStyle: const TextStyle(
-                fontSize: 14, color: CalcColors.textMuted),
+              hintStyle: TextStyle(
+                fontSize: 14, color: CalcColors.textMuted(context)),
               filled: true,
               fillColor: _focused
-                  ? CalcColors.surface
-                  : CalcColors.inputBg,
+                  ? CalcColors.surface(context)
+                  : CalcColors.inputBg(context),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12, vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(
                   CalcDimens.radiusMd),
-                borderSide: const BorderSide(
-                  color: CalcColors.border, width: 1.5),
+                borderSide: BorderSide(
+                  color: CalcColors.border(context), width: 1.5),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(
                   CalcDimens.radiusMd),
-                borderSide: const BorderSide(
-                  color: CalcColors.border, width: 1.5),
+                borderSide: BorderSide(
+                  color: CalcColors.border(context), width: 1.5),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(
                   CalcDimens.radiusMd),
-                borderSide: const BorderSide(
-                  color: CalcColors.amber, width: 1.5),
+                borderSide: BorderSide(
+                  color: CalcColors.amber(context), width: 1.5),
               ),
             ),
           ),

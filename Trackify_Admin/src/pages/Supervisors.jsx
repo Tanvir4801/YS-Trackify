@@ -4,7 +4,7 @@ import { useScopeId } from '../store/authStore';
 import { getUsers } from '../lib/services/users.service';
 import { getLabours } from '../lib/services/labours.service';
 import { getPayments } from '../lib/services/payments.service';
-import { getAttendanceByDate } from '../lib/services/attendance.service';
+import { subscribeAttendanceByDate } from '../lib/services/attendance.service';
 import { formatCurrency, todayKey } from '../lib/utils';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
@@ -21,25 +21,35 @@ export default function Supervisors() {
   const [monthPayments, setMonthPayments] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // One-time fetch: supervisors, labours, month payments
   useEffect(() => {
-    if (!scopeId) { setSupervisors([]); setLabours([]); setAttendanceToday([]); setMonthPayments([]); setLoading(false); return; }
+    if (!scopeId) { setSupervisors([]); setLabours([]); setMonthPayments([]); setLoading(false); return; }
     setLoading(true);
     const safe = (p) => p.catch((e) => { console.warn('Supervisor sub-query failed:', e?.code, e?.message); return []; });
     Promise.all([
       safe(getUsers(scopeId, { role: 'supervisor' })),
       safe(getLabours(scopeId, { activeOnly: true })),
-      safe(getAttendanceByDate(scopeId, today)),
       safe(getPayments(scopeId, { startDate: monthStart, endDate: today })),
     ])
-      .then(([sups, labs, att, pays]) => {
+      .then(([sups, labs, pays]) => {
         setSupervisors(Array.isArray(sups) ? sups : []);
         setLabours(Array.isArray(labs) ? labs : []);
-        setAttendanceToday(Array.isArray(att) ? att : []);
         setMonthPayments(Array.isArray(pays) ? pays : []);
       })
       .catch((e) => console.error('SUPERVISOR PAGE ERROR:', e))
       .finally(() => setLoading(false));
   }, [scopeId]);
+
+  // P2-6 FIX: Real-time attendance subscription so "Marked Today" updates live
+  useEffect(() => {
+    if (!scopeId) { setAttendanceToday([]); return; }
+    const unsub = subscribeAttendanceByDate(scopeId, today, (records) => {
+      setAttendanceToday(Array.isArray(records) ? records : []);
+    });
+    return () => unsub();
+  }, [scopeId]);
+
+
 
   const rows = useMemo(() => supervisors.map((s) => ({
     ...s,

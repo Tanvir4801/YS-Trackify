@@ -11,6 +11,7 @@ import 'firestore_paths.dart';
 import 'session_service.dart';
 import 'rtdb_service.dart';
 import 'connectivity_service.dart';
+import 'closing_report_service.dart';
 
 class AttendanceService {
   AttendanceService({
@@ -149,6 +150,11 @@ class AttendanceService {
   }) async {
     final uid          = _requireUid();
     final contractorId = _contractorScope(uid);
+
+    final isClosed = await ClosingReportService().isDayClosed(contractorId, attendance.date);
+    if (isClosed) {
+      throw const AttendanceException('Cannot modify attendance for a closed day.');
+    }
 
     if (attendance.labourId.trim().isEmpty) {
       throw Exception('labourId must not be empty');
@@ -407,6 +413,12 @@ class AttendanceService {
   Future<void> updateAttendanceRemark(String labourId, String date, String remark, {String? siteId}) async {
     final uid = _requireUid();
     final contractorId = _contractorScope(uid);
+
+    final isClosed = await ClosingReportService().isDayClosed(contractorId, date);
+    if (isClosed) {
+      throw const AttendanceException('Cannot modify remarks for a closed day.');
+    }
+
     final id = siteId != null && siteId.isNotEmpty ? '${labourId}_${date}_$siteId' : '${labourId}_$date';
 
     final existing = _attendanceBox.get(id);
@@ -445,6 +457,13 @@ class AttendanceService {
   // ── bulkMarkAttendance ────────────────────────────────────
   Future<void> bulkMarkAttendance(String date, String status) async {
     final uid          = _requireUid();
+    final contractorId = _contractorScope(uid);
+
+    final isClosed = await ClosingReportService().isDayClosed(contractorId, date);
+    if (isClosed) {
+      throw const AttendanceException('Cannot modify attendance for a closed day.');
+    }
+
     final parsedStatus = AttendanceStatusX.fromFirestoreValue(status);
     final labours      = await _getLaboursForSupervisor(uid);
 
@@ -582,13 +601,20 @@ class AttendanceService {
   }) async {
     final uid          = _requireUid();
     final contractorId = _contractorScope(uid);
+
+    final isClosed = await ClosingReportService().isDayClosed(contractorId, date);
+    if (isClosed) {
+      throw const AttendanceException('Cannot modify allowances for a closed day.');
+    }
+
     final totalAllowance = petrol + lunch + breakfast + tea;
 
     final records = _attendanceBox.values
         .where((a) =>
             a.date == date &&
             a.siteId == siteId &&
-            a.status == AttendanceStatus.present)
+            a.status != AttendanceStatus.absent &&
+            a.status != AttendanceStatus.pending)
         .toList();
 
     if (records.isEmpty) return 0;
@@ -795,6 +821,12 @@ class AttendanceService {
   }) async {
     final uid   = _requireUid();
     final cId   = contractorId.isNotEmpty ? contractorId : _contractorScope(uid);
+
+    final isClosed = await ClosingReportService().isDayClosed(cId, date);
+    if (isClosed) {
+      throw const AttendanceException('Cannot reset attendance for a closed day.');
+    }
+
     // Find all matching local records
     final matchingRecords = _attendanceBox.values.where((a) {
       if (a.labourId != labourId || a.date != date) return false;

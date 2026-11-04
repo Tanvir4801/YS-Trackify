@@ -16,11 +16,11 @@ class CalcCard extends StatelessWidget {
     return Container(
       margin: margin ?? const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: CalcColors.surface,
+        color: CalcColors.surface(context),
         borderRadius: BorderRadius.circular(
           CalcDimens.radiusLg),
         border: Border.all(
-          color: CalcColors.border, width: 0.5),
+          color: CalcColors.border(context), width: 0.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: child,
@@ -73,9 +73,9 @@ class CalcCardHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                  style: CalcTextStyles.cardTitle),
+                  style: CalcTextStyles.cardTitle(context)),
                 Text(description,
-                  style: CalcTextStyles.cardDesc),
+                  style: CalcTextStyles.cardDesc(context)),
               ],
             ),
           ),

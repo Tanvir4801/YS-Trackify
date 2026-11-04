@@ -17,8 +17,12 @@ export const useAuthStore = create((set) => ({
 
   setUser: ({ uid, role, name, email, contractorId }) => {
     const cId = contractorId ?? null;
+    // P1-6 FIX: Init subscription for contractor AND supervisor
+    // (supervisor operates under contractor's tenant).
     if (role === 'contractor') {
       useSubscriptionStore.getState().initForContractor(cId || uid);
+    } else if (role === 'supervisor' && cId) {
+      useSubscriptionStore.getState().initForContractor(cId);
     }
     set({
       uid,

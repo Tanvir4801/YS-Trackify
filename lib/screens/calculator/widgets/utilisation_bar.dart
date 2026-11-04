@@ -15,7 +15,7 @@ class UtilisationBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final pct = (utilisation * 100).toStringAsFixed(1);
     final isSafe = utilisation <= 1.0;
-    final fillColor = isSafe ? CalcColors.green : CalcColors.red;
+    final fillColor = isSafe ? CalcColors.green(context) : CalcColors.red(context);
     final clampedWidth = utilisation.clamp(0.0, 1.0);
 
     return Padding(
@@ -27,8 +27,8 @@ class UtilisationBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(label,
-                style: const TextStyle(
-                  fontSize: 13, color: CalcColors.greenMid)),
+                style: TextStyle(
+                  fontSize: 13, color: CalcColors.greenMid(context))),
               Text('$pct%',
                 style: TextStyle(
                   fontSize: 13,
@@ -48,8 +48,8 @@ class UtilisationBar extends StatelessWidget {
                 value: val,
                 minHeight: 6,
                 backgroundColor: isSafe
-                  ? CalcColors.greenDivider
-                  : CalcColors.redBorder,
+                  ? CalcColors.greenDivider(context)
+                  : CalcColors.redBorder(context),
                 valueColor: AlwaysStoppedAnimation(fillColor),
               ),
             ),

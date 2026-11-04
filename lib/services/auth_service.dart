@@ -631,6 +631,9 @@ onTimeout: () => throw Exception('checkCurrentUser timeout'),
     HealthPingService.instance.stopPinging();
     await _auth.signOut();
     SessionService.instance.clear();
+    try {
+      await FirebaseFirestore.instance.clearPersistence();
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     debugPrint('User logged out and cache cleared');

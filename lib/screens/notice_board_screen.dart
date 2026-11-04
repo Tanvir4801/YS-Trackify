@@ -72,11 +72,12 @@ class _NoticeBoardScreenState extends State<NoticeBoardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.backgroundColor(context),
       appBar: AppBar(
         title: const Text('Notice Board'),
-        backgroundColor: AppColors.navy,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.surfaceColor(context),
+        foregroundColor: AppColors.textPrimaryColor(context),
+        scrolledUnderElevation: 0,
       ),
       body: Column(
         children: [
@@ -86,14 +87,14 @@ class _NoticeBoardScreenState extends State<NoticeBoardScreen> {
               stream: _firestoreService.streamNotices(_supervisorId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+                  return Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context)));
                 }
                 final notices = snapshot.data ?? [];
                 if (notices.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
                       'No active notices.',
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: AppColors.textSecondaryColor(context)),
                     ),
                   );
                 }
@@ -106,21 +107,21 @@ class _NoticeBoardScreenState extends State<NoticeBoardScreen> {
                     return Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceElevated,
+                        color: AppColors.surfaceElevatedColor(context),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: AppColors.borderColor(context)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Row(
                             children: [
-                              Icon(Icons.campaign_rounded, color: AppColors.gold, size: 20),
-                              SizedBox(width: 8),
+                              Icon(Icons.campaign_rounded, color: AppColors.primaryColor(context), size: 20),
+                              const SizedBox(width: 8),
                               Text(
                                 'Broadcast',
                                 style: TextStyle(
-                                  color: AppColors.gold,
+                                  color: AppColors.primaryColor(context),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
                                 ),
@@ -130,7 +131,7 @@ class _NoticeBoardScreenState extends State<NoticeBoardScreen> {
                           const SizedBox(height: 12),
                           Text(
                             n.message,
-                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                            style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16),
                           ),
                         ],
                       ),
@@ -148,19 +149,19 @@ class _NoticeBoardScreenState extends State<NoticeBoardScreen> {
   Widget _buildPostForm() {
     return Container(
       padding: const EdgeInsets.all(16),
-      color: AppColors.navyLight,
+      color: AppColors.surfaceSecondaryColor(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
             controller: _messageController,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: AppColors.textPrimaryColor(context)),
             maxLines: 3,
             decoration: InputDecoration(
               hintText: 'e.g., Tomorrow holiday. Salary on Sunday.',
-              hintStyle: const TextStyle(color: AppColors.textSecondary),
+              hintStyle: TextStyle(color: AppColors.textSecondaryColor(context)),
               filled: true,
-              fillColor: AppColors.surfaceElevated,
+              fillColor: AppColors.surfaceElevatedColor(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -172,18 +173,18 @@ class _NoticeBoardScreenState extends State<NoticeBoardScreen> {
           ElevatedButton(
             onPressed: _isPosting ? null : _postNotice,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.gold,
-              foregroundColor: AppColors.navy,
+              backgroundColor: AppColors.primaryColor(context),
+              foregroundColor: AppColors.textOnPrimaryColor(context),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
             child: _isPosting
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(color: AppColors.navy, strokeWidth: 2),
+                    child: CircularProgressIndicator(color: AppColors.textOnPrimaryColor(context), strokeWidth: 2),
                   )
                 : const Text(
                     'Broadcast Notice',

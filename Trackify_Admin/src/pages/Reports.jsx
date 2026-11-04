@@ -111,7 +111,7 @@ export default function Reports() {
       const labourIdForQuery = usesLabourFilter && labourFilter !== 'all' ? labourFilter : null;
 
       const [attendance, payments, tempLabours] = await Promise.all([
-        getAttendanceRange(scopeId, bounds.start, bounds.end, labourIdForQuery, isSupervisor, isSupervisor ? uid : null),
+        getAttendanceRange(scopeId, bounds.start, bounds.end, labourIdForQuery),
         activeTab !== 'labourwise' && activeTab !== 'sitewise'
           ? getPayments(scopeId, { startDate: bounds.start, endDate: bounds.end })
           : Promise.resolve([]),
@@ -327,7 +327,7 @@ export default function Reports() {
 
       } else if (activeTab === 'overall') {
         const [tempAttendance, overallTempLabours] = await Promise.all([
-          getAttendanceRange(scopeId, bounds.start, bounds.end, null, isSupervisor, isSupervisor ? uid : null),
+          getAttendanceRange(scopeId, bounds.start, bounds.end, null),
           getTempLaboursByDateRange(scopeId, bounds.start, bounds.end),
         ]);
 

@@ -2,130 +2,130 @@ import 'package:flutter/material.dart';
 
 class CalcColors {
   // Primary (Gold)
-  static const amber        = Color(0xFFD4A437);
-  static const amberDark    = Color(0xFFB8862A);
-  static const amberLight   = Color(0xFFE8C468);
-  static const amberText    = Color(0xFFFFFFFF);
+  static Color amber(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFD4A437) : const Color(0xFFC98F00);
+  static Color amberDark(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFB8862A) : const Color(0xFF9E7000);
+  static Color amberLight(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFE8C468) : const Color(0xFFFFD468);
+  static Color amberText(BuildContext context) => const Color(0xFFFFFFFF);
 
-  // Background (Navy)
-  static const pageBg       = Color(0xFF10141C);
-  static const surface      = Color(0xFF1A2438);
-  static const border       = Color(0xFF2A364F);
-  static const inputBg      = Color(0xFF10141C);
-  static const searchBg     = Color(0xFF23304A);
+  // Background (Navy in dark, Light grey in light)
+  static Color pageBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF10141C) : const Color(0xFFF6F8FB);
+  static Color surface(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A2438) : const Color(0xFFFFFFFF);
+  static Color border(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A364F) : const Color(0xFFE2E8F0);
+  static Color inputBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF10141C) : const Color(0xFFF8FAFC);
+  static Color searchBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFF1F5F9);
 
   // Text
-  static const textPrimary   = Color(0xFFFFFFFF);
-  static const textSecondary = Color(0xFF94A3B8);
-  static const textMuted     = Color(0xFF64748B);
+  static Color textPrimary(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFFFFFF) : const Color(0xFF0F172A);
+  static Color textSecondary(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+  static Color textMuted(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
 
   // Success (result safe)
-  static const green         = Color(0xFF22C55E);
-  static const greenDark     = Color(0xFF22C55E);
-  static const greenMid      = Color(0xFF22C55E);
-  static const greenLight    = Color(0xFF1A2438);
-  static const greenBorder   = Color(0xFF22C55E);
-  static const greenDivider  = Color(0xFF2A364F);
-  static const greenNote     = Color(0xFF94A3B8);
+  static Color green(BuildContext context) => const Color(0xFF22C55E);
+  static Color greenDark(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF22C55E) : const Color(0xFF16A34A);
+  static Color greenMid(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF22C55E) : const Color(0xFF15803D);
+  static Color greenLight(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A2438) : const Color(0xFFDCFCE7);
+  static Color greenBorder(BuildContext context) => const Color(0xFF22C55E);
+  static Color greenDivider(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A364F) : const Color(0xFF86EFAC);
+  static Color greenNote(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF94A3B8) : const Color(0xFF166534);
 
   // Danger (result unsafe)
-  static const red           = Color(0xFFEF4444);
-  static const redDark       = Color(0xFFEF4444);
-  static const redMid        = Color(0xFFEF4444);
-  static const redLight      = Color(0xFF1A2438);
-  static const redBorder     = Color(0xFFEF4444);
+  static Color red(BuildContext context) => const Color(0xFFEF4444);
+  static Color redDark(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFEF4444) : const Color(0xFFDC2626);
+  static Color redMid(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFEF4444) : const Color(0xFFB91C1C);
+  static Color redLight(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A2438) : const Color(0xFFFEE2E2);
+  static Color redBorder(BuildContext context) => const Color(0xFFEF4444);
 
   // Warning card
-  static const warnBg        = Color(0xFF1A2438);
-  static const warnBorder    = Color(0xFFD4A437);
-  static const warnIcon      = Color(0xFFD4A437);
-  static const warnText      = Color(0xFFFFFFFF);
+  static Color warnBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A2438) : const Color(0xFFFFFBEB);
+  static Color warnBorder(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFD4A437) : const Color(0xFFF59E0B);
+  static Color warnIcon(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFD4A437) : const Color(0xFFD97706);
+  static Color warnText(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFFFFFF) : const Color(0xFF92400E);
 
   // Category colors
-  static const concrete      = Color(0xFFD4A437); // Gold
-  static const structural    = Color(0xFFEF4444); // Red
-  static const steel         = Color(0xFF3B82F6); // Blue
-  static const areaWorks     = Color(0xFF22C55E); // Green
-  static const earthwork     = Color(0xFFA855F7); // Purple
-  static const converter     = Color(0xFF14B8A6); // Teal
+  static Color concrete(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFD4A437) : const Color(0xFFF59E0B);
+  static Color structural(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFEF4444) : const Color(0xFF0B3157); // Deep Navy
+  static Color steel(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF3B82F6) : const Color(0xFF1677E8);
+  static Color areaWorks(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF22C55E) : const Color(0xFF00B686);
+  static Color earthwork(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFA855F7) : const Color(0xFF8B5CF6);
+  static Color converter(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF14B8A6) : const Color(0xFF6483A3);
 
   // Category light backgrounds (Elevated Surface)
-  static const concreteBg    = Color(0xFF23304A);
-  static const structuralBg  = Color(0xFF23304A);
-  static const steelBg       = Color(0xFF23304A);
-  static const areaWorksBg   = Color(0xFF23304A);
-  static const earthworkBg   = Color(0xFF23304A);
-  static const converterBg   = Color(0xFF23304A);
+  static Color concreteBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFFEF3C7);
+  static Color structuralBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFFEE2E2);
+  static Color steelBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFDBEAFE);
+  static Color areaWorksBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFDCFCE7);
+  static Color earthworkBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFF3E8FF);
+  static Color converterBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFCCFBF1);
 
   // IS badge
-  static const isBadgeBg     = Color(0xFF23304A);
-  static const isBadgeBorder = Color(0xFF2A364F);
-  static const isBadgeIcon   = Color(0xFFD4A437);
-  static const isBadgeText   = Color(0xFFE8C468);
+  static Color isBadgeBg(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23304A) : const Color(0xFFFEF3C7);
+  static Color isBadgeBorder(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A364F) : const Color(0xFFFDE68A);
+  static Color isBadgeIcon(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFD4A437) : const Color(0xFFD97706);
+  static Color isBadgeText(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFE8C468) : const Color(0xFF92400E);
 }
 
 class CalcTextStyles {
-  static const screenTitle = TextStyle(
+  static TextStyle screenTitle(BuildContext context) => TextStyle(
     fontSize: 22, fontWeight: FontWeight.w500,
-    color: CalcColors.textPrimary,
+    color: CalcColors.textPrimary(context),
   );
-  static const screenSubtitle = TextStyle(
+  static TextStyle screenSubtitle(BuildContext context) => TextStyle(
     fontSize: 13, fontWeight: FontWeight.w400,
-    color: CalcColors.textSecondary,
+    color: CalcColors.textSecondary(context),
   );
-  static const sectionLabel = TextStyle(
+  static TextStyle sectionLabel(BuildContext context) => TextStyle(
     fontSize: 11, fontWeight: FontWeight.w500,
-    color: CalcColors.textMuted,
+    color: CalcColors.textMuted(context),
     letterSpacing: 0.5,
   );
-  static const cardTitle = TextStyle(
+  static TextStyle cardTitle(BuildContext context) => TextStyle(
     fontSize: 15, fontWeight: FontWeight.w500,
-    color: CalcColors.textPrimary,
+    color: CalcColors.textPrimary(context),
   );
-  static const cardDesc = TextStyle(
+  static TextStyle cardDesc(BuildContext context) => TextStyle(
     fontSize: 12, fontWeight: FontWeight.w400,
-    color: CalcColors.textSecondary,
+    color: CalcColors.textSecondary(context),
   );
-  static const inputLabel = TextStyle(
+  static TextStyle inputLabel(BuildContext context) => TextStyle(
     fontSize: 11, fontWeight: FontWeight.w500,
-    color: CalcColors.textSecondary,
+    color: CalcColors.textSecondary(context),
     letterSpacing: 0.4,
   );
-  static const inputText = TextStyle(
+  static TextStyle inputText(BuildContext context) => TextStyle(
     fontSize: 15, fontWeight: FontWeight.w400,
-    color: CalcColors.textPrimary,
+    color: CalcColors.textPrimary(context),
   );
-  static const resultBig = TextStyle(
+  static TextStyle resultBig(BuildContext context) => TextStyle(
     fontSize: 28, fontWeight: FontWeight.w500,
-    color: CalcColors.green,
+    color: CalcColors.green(context),
   );
-  static const resultBigDanger = TextStyle(
+  static TextStyle resultBigDanger(BuildContext context) => TextStyle(
     fontSize: 28, fontWeight: FontWeight.w500,
-    color: CalcColors.red,
+    color: CalcColors.red(context),
   );
-  static const resultLabel = TextStyle(
+  static TextStyle resultLabel(BuildContext context) => TextStyle(
     fontSize: 12, fontWeight: FontWeight.w400,
-    color: CalcColors.greenMid,
+    color: CalcColors.greenMid(context),
   );
-  static const resultRowLabel = TextStyle(
+  static TextStyle resultRowLabel(BuildContext context) => TextStyle(
     fontSize: 13, fontWeight: FontWeight.w400,
-    color: CalcColors.greenMid,
+    color: CalcColors.greenMid(context),
   );
-  static const resultRowValue = TextStyle(
+  static TextStyle resultRowValue(BuildContext context) => TextStyle(
     fontSize: 13, fontWeight: FontWeight.w500,
-    color: CalcColors.greenDark,
+    color: CalcColors.greenDark(context),
   );
-  static const resultNote = TextStyle(
+  static TextStyle resultNote(BuildContext context) => TextStyle(
     fontSize: 11, fontStyle: FontStyle.italic,
-    color: CalcColors.greenNote,
+    color: CalcColors.greenNote(context),
   );
-  static const tileLabel = TextStyle(
+  static TextStyle tileLabel(BuildContext context) => TextStyle(
     fontSize: 13, fontWeight: FontWeight.w500,
-    color: CalcColors.textPrimary,
+    color: CalcColors.textPrimary(context),
   );
-  static const tileDesc = TextStyle(
+  static TextStyle tileDesc(BuildContext context) => TextStyle(
     fontSize: 11, fontWeight: FontWeight.w400,
-    color: CalcColors.textSecondary, height: 1.4,
+    color: CalcColors.textSecondary(context), height: 1.4,
   );
 }
 

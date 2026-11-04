@@ -129,7 +129,16 @@ function mergeFlatAndNested(flatDocs, nestedDocs) {
 
 // ── getAttendanceByDate ─────────────────────────────────────────────────────
 
-export async function getAttendanceByDate(scopeId, date) {
+/**
+ * Fetch attendance for a specific date.
+ * @param {string} scopeId - contractor/tenant ID
+ * @param {string} date    - YYYY-MM-DD
+ * @param {Object} [options]
+ * @param {boolean} [options.isSupervisor=false] - if true, filter by supervisorId
+ * @param {string}  [options.supervisorId]       - uid of supervisor (used when isSupervisor=true)
+ * @param {Set}     [options.allowedLabourIds]   - pre-built set of allowed labour IDs (faster than re-fetch)
+ */
+export async function getAttendanceByDate(scopeId, date, options = {}) {
   if (!date || !scopeId) return [];
 
   const flatQ = query(
@@ -143,15 +152,41 @@ export async function getAttendanceByDate(scopeId, date) {
     getDocs(nestedRecordsCol(scopeId, date)).catch(() => ({ docs: [] })),
   ]);
 
-  return mergeFlatAndNested(
+  let records = mergeFlatAndNested(
     flatSnap.docs.map(snapToDoc),
     nestedSnap.docs.map((d) => nestedSnapToDoc(d, date)),
   );
+
+  // Supervisor isolation: filter to only the workers assigned to this supervisor
+  if (options.isSupervisor && options.supervisorId) {
+    const allowed = options.allowedLabourIds instanceof Set
+      ? options.allowedLabourIds
+      : null;
+    if (allowed) {
+      records = records.filter((r) => r.labourId && allowed.has(r.labourId));
+    } else {
+      // Fallback: filter on supervisorId embedded in attendance doc
+      records = records.filter((r) => r.supervisorId === options.supervisorId);
+    }
+  }
+
+  return records;
 }
 
 // ── subscribeAttendanceByDate ───────────────────────────────────────────────
 
-export function subscribeAttendanceByDate(scopeId, date, callback) {
+/**
+ * Real-time subscription to attendance for a specific date.
+ * @param {string}   scopeId  - contractor/tenant ID
+ * @param {string}   date     - YYYY-MM-DD
+ * @param {Function} callback - receives (records[])
+ * @param {Object}   [options]
+ * @param {boolean}  [options.isSupervisor=false]  - if true, filter by supervisorId
+ * @param {string}   [options.supervisorId]        - uid of supervisor
+ * @param {Set}      [options.allowedLabourIds]    - pre-built Set of allowed labour IDs
+ * @returns {Function} unsubscribe
+ */
+export function subscribeAttendanceByDate(scopeId, date, callback, options = {}) {
   if (!date || !scopeId) {
     callback([]);
     return () => {};
@@ -166,7 +201,23 @@ export function subscribeAttendanceByDate(scopeId, date, callback) {
   let flatDocs = [];
   let nestedDocs = [];
 
-  const emit = () => callback(mergeFlatAndNested(flatDocs, nestedDocs));
+  const emit = () => {
+    let records = mergeFlatAndNested(flatDocs, nestedDocs);
+
+    // Supervisor isolation: filter to only authorized workers
+    if (options.isSupervisor && options.supervisorId) {
+      const allowed = options.allowedLabourIds instanceof Set
+        ? options.allowedLabourIds
+        : null;
+      if (allowed) {
+        records = records.filter((r) => r.labourId && allowed.has(r.labourId));
+      } else {
+        records = records.filter((r) => r.supervisorId === options.supervisorId);
+      }
+    }
+
+    callback(records);
+  };
 
   const unsub1 = onSnapshot(flatQ, (snap) => {
     flatDocs = snap.docs.map(snapToDoc);

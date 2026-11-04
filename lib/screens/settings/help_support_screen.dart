@@ -69,12 +69,13 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.navy,
+      backgroundColor: AppColors.backgroundColor(context),
       appBar: AppBar(
         title: const Text('Help & Support', style: TextStyle(fontWeight: FontWeight.w700)),
-        backgroundColor: AppColors.navy,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: AppColors.surfaceColor(context),
+        foregroundColor: AppColors.textPrimaryColor(context),
         elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: SafeArea(
         child: Padding(
@@ -82,36 +83,36 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Submit a Support Ticket',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimaryColor(context)),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Our support team is here to help. Please select the issue category and describe the problem in detail.',
-                style: TextStyle(fontSize: 14, color: Colors.white70),
+                style: TextStyle(fontSize: 14, color: AppColors.textSecondaryColor(context)),
               ),
               const SizedBox(height: 24),
               
-              const Text(
+              Text(
                 'Issue Category',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54, letterSpacing: 1.2),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textTertiaryColor(context), letterSpacing: 1.2),
               ),
               const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(
-                  color: AppColors.navyLight,
+                  color: AppColors.surfaceElevatedColor(context),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                  border: Border.all(color: AppColors.borderColor(context)),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: _selectedType,
                     isExpanded: true,
-                    dropdownColor: AppColors.navyLight,
-                    icon: const Icon(Icons.arrow_drop_down, color: AppColors.gold),
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    dropdownColor: AppColors.surfaceElevatedColor(context),
+                    icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryColor(context)),
+                    style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16),
                     onChanged: (String? newValue) {
                       if (newValue != null) {
                         setState(() => _selectedType = newValue);
@@ -128,27 +129,27 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
               ),
               
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Description',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54, letterSpacing: 1.2),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textTertiaryColor(context), letterSpacing: 1.2),
               ),
               const SizedBox(height: 8),
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: AppColors.navyLight,
+                    color: AppColors.surfaceSecondaryColor(context),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                    border: Border.all(color: AppColors.borderColor(context)),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: TextField(
                     controller: _issueController,
                     maxLines: null,
                     expands: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: AppColors.textPrimaryColor(context)),
+                    decoration: InputDecoration(
                       hintText: 'Please provide as much detail as possible...',
-                      hintStyle: TextStyle(color: Colors.white30),
+                      hintStyle: TextStyle(color: AppColors.textSecondaryColor(context)),
                       border: InputBorder.none,
                     ),
                   ),
@@ -163,20 +164,20 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
-                      color: _isLoading ? Colors.grey : AppColors.gold,
+                      color: _isLoading ? Colors.grey : AppColors.primaryColor(context),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
                       child: _isLoading
-                          ? const SizedBox(
+                          ? SizedBox(
                               height: 24,
                               width: 24,
-                              child: CircularProgressIndicator(color: AppColors.navy, strokeWidth: 2),
+                              child: CircularProgressIndicator(color: AppColors.textOnPrimaryColor(context), strokeWidth: 2),
                             )
-                          : const Text(
+                          : Text(
                               'Submit Ticket',
                               style: TextStyle(
-                                color: AppColors.navy,
+                                color: AppColors.textOnPrimaryColor(context),
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                               ),

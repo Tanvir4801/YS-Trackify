@@ -1,6 +1,5 @@
 import 'dart:io';
-
-
+import 'dart:convert';
 import 'package:excel/excel.dart' as xl;
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -37,7 +36,9 @@ class ReportExportService {
     required int month,
     required int year,
     required int daysPresent,
+    required int daysThreeQuarter,
     required int daysHalf,
+    required int daysQuarter,
     required int daysAbsent,
     required double totalOTHours,
     required double dailyWage,
@@ -54,7 +55,9 @@ class ReportExportService {
       month: month,
       year: year,
       daysPresent: daysPresent,
+      daysThreeQuarter: daysThreeQuarter,
       daysHalf: daysHalf,
+      daysQuarter: daysQuarter,
       daysAbsent: daysAbsent,
       totalOTHours: totalOTHours,
       dailyWage: dailyWage,
@@ -82,7 +85,9 @@ class ReportExportService {
     required int month,
     required int year,
     required int daysPresent,
+    required int daysThreeQuarter,
     required int daysHalf,
+    required int daysQuarter,
     required int daysAbsent,
     required double totalOTHours,
     required double dailyWage,
@@ -99,7 +104,9 @@ class ReportExportService {
       month: month,
       year: year,
       daysPresent: daysPresent,
+      daysThreeQuarter: daysThreeQuarter,
       daysHalf: daysHalf,
+      daysQuarter: daysQuarter,
       daysAbsent: daysAbsent,
       totalOTHours: totalOTHours,
       dailyWage: dailyWage,
@@ -142,41 +149,178 @@ class ReportExportService {
     final bold = pw.Font.helveticaBold();
     final reg = pw.Font.helvetica();
 
+    final List<Map<String, dynamic>> siteBreakdowns = List<Map<String, dynamic>>.from(jsonDecode(report.siteBreakdownJson));
+
     doc.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (ctx) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text('DAILY SITE CLOSING REPORT', style: pw.TextStyle(font: bold, fontSize: 18, color: _navy)),
-            pw.SizedBox(height: 10),
-            pw.Text('Site: ${report.siteName}', style: pw.TextStyle(font: reg, fontSize: 14)),
-            pw.Text('Date: ${report.date}', style: pw.TextStyle(font: reg, fontSize: 14)),
-            pw.SizedBox(height: 20),
-            
-            pw.Text('ATTENDANCE', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy)),
-            pw.Text('Present: ${report.presentCount}', style: pw.TextStyle(font: reg)),
-            pw.Text('Half Day: ${report.halfDayCount}', style: pw.TextStyle(font: reg)),
-            pw.Text('Absent: ${report.absentCount}', style: pw.TextStyle(font: reg)),
-            pw.SizedBox(height: 15),
+        margin: const pw.EdgeInsets.all(32),
+        build: (ctx) => [
+          // Header
+          pw.Container(
+            padding: const pw.EdgeInsets.all(16),
+            decoration: pw.BoxDecoration(
+              color: _navy,
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('DAILY CLOSING REPORT', style: pw.TextStyle(font: bold, fontSize: 24, color: _white, letterSpacing: 1.5)),
+                pw.SizedBox(height: 8),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Date: ${report.date}', style: pw.TextStyle(font: reg, fontSize: 14, color: _white)),
+                    pw.Text('Sites: ${siteBreakdowns.length}', style: pw.TextStyle(font: reg, fontSize: 14, color: _white)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 24),
 
-            pw.Text('EXPENSES', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy)),
-            pw.Text('Labour Cost: Rs ${report.totalLabourCost.toStringAsFixed(2)}', style: pw.TextStyle(font: reg)),
-            pw.Text('Allowances: Rs ${report.totalAllowances.toStringAsFixed(2)}', style: pw.TextStyle(font: reg)),
-            pw.Text('Advances: Rs ${report.totalAdvance.toStringAsFixed(2)}', style: pw.TextStyle(font: reg)),
-            pw.Text('Total Expense: Rs ${report.totalExpense.toStringAsFixed(2)}', style: pw.TextStyle(font: bold)),
-            pw.SizedBox(height: 15),
-
-            pw.Text('INSIGHTS', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy)),
-            ...report.insights.map((insight) => pw.Text('- ${insight.replaceAll(RegExp(r'[^\x00-\x7F]'), '')}', style: pw.TextStyle(font: reg))),
-            pw.SizedBox(height: 15),
-
-            if (report.supervisorRemarks.isNotEmpty) ...[
-              pw.Text('REMARKS', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy)),
-              pw.Text(report.supervisorRemarks.replaceAll(RegExp(r'[^\x00-\x7F]'), ''), style: pw.TextStyle(font: reg)),
+          // Total Overview Summary
+          pw.Text('OVERALL SUMMARY', style: pw.TextStyle(font: bold, fontSize: 16, color: _navy, letterSpacing: 1.2)),
+          pw.Divider(color: _navy, thickness: 2),
+          pw.SizedBox(height: 12),
+          
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Attendance Total
+              pw.Expanded(
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(border: pw.Border.all(color: _border), borderRadius: pw.BorderRadius.circular(6)),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('ATTENDANCE TOTAL', style: pw.TextStyle(font: bold, fontSize: 12, color: _textS)),
+                      pw.SizedBox(height: 8),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Present:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('${report.presentCount}', style: pw.TextStyle(font: bold, fontSize: 12, color: _green))]),
+                      pw.SizedBox(height: 4),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('3/4 Day:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('${report.threeQuarterCount}', style: pw.TextStyle(font: bold, fontSize: 12, color: _green))]),
+                      pw.SizedBox(height: 4),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Half Day:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('${report.halfDayCount}', style: pw.TextStyle(font: bold, fontSize: 12, color: _amber))]),
+                      pw.SizedBox(height: 4),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('1/4 Day:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('${report.quarterCount}', style: pw.TextStyle(font: bold, fontSize: 12, color: _amber))]),
+                      pw.SizedBox(height: 4),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Absent:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('${report.absentCount}', style: pw.TextStyle(font: bold, fontSize: 12, color: _red))]),
+                    ],
+                  ),
+                ),
+              ),
+              pw.SizedBox(width: 16),
+              // Expenses Total
+              pw.Expanded(
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(border: pw.Border.all(color: _border), borderRadius: pw.BorderRadius.circular(6)),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('EXPENSES TOTAL', style: pw.TextStyle(font: bold, fontSize: 12, color: _textS)),
+                      pw.SizedBox(height: 8),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Labour Wages:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('Rs ${report.totalLabourCost.toStringAsFixed(0)}', style: pw.TextStyle(font: bold, fontSize: 12))]),
+                      if (report.totalMaterialCost > 0) ...[
+                        pw.SizedBox(height: 4),
+                        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Materials:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('Rs ${report.totalMaterialCost.toStringAsFixed(0)}', style: pw.TextStyle(font: bold, fontSize: 12))]),
+                      ],
+                      if (report.totalMachineryCost > 0) ...[
+                        pw.SizedBox(height: 4),
+                        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Machinery:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('Rs ${report.totalMachineryCost.toStringAsFixed(0)}', style: pw.TextStyle(font: bold, fontSize: 12))]),
+                      ],
+                      if (report.totalTransportCost > 0) ...[
+                        pw.SizedBox(height: 4),
+                        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Transport:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('Rs ${report.totalTransportCost.toStringAsFixed(0)}', style: pw.TextStyle(font: bold, fontSize: 12))]),
+                      ],
+                      if (report.totalOtherCost > 0) ...[
+                        pw.SizedBox(height: 4),
+                        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Other:', style: pw.TextStyle(font: reg, fontSize: 12)), pw.Text('Rs ${report.totalOtherCost.toStringAsFixed(0)}', style: pw.TextStyle(font: bold, fontSize: 12))]),
+                      ],
+                      pw.Divider(color: _border),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Gross Total:', style: pw.TextStyle(font: bold, fontSize: 14)), pw.Text('Rs ${report.totalExpense.toStringAsFixed(0)}', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy))]),
+                    ],
+                  ),
+                ),
+              ),
             ],
-          ]
-        )
+          ),
+          pw.SizedBox(height: 32),
+
+          // Site Breakdown
+          pw.Text('SITE-WISE BREAKDOWN', style: pw.TextStyle(font: bold, fontSize: 16, color: _navy, letterSpacing: 1.2)),
+          pw.Divider(color: _navy, thickness: 2),
+          pw.SizedBox(height: 12),
+          
+          if (siteBreakdowns.isEmpty) 
+            pw.Text('No site breakdown data available.', style: pw.TextStyle(font: reg, fontStyle: pw.FontStyle.italic, color: _textS))
+          else
+            ...siteBreakdowns.map((siteData) {
+              return pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 16),
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(color: _cream, border: pw.Border.all(color: _border), borderRadius: pw.BorderRadius.circular(6)),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('${siteData['siteName'] ?? siteData['siteId']}', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy)),
+                    pw.SizedBox(height: 8),
+                    pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Expanded(
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text('Labour: ${siteData['totalLabourCount'] ?? 0} (P:${siteData['presentCount'] ?? 0} H:${siteData['halfDayCount'] ?? 0} A:${siteData['absentCount'] ?? 0})', style: pw.TextStyle(font: reg, fontSize: 12)),
+                              pw.Text('Wages: Rs ${((siteData['labourCost'] as num?) ?? 0).toStringAsFixed(0)}', style: pw.TextStyle(font: reg, fontSize: 12)),
+                            ],
+                          )
+                        ),
+                        pw.Expanded(
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text('Material: Rs ${((siteData['materialCost'] as num?) ?? 0).toStringAsFixed(0)}', style: pw.TextStyle(font: reg, fontSize: 12)),
+                              pw.Text('Machinery: Rs ${((siteData['machineryCost'] as num?) ?? 0).toStringAsFixed(0)}', style: pw.TextStyle(font: reg, fontSize: 12)),
+                              pw.Text('Transport: Rs ${((siteData['transportCost'] as num?) ?? 0).toStringAsFixed(0)}', style: pw.TextStyle(font: reg, fontSize: 12)),
+                            ],
+                          )
+                        )
+                      ]
+                    )
+                  ]
+                )
+              );
+            }),
+
+          pw.SizedBox(height: 32),
+
+          // Remarks & Insights
+          if (report.supervisorRemarks.isNotEmpty) ...[
+            pw.Text('REMARKS', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy)),
+            pw.SizedBox(height: 8),
+            pw.Text(report.supervisorRemarks.replaceAll(RegExp(r'[^\x00-\x7F]'), ''), style: pw.TextStyle(font: reg)),
+            pw.SizedBox(height: 24),
+          ],
+
+          if (report.insights.isNotEmpty) ...[
+            pw.Text('AI INSIGHTS', style: pw.TextStyle(font: bold, fontSize: 14, color: _navy)),
+            pw.SizedBox(height: 8),
+            ...report.insights.map((insight) => pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 6),
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('- ', style: pw.TextStyle(font: bold, color: _gold)),
+                  pw.Expanded(child: pw.Text(insight.replaceAll(RegExp(r'[^\x00-\x7F]'), ''), style: pw.TextStyle(font: reg))),
+                ]
+              )
+            )),
+          ],
+        ]
       )
     );
     
@@ -222,7 +366,9 @@ class ReportExportService {
     required int month,
     required int year,
     required int daysPresent,
+    required int daysThreeQuarter,
     required int daysHalf,
+    required int daysQuarter,
     required int daysAbsent,
     required double totalOTHours,
     required double dailyWage,
@@ -239,10 +385,10 @@ class ReportExportService {
     final reg    = pw.Font.helvetica();
     final mono   = pw.Font.courier();
 
-    final workedDays = daysPresent + daysHalf * 0.5;
-    final total      = daysPresent + daysHalf + daysAbsent;
+    final workedDays = daysPresent + daysThreeQuarter * 0.75 + daysHalf * 0.5 + daysQuarter * 0.25;
+    final total      = daysPresent + daysThreeQuarter + daysHalf + daysQuarter + daysAbsent;
     final attRate    = total > 0
-        ? ((daysPresent + daysHalf * 0.5) / total * 100).round()
+        ? ((workedDays / total) * 100).round()
         : 0;
     final monthLabel = '${_monthName(month)} $year';
 
@@ -412,20 +558,18 @@ class ReportExportService {
                     // Stats row
                     pw.Padding(
                       padding: const pw.EdgeInsets.all(12),
-                      child: pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                      child: pw.Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        alignment: pw.WrapAlignment.spaceAround,
                         children: [
                           _attStat(bold, reg, '$daysPresent', 'Present', _green),
-                          _vDivider(),
+                          _attStat(bold, reg, '$daysThreeQuarter', '3/4 Day', _green),
                           _attStat(bold, reg, '$daysHalf', 'Half Day', _amber),
-                          _vDivider(),
+                          _attStat(bold, reg, '$daysQuarter', '1/4 Day', _amber),
                           _attStat(bold, reg, '$daysAbsent', 'Absent', _red),
-                          _vDivider(),
-                          _attStat(bold, reg,
-                            totalOTHours.toStringAsFixed(1), 'OT Hours', _gold),
-                          _vDivider(),
-                          _attStat(bold, reg,
-                            workedDays.toStringAsFixed(1), 'Days Worked', _navy),
+                          _attStat(bold, reg, totalOTHours.toStringAsFixed(1), 'OT Hours', _gold),
+                          _attStat(bold, reg, workedDays.toStringAsFixed(1), 'Days Worked', _navy),
                         ],
                       ),
                     ),
@@ -697,7 +841,9 @@ class ReportExportService {
     required int month,
     required int year,
     required int daysPresent,
+    required int daysThreeQuarter,
     required int daysHalf,
+    required int daysQuarter,
     required int daysAbsent,
     required double totalOTHours,
     required double dailyWage,
@@ -794,10 +940,12 @@ class ReportExportService {
 
     for (final item in [
       ['Days Present', '$daysPresent days', '#22C55E'],
+      ['Days 3/4 Day', '$daysThreeQuarter days', '#22C55E'],
       ['Days Half Day', '$daysHalf days', '#F59E0B'],
+      ['Days 1/4 Day', '$daysQuarter days', '#F59E0B'],
       ['Days Absent', '$daysAbsent days', '#EF4444'],
       ['OT Hours', '${totalOTHours.toStringAsFixed(1)} hrs', '#D4A437'],
-      ['Days Worked', '${(daysPresent + daysHalf * 0.5).toStringAsFixed(1)} days', '#10141C'],
+      ['Days Worked', '${(daysPresent + daysThreeQuarter * 0.75 + daysHalf * 0.5 + daysQuarter * 0.25).toStringAsFixed(1)} days', '#10141C'],
     ]) {
       setVal(summary, r, 0, item[0], labelCell());
       setVal(summary, r, 1, item[1],

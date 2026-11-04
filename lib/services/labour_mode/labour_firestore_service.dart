@@ -209,8 +209,7 @@ class LabourFirestoreService {
             if (now.difference(notice.createdAt).inHours <= 24) {
               validNotices.add(notice);
             } else {
-              // Automatically delete notices older than 24 hours
-              doc.reference.delete();
+              // Ignore old notices, do not attempt to delete them as Labour lacks permission
             }
           }
           return validNotices;

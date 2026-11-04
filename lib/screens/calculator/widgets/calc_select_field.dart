@@ -22,42 +22,42 @@ class CalcSelectField extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: CalcTextStyles.inputLabel,
+          style: CalcTextStyles.inputLabel(context),
         ),
         const SizedBox(height: 4),
         DropdownButtonFormField<String>(
           initialValue: value,
-          dropdownColor: CalcColors.surface,
+          dropdownColor: CalcColors.surface(context),
           items: items,
           onChanged: onChanged,
-          icon: const Icon(
+          icon: Icon(
             Icons.keyboard_arrow_down_rounded,
             size: 18,
-            color: CalcColors.textMuted,
+            color: CalcColors.textMuted(context),
           ),
-          style: CalcTextStyles.inputText,
+          style: CalcTextStyles.inputText(context),
           decoration: InputDecoration(
             filled: true,
-            fillColor: CalcColors.inputBg,
+            fillColor: CalcColors.inputBg(context),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(
                 CalcDimens.radiusMd),
-              borderSide: const BorderSide(
-                color: CalcColors.border, width: 1.5),
+              borderSide: BorderSide(
+                color: CalcColors.border(context), width: 1.5),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(
                 CalcDimens.radiusMd),
-              borderSide: const BorderSide(
-                color: CalcColors.border, width: 1.5),
+              borderSide: BorderSide(
+                color: CalcColors.border(context), width: 1.5),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(
                 CalcDimens.radiusMd),
-              borderSide: const BorderSide(
-                color: CalcColors.amber, width: 1.5),
+              borderSide: BorderSide(
+                color: CalcColors.amber(context), width: 1.5),
             ),
           ),
         ),

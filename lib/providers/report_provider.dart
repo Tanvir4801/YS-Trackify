@@ -98,25 +98,55 @@ class ReportsProvider extends ChangeNotifier {
       final cId = SessionService.instance.contractorId ?? uid;
       if (cId.isNotEmpty) {
         final daysInMonth = DateTime(year, month + 1, 0).day;
-        for (var day = 1; day <= daysInMonth; day++) {
+        final futures = List.generate(daysInMonth, (index) async {
+          final day = index + 1;
           final dateKey = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
           try {
-            final nestedSnap = await _db
+            return await _db
                 .collection('attendance')
                 .doc(cId)
                 .collection('dates')
                 .doc(dateKey)
                 .collection('records')
                 .get();
-            for (final doc in nestedSnap.docs) {
-              final data = doc.data();
-              if (data['supervisorId'] == uid || data['contractorId'] == uid) {
-                fetchedRecords.add(data);
-              }
+          } catch (_) {
+            return null;
+          }
+        });
+
+        final snapshots = await Future.wait(futures);
+        for (final snap in snapshots) {
+          if (snap == null) continue;
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            if (data['supervisorId'] == uid || data['contractorId'] == uid) {
+              fetchedRecords.add(data);
             }
-          } catch (_) {}
+          }
         }
       }
+
+      // Deduplicate fetchedRecords (new nested collections + legacy flat collection)
+      // Prefer records that have 'shiftFactor' or are from the nested collection.
+      final uniqueRecords = <String, Map<String, dynamic>>{};
+      for (final doc in fetchedRecords) {
+        final dDate = doc['date'] as String? ?? '';
+        final lId = doc['labourId'] as String? ?? '';
+        final sId = doc['siteId'] as String? ?? 'no_site';
+        if (dDate.isEmpty || lId.isEmpty) continue;
+        
+        final key = '${dDate}_${lId}_$sId';
+        // If it already exists, only overwrite if the new one is 'better' (e.g., has shiftFactor which implies it's newer)
+        if (!uniqueRecords.containsKey(key)) {
+          uniqueRecords[key] = doc;
+        } else {
+          final existing = uniqueRecords[key]!;
+          if (doc.containsKey('shiftFactor') && !existing.containsKey('shiftFactor')) {
+            uniqueRecords[key] = doc;
+          }
+        }
+      }
+      final deduplicatedRecords = uniqueRecords.values.toList();
 
       // Batch fetch all sites to resolve names
       final sitesSnap = await _db.collection('sites')
@@ -152,9 +182,43 @@ class ReportsProvider extends ChangeNotifier {
           .where('date', isLessThanOrEqualTo: endTs)
           .get();
 
+      // Batch fetch material purchases and expenses
+      double totalMaterials = 0;
+      double totalExpenses = 0;
+      final siteMaterials = <String, double>{};
+      final siteExpenses = <String, double>{};
+
+      try {
+        final matSnap = await _db.collection('materialPurchases')
+            .doc(cId).collection('purchases')
+            .where('purchaseDate', isGreaterThanOrEqualTo: startTs)
+            .where('purchaseDate', isLessThanOrEqualTo: endTs)
+            .get();
+        for (var doc in matSnap.docs) {
+          final amt = (doc.data()['totalAmount'] as num?)?.toDouble() ?? 0;
+          totalMaterials += amt;
+          final sId = doc.data()['siteId'] as String? ?? 'no_site';
+          siteMaterials[sId] = (siteMaterials[sId] ?? 0) + amt;
+        }
+
+        final expSnap = await _db.collection('siteExpenses')
+            .doc(cId).collection('expenses')
+            .where('expenseDate', isGreaterThanOrEqualTo: startTs)
+            .where('expenseDate', isLessThanOrEqualTo: endTs)
+            .get();
+        for (var doc in expSnap.docs) {
+          final amt = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
+          totalExpenses += amt;
+          final sId = doc.data()['siteId'] as String? ?? 'no_site';
+          siteExpenses[sId] = (siteExpenses[sId] ?? 0) + amt;
+        }
+      } catch (e) {
+        debugPrint('Error fetching materials/expenses for report: $e');
+      }
+
       // Group data by labourId in memory
       final attByLabour = <String, List<Map<String, dynamic>>>{};
-      for (var d in fetchedRecords) {
+      for (var d in deduplicatedRecords) {
         final lId = d['labourId'] as String?;
         if (lId != null) {
           attByLabour.putIfAbsent(lId, () => []).add(d);
@@ -207,6 +271,7 @@ class ReportsProvider extends ChangeNotifier {
             final siteId   = rec['siteId']   as String? ?? 'no_site';
             final rawName = rec['siteName'] as String?;
             final siteName = siteNames[siteId] ?? rawName ?? siteId;
+            rec['siteName'] = siteName; // Inject resolved siteName back into record for PDF
 
             dayFactor += factor;
             dayWage   += factor * wage;
@@ -215,7 +280,11 @@ class ReportsProvider extends ChangeNotifier {
             // Track per-site breakdown
             siteBreakdown.putIfAbsent(siteId, () =>
               SiteReport(siteId: siteId, siteName: siteName));
-            siteBreakdown[siteId]!.addRecord(factor: factor, wage: wage * factor);
+            siteBreakdown[siteId]!.addRecord(
+              factor: factor, 
+              wage: wage * factor,
+              status: rec['status'] as String?,
+            );
           }
 
           totalShiftDays  += dayFactor.clamp(0.0, 1.0);
@@ -241,9 +310,8 @@ class ReportsProvider extends ChangeNotifier {
         final grossSalary = totalWage + totalOTPay;
         final netPayable  = grossSalary - totalAdvances;
 
-        final isActive = labData['isActive'] == true;
-        if (!isActive && totalShiftDays == 0 && totalAdvances == 0) {
-          continue; // Skip inactive workers with no data this month
+        if (grossSalary == 0 && totalAdvances == 0) {
+          continue; // Skip workers with no financial activity this month
         }
 
       results.add(LabourMonthlyReport(
@@ -279,6 +347,10 @@ class ReportsProvider extends ChangeNotifier {
       totalAdvances:   results.fold(0, (s, r) => s + r.totalAdvances),
       totalNet:        results.fold(0, (s, r) => s + r.netPayable),
       totalDaysWorked: results.fold(0.0, (s, r) => s + r.totalDays),
+      totalMaterials:  totalMaterials,
+      totalExpenses:   totalExpenses,
+      siteMaterials:   siteMaterials,
+      siteExpenses:    siteExpenses,
     );
 
     isLoading = false;
@@ -298,7 +370,9 @@ class ReportsProvider extends ChangeNotifier {
 
   double _statusToFactor(String s) {
     if (s == 'present') return 1.0;
+    if (s == 'three_quarter') return 0.75;
     if (s == 'half')    return 0.5;
+    if (s == 'quarter') return 0.25;
     return 0.0;
   }
 
@@ -371,10 +445,20 @@ class SiteReport {
   double totalWage   = 0;
   int    daysCount   = 0;
 
-  void addRecord({required double factor, required double wage}) {
+  int presentCount = 0;
+  int threeQuarterCount = 0;
+  int halfCount = 0;
+  int quarterCount = 0;
+
+  void addRecord({required double factor, required double wage, String? status}) {
     totalFactor += factor;
     totalWage   += wage;
     if (factor > 0) daysCount++;
+    
+    if (status == 'present') presentCount++;
+    else if (status == 'three_quarter') threeQuarterCount++;
+    else if (status == 'half') halfCount++;
+    else if (status == 'quarter') quarterCount++;
   }
 }
 
@@ -388,9 +472,16 @@ class ReportSummary {
     required this.totalAdvances,
     required this.totalNet,
     required this.totalDaysWorked,
+    required this.totalMaterials,
+    required this.totalExpenses,
+    this.siteMaterials = const {},
+    this.siteExpenses = const {},
   });
   final int    month, year, totalLabours, tempLabours;
   final double totalGross, totalAdvances, totalNet, totalDaysWorked;
+  final double totalMaterials, totalExpenses;
+  final Map<String, double> siteMaterials;
+  final Map<String, double> siteExpenses;
   String get monthName {
     const m = ['','Jan','Feb','Mar','Apr','May','Jun',
                 'Jul','Aug','Sep','Oct','Nov','Dec'];

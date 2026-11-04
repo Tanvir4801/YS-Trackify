@@ -10,10 +10,22 @@ import EmptyState from '../components/shared/EmptyState';
 import Pagination, { usePagination } from '../components/shared/Pagination';
 import { Button } from '../components/ui/button';
 
+// P2-1 FIX: Normalize status to lowercase to handle both legacy (capitalized) and
+// new (lowercase) values stored in Firestore.
+function normalizeStatus(raw) {
+  return String(raw || 'pending').trim().toLowerCase();
+}
+
 const STATUS_BADGE = {
-  Pending: 'bg-warning-bg border border-warning/30 text-warning',
-  Resolved: 'bg-success-bg border border-success/30 text-success',
-  Rejected: 'bg-danger-bg border border-danger/30 text-danger',
+  pending:  'bg-warning-bg border border-warning/30 text-warning',
+  resolved: 'bg-success-bg border border-success/30 text-success',
+  rejected: 'bg-danger-bg border border-danger/30 text-danger',
+};
+
+const STATUS_LABEL = {
+  pending:  'Pending',
+  resolved: 'Resolved',
+  rejected: 'Rejected',
 };
 
 export default function SupportRequests() {
@@ -104,9 +116,14 @@ export default function SupportRequests() {
                           {r.description}
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] tracking-wider uppercase font-bold ${STATUS_BADGE[r.status] || STATUS_BADGE.Pending}`}>
-                            {r.status || 'Pending'}
-                          </span>
+                          {(() => {
+                            const s = normalizeStatus(r.status);
+                            return (
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] tracking-wider uppercase font-bold ${STATUS_BADGE[s] || STATUS_BADGE.pending}`}>
+                                {STATUS_LABEL[s] || s}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
@@ -118,9 +135,9 @@ export default function SupportRequests() {
                               <MessageCircle className="h-4 w-4" />
                             </button>
                             
-                            {r.status !== 'Resolved' && (
+                            {normalizeStatus(r.status) !== 'resolved' && (
                               <button
-                                onClick={() => handleStatusChange(r.id, 'Resolved')}
+                                onClick={() => handleStatusChange(r.id, 'resolved')}
                                 disabled={isUpdating}
                                 className="p-2 rounded-lg text-success hover:bg-success/10 transition-colors"
                                 title="Mark as Resolved"
@@ -129,9 +146,9 @@ export default function SupportRequests() {
                               </button>
                             )}
                             
-                            {r.status !== 'Rejected' && (
+                            {normalizeStatus(r.status) !== 'rejected' && (
                               <button
-                                onClick={() => handleStatusChange(r.id, 'Rejected')}
+                                onClick={() => handleStatusChange(r.id, 'rejected')}
                                 disabled={isUpdating}
                                 className="p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors"
                                 title="Reject Request"

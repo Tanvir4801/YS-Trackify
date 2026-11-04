@@ -6,6 +6,9 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/labour_model.dart';
 import '../../services/labour_mode/labour_firestore_service.dart';
+import 'package:provider/provider.dart';
+import '../../providers/theme_provider.dart';
+import 'field_reference_screen.dart';
 
 class LabourSupportScreen extends StatefulWidget {
   const LabourSupportScreen({
@@ -175,6 +178,18 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
       'gu': 'સમસ્યા નોંધવામાં ભૂલ આવી છે. ફરી પ્રયાસ કરો.',
       'hi': 'समस्या दर्ज करने में त्रुटि आई है। फिर से प्रयास करें।',
     },
+    'field_ref_title': {
+      'gu': '📘 સાઇટ સંદર્ભ',
+      'hi': '📘 फील्ड संदर्भ',
+    },
+    'field_ref_subtitle': {
+      'gu': 'ટૂલ્સ, સલામતી અને માપની ઝડપી માહિતી.',
+      'hi': 'उपकरण, सुरक्षा और माप की जानकारी।',
+    },
+    'field_ref_btn': {
+      'gu': 'ખોલો',
+      'hi': 'खोलें',
+    },
   };
 
   String _t(String key) {
@@ -274,7 +289,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+        builder: (ctx) => Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context))),
       );
 
       final requestId = const Uuid().v4();
@@ -308,7 +323,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
   void _showAttendancePopup() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surfaceElevated,
+      backgroundColor: AppColors.cardColor(context),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         final optionsGu = [
@@ -354,7 +369,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
   void _showPaymentPopup() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surfaceElevated,
+      backgroundColor: AppColors.cardColor(context),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         final optionsGu = [
@@ -398,7 +413,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+      return Center(child: CircularProgressIndicator(color: AppColors.primaryColor(context)));
     }
 
     final supervisorName = _supervisor?['name'] ?? (_isHindi ? 'उपलब्ध नहीं' : 'ઉપલબ્ધ નથી');
@@ -413,7 +428,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(_t('title'), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(_t('title'), style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 22, fontWeight: FontWeight.bold)),
               InkWell(
                 onTap: () {
                   setState(() {
@@ -424,27 +439,43 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceElevated,
+                    color: AppColors.cardColor(context),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+                    border: Border.all(color: AppColors.borderColor(context)),
                   ),
                   child: Text(
-                    _isHindi ? 'અ' : 'अ', // Show the opposite language character
-                    style: const TextStyle(color: AppColors.gold, fontSize: 14, fontWeight: FontWeight.bold),
+                    _isHindi ? 'અ' : 'अ',
+                    style: TextStyle(color: AppColors.primaryColor(context), fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(_t('subtitle'), style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+          Text(_t('subtitle'), style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 14)),
           const SizedBox(height: 24),
+          
+          _buildThemeSelector(context),
+          
+          const SizedBox(height: 16),
+          
+          _SupportCard(
+            title: _t('field_ref_title'),
+            subtitle: _t('field_ref_subtitle'),
+            buttonText: _t('field_ref_btn'),
+            buttonColor: AppColors.primaryColor(context),
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FieldReferenceScreen()));
+            },
+          ),
+          
+          const SizedBox(height: 16),
           
           _SupportCard(
             title: _t('call_supervisor_title'),
             subtitle: '${_t('call_supervisor_subtitle')}\n\n${_t('supervisor_label')}: $supervisorName\nMobile: $supervisorPhone',
             buttonText: _t('call_btn'),
-            buttonColor: AppColors.gold,
+            buttonColor: AppColors.primaryColor(context),
             onPressed: () => _callNumber(supervisorPhone),
           ),
           
@@ -454,7 +485,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
             title: _t('whatsapp_title'),
             subtitle: _t('whatsapp_subtitle'),
             buttonText: _t('whatsapp_btn'),
-            buttonColor: const Color(0xFF25D366),
+            buttonColor: AppColors.successColor(context),
             onPressed: _openWhatsApp,
           ),
           
@@ -464,7 +495,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
             title: _t('attendance_title'),
             subtitle: _t('attendance_subtitle'),
             buttonText: _t('report_issue_btn'),
-            buttonColor: AppColors.navyLight,
+            buttonColor: AppColors.errorColor(context),
             onPressed: _showAttendancePopup,
           ),
           
@@ -474,7 +505,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
             title: _t('payment_title'),
             subtitle: _t('payment_subtitle'),
             buttonText: _t('ask_payment_btn'),
-            buttonColor: AppColors.navyLight,
+            buttonColor: AppColors.surfaceColor(context),
             onPressed: _showPaymentPopup,
           ),
 
@@ -484,7 +515,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
             title: _t('site_title'),
             subtitle: '$siteName\n${_t('supervisor_label')}: $supervisorName',
             buttonText: _t('call_btn'),
-            buttonColor: AppColors.navyLight,
+            buttonColor: AppColors.surfaceColor(context),
             onPressed: () => _callNumber(supervisorPhone),
           ),
 
@@ -493,23 +524,23 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
+              color: AppColors.cardColor(context),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.absent.withValues(alpha: 0.5)),
+              border: Border.all(color: AppColors.errorColor(context).withValues(alpha: 0.5)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_t('emergency_title'), style: const TextStyle(color: AppColors.absent, fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(_t('emergency_title'), style: TextStyle(color: AppColors.errorColor(context), fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text(_t('emergency_subtitle'), style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                Text(_t('emergency_subtitle'), style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 14)),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   height: 42,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.absent, 
+                      backgroundColor: AppColors.errorColor(context), 
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
@@ -522,7 +553,7 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
           ),
 
           const SizedBox(height: 24),
-          Text(_t('faq_title'), style: const TextStyle(color: AppColors.gold, fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(_t('faq_title'), style: TextStyle(color: AppColors.primaryColor(context), fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           
           _FaqItem(
@@ -553,6 +584,58 @@ class _LabourSupportScreenState extends State<LabourSupportScreen> {
       ),
     );
   }
+
+  Widget _buildThemeSelector(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardColor(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderColor(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Appearance', style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildThemeBtn(context, themeProvider, ThemeMode.system, Icons.brightness_auto, 'System'),
+              const SizedBox(width: 8),
+              _buildThemeBtn(context, themeProvider, ThemeMode.light, Icons.light_mode, 'Light'),
+              const SizedBox(width: 8),
+              _buildThemeBtn(context, themeProvider, ThemeMode.dark, Icons.dark_mode, 'Dark'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThemeBtn(BuildContext context, ThemeProvider provider, ThemeMode mode, IconData icon, String label) {
+    final isSelected = provider.themeMode == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => provider.setThemeMode(mode),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.softGold(context) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isSelected ? AppColors.primaryColor(context) : AppColors.borderColor(context)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: isSelected ? AppColors.textPrimaryColor(context) : AppColors.textSecondaryColor(context), size: 20),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(color: isSelected ? AppColors.textPrimaryColor(context) : AppColors.textSecondaryColor(context), fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SupportCard extends StatelessWidget {
@@ -575,16 +658,16 @@ class _SupportCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
+        color: AppColors.cardColor(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.borderColor(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(title, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+          Text(subtitle, style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 14)),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -592,7 +675,7 @@ class _SupportCard extends StatelessWidget {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: buttonColor,
-                foregroundColor: buttonColor == AppColors.gold ? AppColors.navy : Colors.white,
+                foregroundColor: buttonColor == AppColors.primaryColor(context) ? AppColors.textOnPrimaryColor(context) : Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: onPressed,
@@ -615,15 +698,15 @@ class _FaqItem extends StatelessWidget {
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
-        title: Text(question, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-        iconColor: AppColors.gold,
-        collapsedIconColor: AppColors.textTertiary,
+        title: Text(question, style: TextStyle(color: AppColors.textPrimaryColor(context), fontSize: 15, fontWeight: FontWeight.w600)),
+        iconColor: AppColors.primaryColor(context),
+        collapsedIconColor: AppColors.textTertiaryColor(context),
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(answer, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              child: Text(answer, style: TextStyle(color: AppColors.textSecondaryColor(context), fontSize: 14)),
             ),
           )
         ],

@@ -69,6 +69,7 @@ class SupportTicketService {
         'userName': userName,
         'userRole': userRole,
         'companyId': companyId,
+        'contractorId': companyId, // Added for Contractor Web Admin visibility
         'companyName': companyName,
         'type': type,
         'issue': issue,

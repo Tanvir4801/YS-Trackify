@@ -62,7 +62,7 @@ class _CalcButtonState extends State<CalcButton>
           height: CalcDimens.buttonHeight,
           margin: const EdgeInsets.only(top: 4),
           decoration: BoxDecoration(
-            color: widget.color ?? CalcColors.amber,
+            color: widget.color ?? CalcColors.amber(context),
             borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,

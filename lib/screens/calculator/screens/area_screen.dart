@@ -11,9 +11,11 @@ import '../widgets/calc_card.dart';
 import '../widgets/category_chip.dart';
 import '../models/calc_history_item.dart';
 import '../services/calc_history_service.dart';
+import '../widgets/calc_result_widgets.dart';
 
 class AreaScreen extends StatefulWidget {
-  const AreaScreen({super.key});
+  final Map<String, dynamic>? initialInputs;
+  const AreaScreen({super.key, this.initialInputs});
 
   @override
   State<AreaScreen> createState() => _AreaScreenState();
@@ -38,7 +40,23 @@ class _AreaScreenState extends State<AreaScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLastValues();
+    if (widget.initialInputs != null) {
+      _selectedSubCat = widget.initialInputs!['subCat']?.toString() ?? 'Tile';
+      _tileLenCtrl.text = widget.initialInputs!['tileLen']?.toString() ?? '';
+      _tileWidCtrl.text = widget.initialInputs!['tileWid']?.toString() ?? '';
+      _tileSqFtCtrl.text = widget.initialInputs!['tileSqFt']?.toString() ?? '';
+      _tileWastageCtrl.text = widget.initialInputs!['tileWastage']?.toString() ?? '';
+      _plasAreaCtrl.text = widget.initialInputs!['plasArea']?.toString() ?? '';
+      _plasThickCtrl.text = widget.initialInputs!['plasThick']?.toString() ?? '';
+      _plasMix = widget.initialInputs!['plasMix']?.toString() ?? '1:4';
+    } else {
+      _tileLenCtrl.text = '';
+      _tileWidCtrl.text = '';
+      _tileSqFtCtrl.text = '';
+      _tileWastageCtrl.text = '';
+      _plasAreaCtrl.text = '';
+      _plasThickCtrl.text = '';
+    }
   }
 
   @override
@@ -51,20 +69,6 @@ class _AreaScreenState extends State<AreaScreen> {
     _plasAreaCtrl.dispose();
     _plasThickCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadLastValues() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _selectedSubCat = prefs.getString('calc_area_cat') ?? 'Tile';
-      _tileLenCtrl.text = prefs.getString('calc_tile_len') ?? '15';
-      _tileWidCtrl.text = prefs.getString('calc_tile_wid') ?? '12';
-      _tileSqFtCtrl.text = prefs.getString('calc_tile_sqft') ?? '4';
-      _tileWastageCtrl.text = prefs.getString('calc_tile_waste') ?? '10';
-      _plasAreaCtrl.text = prefs.getString('calc_plas_area') ?? '100';
-      _plasThickCtrl.text = prefs.getString('calc_plas_thick') ?? '12';
-      _plasMix = prefs.getString('calc_plas_mix') ?? '1:4';
-    });
   }
 
   Future<void> _saveLastValues() async {
@@ -97,10 +101,26 @@ class _AreaScreenState extends State<AreaScreen> {
       
       final item = CalcHistoryItem(
         id: const Uuid().v4(),
-        category: 'Area Works',
+        category: 'Area Works - Tile',
         title: 'Tiles: ${res['grossTiles']}',
         subtitle: subtitle,
         timestamp: DateTime.now(),
+        inputs: {
+          'subCat': 'Tile',
+          'tileLen': len,
+          'tileWid': wid,
+          'tileSqFt': sqft,
+          'tileWastage': waste,
+        },
+        results: {
+          'mainTitle': 'Total Required',
+          'mainValue': '${res['grossTiles']} Tiles',
+          'formula': 'Incl. ${waste}% Wastage',
+          'materials': [
+            {'label': 'Total Area', 'value': '${res['area']} sq ft'},
+            {'label': 'Net Tiles Needed', 'value': '${res['netTiles']}'},
+          ],
+        },
       );
       CalcHistoryService.save(item);
 
@@ -115,15 +135,44 @@ class _AreaScreenState extends State<AreaScreen> {
       
       final item = CalcHistoryItem(
         id: const Uuid().v4(),
-        category: 'Area Works',
+        category: 'Area Works - Plaster',
         title: 'Cement: ${res['bags']} bags',
         subtitle: subtitle,
         timestamp: DateTime.now(),
+        inputs: {
+          'subCat': 'Plaster',
+          'plasArea': area,
+          'plasThick': thick,
+          'plasMix': _plasMix,
+        },
+        results: {
+          'mainTitle': 'Cement Required',
+          'mainValue': '${res['bags']} Bags',
+          'formula': '${res['cementKg']} kg total',
+          'materials': [
+            {'label': 'Area in sq m', 'value': '${res['areaM2']} m²'},
+            {'label': 'Sand Needed', 'value': '${res['sandCft']} cft'},
+            {'label': 'Water Needed', 'value': '${res['waterL']} Liters'},
+          ],
+        },
       );
       CalcHistoryService.save(item);
     }
 
     setState(() => _result = res);
+  }
+
+  void _reset() {
+    setState(() {
+      _tileLenCtrl.clear();
+      _tileWidCtrl.clear();
+      _tileSqFtCtrl.clear();
+      _tileWastageCtrl.clear();
+      _plasAreaCtrl.clear();
+      _plasThickCtrl.clear();
+      _plasMix = '1:4';
+      _result = null;
+    });
   }
 
   Widget _buildTileInputs() {
@@ -174,28 +223,79 @@ class _AreaScreenState extends State<AreaScreen> {
   }
 
   Widget _buildResult() {
-    if (_result == null) return const SizedBox.shrink();
+    if (_result == null) {
+      if (_selectedSubCat == 'Tile') {
+        return const CalcGuideCard(
+          title: 'HOW TILE CALCULATION WORKS',
+          steps: [
+            'Enter the room dimensions.',
+            'Enter the square footage of a single tile.',
+            'Provide wastage percentage to calculate total tiles needed.',
+          ],
+          formula: 'Tiles = (Room Area / Tile Area) + Wastage',
+        );
+      } else {
+        return const CalcGuideCard(
+          title: 'HOW PLASTER WORKS',
+          steps: [
+            'Enter the total area to be plastered.',
+            'Enter the plaster thickness in mm.',
+            'Select the mix ratio to calculate cement and sand.',
+          ],
+          formula: 'Volume = Area × Thickness',
+        );
+      }
+    }
 
     if (_selectedSubCat == 'Tile') {
-      return ResultCard(
-        mainValue: '${_result!['grossTiles']} Tiles',
-        mainLabel: 'Total Required (incl. wastage)',
-        rows: [
-          ResultRowData('Total Area', '${_result!['area']} sq ft'),
-          ResultRowData('Net Tiles Needed', '${_result!['netTiles']}'),
+      return Column(
+        children: [
+          CalcResultHeader(
+            title: 'Total Required',
+            value: '${_result!['grossTiles']} Tiles',
+            formula: 'Incl. ${_tileWastageCtrl.text}% Wastage',
+          ),
+          CalcMaterialTable(
+            rows: [
+              CalcMaterialRow('Total Area', '${_result!['area']} sq ft'),
+              CalcMaterialRow('Net Tiles Needed', '${_result!['netTiles']}'),
+            ],
+          ),
+          CalcDetailSection(
+            details: {
+              'Room Dimensions': '${_tileLenCtrl.text} × ${_tileWidCtrl.text} ft',
+              'Tile Size': '${_tileSqFtCtrl.text} sq ft',
+            },
+          ),
+          CalcActionRow(onRecalculate: _calculate, onReset: _reset),
+          const SizedBox(height: 24),
         ],
-        type: ResultType.neutral,
       );
     } else {
-      return ResultCard(
-        mainValue: '${_result!['bags']} Bags',
-        mainLabel: 'Cement Required (${_result!['cementKg']} kg)',
-        rows: [
-          ResultRowData('Area in sq m', '${_result!['areaM2']} m²'),
-          ResultRowData('Sand', '${_result!['sandCft']} cft'),
-          ResultRowData('Water', '${_result!['waterL']} Liters'),
+      return Column(
+        children: [
+          CalcResultHeader(
+            title: 'Cement Required',
+            value: '${_result!['bags']} Bags',
+            formula: '${_result!['cementKg']} kg total',
+          ),
+          CalcMaterialTable(
+            rows: [
+              CalcMaterialRow('Area in sq m', '${_result!['areaM2']} m²'),
+              CalcMaterialRow('Sand Needed', '${_result!['sandCft']} cft'),
+              CalcMaterialRow('Water Needed', '${_result!['waterL']} Liters'),
+            ],
+          ),
+          CalcDetailSection(
+            details: {
+              'Plaster Area': '${_plasAreaCtrl.text} sq ft',
+              'Thickness': '${_plasThickCtrl.text} mm',
+              'Mix Ratio': _plasMix,
+            },
+          ),
+          CalcActionRow(onRecalculate: _calculate, onReset: _reset),
+          const SizedBox(height: 24),
         ],
-        type: ResultType.neutral,
       );
     }
   }
@@ -203,12 +303,12 @@ class _AreaScreenState extends State<AreaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CalcColors.pageBg,
+      backgroundColor: CalcColors.pageBg(context),
       appBar: AppBar(
-        backgroundColor: CalcColors.pageBg,
+        backgroundColor: CalcColors.pageBg(context),
         elevation: 0,
-        title: const Text('Area Works', style: CalcTextStyles.screenTitle),
-        iconTheme: const IconThemeData(color: CalcColors.textPrimary),
+        title: Text('Area Works', style: CalcTextStyles.screenTitle(context)),
+        iconTheme: IconThemeData(color: CalcColors.textPrimary(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(CalcDimens.pagePadding),
@@ -217,9 +317,9 @@ class _AreaScreenState extends State<AreaScreen> {
           children: [
             Row(
               children: [
-                CategoryChip(label: 'Tiles', isActive: _selectedSubCat == 'Tile', onTap: () { setState(() { _selectedSubCat = 'Tile'; _result = null; }); }, activeColor: CalcColors.areaWorks),
+                CategoryChip(label: 'Tiles', isActive: _selectedSubCat == 'Tile', onTap: () { setState(() { _selectedSubCat = 'Tile'; _result = null; }); }, activeColor: CalcColors.areaWorks(context)),
                 const SizedBox(width: 8),
-                CategoryChip(label: 'Plaster', isActive: _selectedSubCat == 'Plaster', onTap: () { setState(() { _selectedSubCat = 'Plaster'; _result = null; }); }, activeColor: CalcColors.areaWorks),
+                CategoryChip(label: 'Plaster', isActive: _selectedSubCat == 'Plaster', onTap: () { setState(() { _selectedSubCat = 'Plaster'; _result = null; }); }, activeColor: CalcColors.areaWorks(context)),
               ],
             ),
             const SizedBox(height: 16),
@@ -233,7 +333,8 @@ class _AreaScreenState extends State<AreaScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            CalcButton(label: 'CALCULATE', color: CalcColors.areaWorks, onPressed: _calculate),
+            CalcButton(label: 'CALCULATE', color: CalcColors.areaWorks(context), onPressed: _calculate),
+            const SizedBox(height: 16),
             _buildResult(),
           ],
         ),

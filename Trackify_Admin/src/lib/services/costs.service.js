@@ -1,4 +1,4 @@
-import { collection, doc, onSnapshot, setDoc, query, orderBy, updateDoc, increment, getDocs } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, query, orderBy, updateDoc, increment, getDocs, getDoc, deleteDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export function subscribeMaterialPurchases(contractorId, onData) {
@@ -29,7 +29,7 @@ export function subscribeSiteExpenses(contractorId, onData) {
   });
 }
 
-export function subscribeSuppliers(contractorId, onData) {
+export function subscribeSuppliers(contractorId, onData, onError) {
   if (!contractorId) {
     onData([]);
     return () => {};
@@ -40,6 +40,15 @@ export function subscribeSuppliers(contractorId, onData) {
   );
   return onSnapshot(q, (snap) => {
     onData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, (err) => {
+    // P2-4 FIX: propagate error instead of silently stalling
+    console.error('subscribeSuppliers error:', err?.code, err?.message);
+    if (typeof onError === 'function') {
+      onError(err);
+    } else {
+      // Fallback: emit empty array so UI doesn't remain stuck in loading
+      onData([]);
+    }
   });
 }
 
@@ -71,9 +80,35 @@ export async function updateMaterialPurchase(contractorId, id, data) {
 
 export async function deleteMaterialPurchase(contractorId, id) {
   const docRef = doc(db, 'materialPurchases', contractorId, 'purchases', id);
-  // Ideally, deduct from supplier total purchases here if needed, but for simplicity, we just delete.
-  const { deleteDoc } = await import('firebase/firestore');
-  await deleteDoc(docRef);
+
+  // P3-1 FIX: Use a Firestore transaction to safely decrement supplier totals.
+  // This prevents race conditions and double-decrements.
+  await runTransaction(db, async (tx) => {
+    const purchaseSnap = await tx.get(docRef);
+    if (!purchaseSnap.exists()) {
+      // Document already deleted — nothing to do
+      return;
+    }
+
+    const purchase = purchaseSnap.data();
+    const amount = Number(purchase.totalAmount || purchase.amount || 0);
+
+    // Delete the purchase
+    tx.delete(docRef);
+
+    // Decrement supplier total if applicable
+    if (purchase.supplierId && amount > 0) {
+      const supplierRef = doc(db, 'suppliers', contractorId, 'records', purchase.supplierId);
+      const supplierSnap = await tx.get(supplierRef);
+      if (supplierSnap.exists()) {
+        const currentTotal = Number(supplierSnap.data().totalPurchases || 0);
+        // Never allow negative totals
+        const newTotal = Math.max(0, currentTotal - amount);
+        tx.update(supplierRef, { totalPurchases: newTotal });
+      }
+      // If supplier doc doesn't exist, just delete purchase (already done above)
+    }
+  });
 }
 
 export async function updateSiteExpense(contractorId, id, data) {
