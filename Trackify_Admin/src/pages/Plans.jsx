@@ -129,6 +129,7 @@ export default function Plans() {
   // PDF Export and WhatsApp Share state
   const [downloadingPdfId, setDownloadingPdfId] = useState(null);
   const [sharingPdfId, setSharingPdfId] = useState(null);
+  const [whatsappShareData, setWhatsappShareData] = useState(null);
 
   // Search, filter, view mode
   const [search, setSearch] = useState('');
@@ -259,33 +260,45 @@ export default function Plans() {
     setOwnerModalOpen(true);
   };
 
-  // Open Edit Owner Modal
-  const openEditOwner = (e, owner) => {
-    e.stopPropagation();
+  // Open Edit Owner Modal (supports either (e, owner), (owner, e), or (owner))
+  const openEditOwner = (arg1, arg2) => {
+    if (arg1 && typeof arg1.stopPropagation === 'function') {
+      arg1.stopPropagation();
+    }
+    if (arg2 && typeof arg2.stopPropagation === 'function') {
+      arg2.stopPropagation();
+    }
+
+    const target = (arg1 && typeof arg1 === 'object' && arg1.id)
+      ? arg1
+      : (arg2 && typeof arg2 === 'object' && arg2.id ? arg2 : activeOwner);
+
+    if (!target) return;
+
     setOwnerForm({
-      ownerName: owner.ownerName || '',
-      ownerPhone: owner.ownerPhone || '',
-      ownerEmail: owner.ownerEmail || '',
-      ownerAddress: owner.ownerAddress || '',
-      city: owner.city || owner.town || '',
-      town: owner.town || owner.city || '',
-      planNumber: owner.planNumber || '',
-      serialNumber3D: owner.serialNumber3D || '',
-      title: owner.title || '',
-      totalSqFt: owner.totalSqFt ? String(owner.totalSqFt) : '',
-      plotAreaSqFt: owner.plotAreaSqFt ? String(owner.plotAreaSqFt) : '',
-      houseAmount: owner.houseAmount ? String(owner.houseAmount) : '',
-      ratePerSqFt: owner.ratePerSqFt ? String(owner.ratePerSqFt) : '',
-      floors: owner.floors || 'G+1',
-      facing: owner.facing || 'East',
-      bhk: owner.bhk || '3 BHK',
-      engineerName: owner.engineerName || '',
-      engineerPhone: owner.engineerPhone || '',
-      engineerNotes: owner.engineerNotes || '',
+      ownerName: target.ownerName || '',
+      ownerPhone: target.ownerPhone || '',
+      ownerEmail: target.ownerEmail || '',
+      ownerAddress: target.ownerAddress || '',
+      city: target.city || target.town || '',
+      town: target.town || target.city || '',
+      planNumber: target.planNumber || '',
+      serialNumber3D: target.serialNumber3D || '',
+      title: target.title || '',
+      totalSqFt: target.totalSqFt ? String(target.totalSqFt) : '',
+      plotAreaSqFt: target.plotAreaSqFt ? String(target.plotAreaSqFt) : '',
+      houseAmount: target.houseAmount ? String(target.houseAmount) : '',
+      ratePerSqFt: target.ratePerSqFt ? String(target.ratePerSqFt) : '',
+      floors: target.floors || 'G+1',
+      facing: target.facing || 'East',
+      bhk: target.bhk || '3 BHK',
+      engineerName: target.engineerName || '',
+      engineerPhone: target.engineerPhone || '',
+      engineerNotes: target.engineerNotes || '',
       initialAdvanceAmount: '',
       initialAdvanceMode: 'UPI',
     });
-    setEditingOwnerId(owner.id);
+    setEditingOwnerId(target.id);
     setOwnerModalOpen(true);
   };
 
@@ -363,7 +376,7 @@ export default function Plans() {
 
   // Delete Owner
   const handleDeleteOwner = async (e, ownerId, ownerName) => {
-    e.stopPropagation();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete ${ownerName}? This will permanently remove all plans and payments for this owner.`)) {
       return;
     }
@@ -378,9 +391,12 @@ export default function Plans() {
   };
 
   // ── BRANDED PDF BILL GENERATION ────────────────────────────────────
-  const handleDownloadPdfBill = async (e, targetOwner) => {
-    if (e && e.stopPropagation) e.stopPropagation();
-    const ownerToBill = targetOwner || activeOwner;
+  const handleDownloadPdfBill = async (arg1, arg2) => {
+    if (arg1 && typeof arg1.stopPropagation === 'function') arg1.stopPropagation();
+    if (arg2 && typeof arg2.stopPropagation === 'function') arg2.stopPropagation();
+    const ownerToBill = (arg1 && typeof arg1 === 'object' && arg1.id)
+      ? arg1
+      : (arg2 && typeof arg2 === 'object' && arg2.id ? arg2 : activeOwner);
     if (!ownerToBill) {
       toast.error('No owner selected for PDF bill generation');
       return;
@@ -404,9 +420,12 @@ export default function Plans() {
   };
 
   // ── SHARE PDF BILL & THANKS MESSAGE TO WHATSAPP ─────────────────────
-  const handleSharePdfToWhatsApp = async (targetOwner, e) => {
-    if (e && e.stopPropagation) e.stopPropagation();
-    const ownerToBill = targetOwner || activeOwner;
+  const handleSharePdfToWhatsApp = async (arg1, arg2) => {
+    if (arg1 && typeof arg1.stopPropagation === 'function') arg1.stopPropagation();
+    if (arg2 && typeof arg2.stopPropagation === 'function') arg2.stopPropagation();
+    const ownerToBill = (arg1 && typeof arg1 === 'object' && arg1.id)
+      ? arg1
+      : (arg2 && typeof arg2 === 'object' && arg2.id ? arg2 : activeOwner);
     if (!ownerToBill) {
       toast.error('No owner selected for WhatsApp sharing');
       return;
@@ -467,13 +486,28 @@ export default function Plans() {
       // Download the PDF automatically so the user has the file right in their Downloads
       doc.save(safeFilename);
 
-      // Open WhatsApp Web with recipient & message prefilled
       const waUrl = cleanPhone && cleanPhone.length >= 10
         ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(thanksMessage)}`
         : `https://wa.me/?text=${encodeURIComponent(thanksMessage)}`;
 
-      window.open(waUrl, '_blank');
-      toast.success(`PDF downloaded & WhatsApp opened for ${ownerName}! Attach the downloaded PDF in chat.`, {
+      // Attempt to open WhatsApp window directly
+      try {
+        window.open(waUrl, '_blank');
+      } catch (_) {}
+
+      // Open the dedicated, high-priority WhatsApp Share Modal right in front of the screen
+      setWhatsappShareData({
+        owner: ownerToBill,
+        ownerName,
+        ownerPhone: ownerToBill.ownerPhone,
+        cleanPhone,
+        safeFilename,
+        thanksMessage,
+        waUrl,
+        doc,
+      });
+
+      toast.success(`PDF Bill ready! Click "Open WhatsApp Chat Now" in the dialog.`, {
         id: toastId,
         duration: 5000,
       });
@@ -664,20 +698,26 @@ export default function Plans() {
   };
 
   // Open Add Payment Modal with smart defaults
-  const handleOpenAddPayment = (presetType = 'part') => {
+  const handleOpenAddPayment = (presetType = null) => {
     if (!activeOwner) return;
-    const currentCount = (activeOwner.payments || []).length;
-    let installmentName = `Installment ${currentCount + 1}`;
-    let type = presetType;
-    let amount = '';
+    const currentPayments = activeOwner.payments || [];
+    const currentCount = currentPayments.length;
+    const pending = Number(activeOwner.pendingBalance) || 0;
+    const totalFee = Number(activeOwner.houseAmount) || 0;
+    const halfAmt = Math.round(totalFee / 2);
 
-    if (currentCount === 0) {
-      installmentName = '1st Advance Booking';
+    let type = 'half_payment';
+    let installmentName = 'Half Payment (50% Plan Fee)';
+    let amount = halfAmt > 0 ? String(halfAmt) : '';
+
+    if (presetType === 'advance') {
       type = 'advance';
-      const halfAmt = Math.round((Number(activeOwner.houseAmount) || 0) / 2);
+      installmentName = '1st Advance Booking';
       amount = halfAmt > 0 ? String(halfAmt) : '';
-    } else {
-      amount = activeOwner.pendingBalance > 0 ? String(activeOwner.pendingBalance) : '';
+    } else if (currentCount > 0) {
+      type = 'final';
+      installmentName = `Installment ${currentCount + 1} (Final Settlement)`;
+      amount = pending > 0 ? String(pending) : '';
     }
 
     setPaymentForm({
@@ -1353,7 +1393,10 @@ export default function Plans() {
         createPortal(
           <AnimatePresence>
             {activeOwner && (
-              <div className="fixed inset-0 z-[50000] flex items-center justify-center p-3 sm:p-5 overflow-hidden">
+              <div
+                className="fixed inset-0 z-[50000] flex items-center justify-center p-3 sm:p-5 overflow-hidden"
+                style={{ zIndex: 50000 }}
+              >
                 {/* 100% Full-Size Backdrop Blur covering the entire browser window */}
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -1441,7 +1484,7 @@ export default function Plans() {
                       </div>
 
                       <button
-                        onClick={(e) => handleDownloadPdfBill(e, activeOwner)}
+                        onClick={(e) => handleDownloadPdfBill(activeOwner, e)}
                         disabled={downloadingPdfId === activeOwner.id}
                         className="flex items-center gap-1.5 px-3 py-2 bg-gold hover:bg-gold/90 text-bg-primary rounded-xl text-xs font-semibold shadow-sm hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                         title="Download Branded PDF Bill & Schedule of Deliverables"
@@ -1461,12 +1504,12 @@ export default function Plans() {
                       </button>
 
                       <button
-                        onClick={() => openEditOwner(activeOwner)}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-bg-input border border-border-strong hover:border-gold text-text-secondary hover:text-gold rounded-xl text-xs font-medium transition-colors"
-                        title="Edit Plan Fee & Client Details"
+                        onClick={(e) => openEditOwner(e, activeOwner)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-bg-input border border-border-strong hover:border-gold text-text-secondary hover:text-gold rounded-xl text-xs font-semibold transition-colors shadow-sm hover:scale-105 active:scale-95"
+                        title="Edit Plan Fee, House Area & Client Details"
                       >
                         <Pencil className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Edit Fee & Details</span>
+                        <span>Edit Fee & Details</span>
                       </button>
 
                       <button
@@ -1769,23 +1812,24 @@ export default function Plans() {
                           <span>Request Payment</span>
                         </button>
 
-                        {/* Quick Preset 50% Half Payment Button */}
+                        {/* Edit Plan Fee & Details Button */}
                         <button
-                          onClick={handlePresetHalfPayment}
-                          className="px-3 py-1.5 bg-bg-input border border-border-strong hover:border-gold rounded-lg text-xs font-medium text-text-secondary hover:text-gold transition-colors"
-                          title="Auto-fill 50% half payment installment"
+                          onClick={(e) => openEditOwner(e, activeOwner)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border-strong hover:border-gold rounded-lg text-xs font-medium text-text-secondary hover:text-gold transition-colors"
+                          title="Edit Total Agreed Plan Fee or Customer Details"
                         >
-                          + Record 50% Half Payment ({formatCurrency(Math.round((Number(activeOwner.houseAmount) || 0) / 2))})
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>Edit Plan Fee</span>
                         </button>
 
-                        {/* Add Payment Installment Button */}
+                        {/* Primary Record Payment Button */}
                         <button
-                          onClick={() => handleOpenAddPayment('part')}
-                          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gold text-bg-primary rounded-lg text-xs font-semibold shadow-sm hover:scale-105 active:scale-95 transition-all"
-                          title="Add a custom or milestone installment payment"
+                          onClick={() => handleOpenAddPayment()}
+                          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gold text-bg-primary rounded-lg text-xs font-bold shadow-sm hover:scale-105 active:scale-95 transition-all"
+                          title="Record advance booking, half payment (50%), or milestone installment"
                         >
                           <Plus className="w-4 h-4" />
-                          <span>Add Payment Installment</span>
+                          <span>+ Record Payment</span>
                         </button>
                       </div>
                     </div>
@@ -1798,14 +1842,14 @@ export default function Plans() {
                           No payments recorded yet for {activeOwner.ownerName}
                         </h4>
                         <p className="text-xs text-text-muted max-w-sm mx-auto mb-4">
-                          Record advance bookings, half payments (50%), or milestone-based installments for this house owner.
+                          Record advance booking, 50% half payment, or milestone installment for this client.
                         </p>
                         <button
-                          onClick={() => handleOpenAddPayment('advance')}
+                          onClick={() => handleOpenAddPayment()}
                           className="inline-flex items-center gap-1.5 px-4 py-2 bg-gold text-bg-primary text-xs font-bold rounded-lg shadow-sm hover:scale-105 active:scale-95 transition-all"
                         >
                           <Plus className="w-4 h-4" />
-                          <span>Record First Payment</span>
+                          <span>+ Record Payment</span>
                         </button>
                       </div>
                     ) : (
@@ -1865,9 +1909,19 @@ export default function Plans() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {/* Owner Details Card */}
                       <div className="bg-bg-elevated/40 border border-border-strong rounded-xl p-4 space-y-2.5 text-xs">
-                        <h4 className="font-bold text-text-primary flex items-center gap-1.5 mb-2 text-sm">
-                          <Home className="w-4 h-4 text-gold" /> Owner & Site Address
-                        </h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-bold text-text-primary flex items-center gap-1.5 text-sm">
+                            <Home className="w-4 h-4 text-gold" /> Owner & Site Address
+                          </h4>
+                          <button
+                            onClick={(e) => openEditOwner(e, activeOwner)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-gold/15 hover:bg-gold text-gold hover:text-bg-primary border border-gold/30 rounded-lg text-xs font-semibold transition-all"
+                            title="Edit Client & Site Details"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Edit Details</span>
+                          </button>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-text-muted">Customer Name:</span>
                           <span className="font-semibold text-text-primary">{activeOwner.ownerName}</span>
@@ -1888,9 +1942,19 @@ export default function Plans() {
 
                       {/* Structural & Plan Specifications */}
                       <div className="bg-bg-elevated/40 border border-border-strong rounded-xl p-4 space-y-2.5 text-xs">
-                        <h4 className="font-bold text-text-primary flex items-center gap-1.5 mb-2 text-sm">
-                          <Compass className="w-4 h-4 text-gold" /> House Architecture & Area
-                        </h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-bold text-text-primary flex items-center gap-1.5 text-sm">
+                            <Compass className="w-4 h-4 text-gold" /> House Architecture & Area
+                          </h4>
+                          <button
+                            onClick={(e) => openEditOwner(e, activeOwner)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-gold/15 hover:bg-gold text-gold hover:text-bg-primary border border-gold/30 rounded-lg text-xs font-semibold transition-all"
+                            title="Edit Plan Fee & House Area"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Edit Fee & Specs</span>
+                          </button>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-text-muted">Plan Number:</span>
                           <span className="font-mono text-gold font-semibold">{activeOwner.planNumber}</span>
@@ -1964,6 +2028,7 @@ export default function Plans() {
         title={editingOwnerId ? 'Edit House Owner' : 'Add New House Owner (Customer)'}
         confirmText={savingOwner ? 'Saving...' : editingOwnerId ? 'Update Owner' : 'Save Owner'}
         onConfirm={handleSaveOwner}
+        zIndex={100000}
         className="max-w-2xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-4 text-xs">
@@ -2194,6 +2259,87 @@ export default function Plans() {
         </div>
       </Modal>
 
+      {/* ── WHATSAPP SHARE MODAL ── */}
+      <Modal
+        isOpen={!!whatsappShareData}
+        onClose={() => setWhatsappShareData(null)}
+        title="Share Bill & Thanks Message on WhatsApp"
+        confirmText="Open WhatsApp Chat Now"
+        cancelText="Close"
+        onConfirm={() => {
+          if (whatsappShareData?.waUrl) {
+            window.open(whatsappShareData.waUrl, '_blank');
+          }
+        }}
+        zIndex={100000}
+        className="max-w-xl"
+      >
+        {whatsappShareData && (
+          <div className="space-y-4">
+            {/* Header Client Info Card */}
+            <div className="flex items-center justify-between p-3.5 bg-emerald-950/30 border border-emerald-500/30 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500 text-bg-primary rounded-xl font-bold shrink-0">
+                  <Share2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-text-primary">
+                    {whatsappShareData.ownerName}
+                  </h4>
+                  <p className="text-xs text-emerald-400 font-mono mt-0.5">
+                    {whatsappShareData.ownerPhone || 'No phone number provided'}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-md">
+                PDF Generated
+              </span>
+            </div>
+
+            {/* Generated PDF File Badge */}
+            <div className="flex items-center justify-between p-2.5 bg-bg-elevated/70 border border-border rounded-lg text-xs">
+              <div className="flex items-center gap-2 truncate mr-2 font-mono text-[11px] text-gold">
+                <FileText className="w-4 h-4 shrink-0" />
+                <span className="truncate">{whatsappShareData.safeFilename}</span>
+              </div>
+              <button
+                onClick={() => whatsappShareData.doc?.save(whatsappShareData.safeFilename)}
+                className="text-xs text-gold hover:text-gold/80 hover:underline font-semibold shrink-0"
+                title="Download another copy of the PDF"
+              >
+                Download Again
+              </button>
+            </div>
+
+            {/* Message Preview Box */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-text-muted uppercase">
+                  Thank You & Bill Summary (WhatsApp Text)
+                </label>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(whatsappShareData.thanksMessage);
+                    toast.success('Message copied to clipboard!');
+                  }}
+                  className="text-xs text-gold hover:underline flex items-center gap-1 font-medium"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>Copy Message</span>
+                </button>
+              </div>
+              <div className="bg-bg-input border border-border-strong rounded-xl p-3 text-xs text-text-secondary max-h-48 overflow-y-auto whitespace-pre-wrap font-sans leading-relaxed select-all">
+                {whatsappShareData.thanksMessage}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-text-muted leading-tight">
+              💡 <span className="font-semibold text-text-secondary">Instructions:</span> Clicking <span className="text-emerald-400 font-semibold">"Open WhatsApp Chat Now"</span> below opens WhatsApp with {whatsappShareData.ownerName} and the pre-filled thank you message. Attach the downloaded PDF bill to the chat before sending!
+            </p>
+          </div>
+        )}
+      </Modal>
+
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* ── MASTER PLAN CATALOG MANAGER (21 STANDARD ENGINEERING TEMPLATES) ─ */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
@@ -2203,6 +2349,7 @@ export default function Plans() {
         title="Master Plan Catalog (21 Standard Engineering Templates)"
         confirmText={savingCatalog ? 'Saving...' : 'Save Catalog Templates'}
         onConfirm={handleSaveCatalog}
+        zIndex={100000}
         className="max-w-2xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-4 text-xs">
@@ -2291,6 +2438,7 @@ export default function Plans() {
         title={`Add Plan to ${activeOwner?.ownerName || 'Owner'}`}
         confirmText="Add Plan"
         onConfirm={handleAddPlanToActiveOwner}
+        zIndex={100000}
         className="max-w-lg"
       >
         <div className="space-y-4 text-xs">
@@ -2384,6 +2532,7 @@ export default function Plans() {
         title={`Record Plan Fee Payment for ${activeOwner?.ownerName || 'Client'}`}
         confirmText="Record Payment"
         onConfirm={handleAddPayment}
+        zIndex={100000}
         className="max-w-lg"
       >
         <div className="space-y-4 text-xs">
@@ -2400,6 +2549,94 @@ export default function Plans() {
                 <div className="text-sm font-semibold text-text-primary">
                   {formatCurrency(activeOwner.houseAmount)}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* 1-Click Quick Amount Fillers */}
+          {activeOwner && (
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">
+                Quick 1-Click Amount Fill:
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const half = Math.round((Number(activeOwner.houseAmount) || 0) / 2);
+                    setPaymentForm({
+                      ...paymentForm,
+                      type: 'half_payment',
+                      installmentName: 'Half Payment (50% Plan Fee)',
+                      amount: String(half),
+                    });
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                    paymentForm.type === 'half_payment'
+                      ? 'bg-gold text-bg-primary border-gold shadow-sm'
+                      : 'bg-bg-input border-border-strong hover:border-gold text-text-secondary hover:text-gold'
+                  }`}
+                >
+                  ⚡ 50% Half ({formatCurrency(Math.round((Number(activeOwner.houseAmount) || 0) / 2))})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pending = Number(activeOwner.pendingBalance) || 0;
+                    setPaymentForm({
+                      ...paymentForm,
+                      type: 'final',
+                      installmentName: (activeOwner.payments || []).length === 0 ? 'Full Payment (100% Cleared)' : 'Final Balance Settlement',
+                      amount: String(pending),
+                    });
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                    paymentForm.type === 'final'
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                      : 'bg-bg-input border-border-strong hover:border-emerald-500 text-text-secondary hover:text-emerald-400'
+                  }`}
+                >
+                  ✓ Full Remaining ({formatCurrency(activeOwner.pendingBalance)})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentForm({
+                      ...paymentForm,
+                      type: 'advance',
+                      installmentName: '1st Advance Booking',
+                      amount: paymentForm.amount || '5000',
+                    });
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                    paymentForm.type === 'advance'
+                      ? 'bg-cyan-600 text-white border-cyan-500 shadow-sm'
+                      : 'bg-bg-input border-border-strong hover:border-cyan-500 text-text-secondary hover:text-cyan-400'
+                  }`}
+                >
+                  ★ Advance Booking
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextNum = (activeOwner.payments || []).length + 1;
+                    setPaymentForm({
+                      ...paymentForm,
+                      type: 'part',
+                      installmentName: `Installment ${nextNum}`,
+                    });
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                    paymentForm.type === 'part'
+                      ? 'bg-bg-elevated text-gold border-gold'
+                      : 'bg-bg-input border-border-strong hover:border-border text-text-secondary'
+                  }`}
+                >
+                  ✎ Custom Part
+                </button>
               </div>
             </div>
           )}

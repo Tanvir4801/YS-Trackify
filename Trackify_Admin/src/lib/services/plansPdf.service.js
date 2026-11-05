@@ -282,10 +282,12 @@ export async function generateHousePlanInvoicePDF({
   const serialNumber3D = owner.serialNumber3D || '-';
   const billInvoiceNo = `INV-${planNumber.replace(/^PLN-/i, '')}`;
   const totalPlanFee = Number(owner.houseAmount) || 0;
-  const totalPaid = Number(owner.totalPaid) || 0;
-  const pendingBalance = Math.max(0, totalPlanFee - totalPaid);
-
   const payments = Array.isArray(owner.payments) ? owner.payments : [];
+
+  // Always compute total paid directly from payments ledger to ensure 100% calculation accuracy
+  const calculatedTotalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalPaid = payments.length > 0 ? calculatedTotalPaid : (Number(owner.totalPaid) || 0);
+  const pendingBalance = Math.max(0, totalPlanFee - totalPaid);
 
   // Use owner's plansList if populated; otherwise fallback to the exact 21 default engineering plans
   const rawPlans = Array.isArray(owner.plansList) && owner.plansList.length > 0 ? owner.plansList : DEFAULT_MASTER_PLANS;
@@ -301,7 +303,7 @@ export async function generateHousePlanInvoicePDF({
     paymentBadgeText = '50%+ ADVANCE CLEARED';
     badgeBgColor = [245, 166, 35]; // Gold/Amber
   } else if (totalPaid > 0) {
-    paymentBadgeText = 'ADVANCE RECEIVED';
+    paymentBadgeText = 'PARTIALLY PAID';
     badgeBgColor = [14, 165, 233]; // Cyan/Sky
   }
 
@@ -649,7 +651,7 @@ export async function generateHousePlanInvoicePDF({
 
   const summaryData = [
     ['Total Agreed Plan Fee:', formatPdfCurrency(totalPlanFee)],
-    ['Total Advance Received:', formatPdfCurrency(totalPaid)],
+    ['Total Amount Received:', formatPdfCurrency(totalPaid)],
     ['Net Remaining Balance:', formatPdfCurrency(pendingBalance)],
   ];
 

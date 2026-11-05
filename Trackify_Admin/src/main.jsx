@@ -20,7 +20,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <BrandingProvider>
-          <Toaster position="top-right" />
+          <Toaster
+            position="top-right"
+            containerStyle={{ zIndex: 999999 }}
+            toastOptions={{
+              style: {
+                zIndex: 999999,
+                background: '#18181B',
+                color: '#F4F4F5',
+                border: '1px solid #3F3F46',
+              },
+            }}
+          />
           <App />
         </BrandingProvider>
       </QueryClientProvider>

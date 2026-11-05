@@ -12,7 +12,7 @@ const Modal = ({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   className,
-  zIndex = 'z-[100000]',
+  zIndex = 100000,
 }) => {
   const [mounted, setMounted] = useState(false);
 
@@ -23,10 +23,17 @@ const Modal = ({
 
   if (!mounted) return null;
 
+  const numericZIndex = typeof zIndex === 'number'
+    ? zIndex
+    : parseInt(String(zIndex).replace(/[^0-9]/g, '')) || 100000;
+
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className={clsx('fixed inset-0 flex items-center justify-center p-4', zIndex)}>
+        <div
+          className={clsx('fixed inset-0 flex items-center justify-center p-4', typeof zIndex === 'string' ? zIndex : '')}
+          style={{ zIndex: numericZIndex }}
+        >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
