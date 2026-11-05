@@ -317,28 +317,32 @@ export async function generateHousePlanInvoicePDF({
   doc.rect(0, 6.6, pageWidth, 0.4, 'F');
 
   // Left Partner: Yogeshwar S. Patel
+  const p1Name = 'YOGESHWAR S. PATEL';
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(245, 166, 35); // Crisp Bright Gold
-  const p1Name = 'YOGESHWAR S. PATEL';
   doc.text(p1Name, margin, 4.8);
+  const p1Width = doc.getTextWidth(p1Name);
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255); // Crisp White
-  doc.text('  •  Mo. 80003 40720', margin + doc.getTextWidth(p1Name), 4.8);
+  doc.text('•   Mo. 80003 40720', margin + p1Width + 3.5, 4.8);
 
   // Right Partner: Shirish D. Patel
   const rightPartnerX = pageWidth - margin;
+  const p2PhoneText = '•   Mo. 99044 45077';
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255); // Crisp White
-  const phoneText = '  •  Mo. 99044 45077';
-  const phoneW = doc.getTextWidth(phoneText);
-  doc.text(phoneText, rightPartnerX, 4.8, { align: 'right' });
+  const phoneW = doc.getTextWidth(p2PhoneText);
+  doc.text(p2PhoneText, rightPartnerX, 4.8, { align: 'right' });
+
+  const p2Name = 'SHIRISH D. PATEL';
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(245, 166, 35); // Crisp Bright Gold
-  doc.text('SHIRISH D. PATEL', rightPartnerX - phoneW, 4.8, { align: 'right' });
+  doc.text(p2Name, rightPartnerX - phoneW - 3.5, 4.8, { align: 'right' });
 
   // ─────────────────────────────────────────────────────────────────────────
   // 2. MAIN BRAND HEADER BLOCK (Modern Clean Luxury Layout)
@@ -680,13 +684,16 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 7. SCOPE OF 21 ENGINEERING DRAWINGS CHECKLIST TABLE
+  // 7. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES CHECKLIST TABLE
   // ─────────────────────────────────────────────────────────────────────────
   const plansSectionY = doc.lastAutoTable.finalY + 4.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
-  doc.text('2. SCOPE OF 21 ENGINEERING DRAWINGS & DELIVERABLES', margin, plansSectionY);
+  const scopeTitle = rawPlans.length === 21
+    ? '2. SCOPE OF 21 ENGINEERING DRAWINGS & DELIVERABLES'
+    : `2. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES (${rawPlans.length} DELIVERABLES)`;
+  doc.text(scopeTitle, margin, plansSectionY);
 
   const planHeaders = ['#', 'Engineering Plan / Drawing Deliverable', 'Discipline', 'Status / Release'];
 
@@ -703,6 +710,11 @@ export async function generateHousePlanInvoicePDF({
     ];
   });
 
+  // Responsive padding based on plan count (ensures <= 10 plans comfortably stay on 1 page)
+  const isCompactScope = rawPlans.length > 8;
+  const scopeCellPadding = isCompactScope ? 1.35 : 1.8;
+  const scopeFontSize = isCompactScope ? 6.9 : 7.3;
+
   autoTable(doc, {
     startY: plansSectionY + 2.5,
     head: [planHeaders],
@@ -713,11 +725,11 @@ export async function generateHousePlanInvoicePDF({
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       fontSize: 7.2,
-      cellPadding: 1.8,
+      cellPadding: isCompactScope ? 1.5 : 1.8,
     },
     styles: {
-      fontSize: 7.2,
-      cellPadding: 1.5,
+      fontSize: scopeFontSize,
+      cellPadding: scopeCellPadding,
       textColor: '#1E293B',
       lineColor: '#E2E8F0',
       lineWidth: 0.2,
@@ -747,58 +759,137 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 8. TERMS, CONDITIONS & AUTHORIZED SIGNATURE BLOCKS
+  // 8. TERMS, CONDITIONS & AUTHORIZED SIGNATURE / OFFICIAL SEAL BLOCKS
   // ─────────────────────────────────────────────────────────────────────────
-  let signY = doc.lastAutoTable.finalY + 7;
+  const termsBoxH = 13.5;
+  const sigBoxH = 22;
+  const neededSignSpace = termsBoxH + sigBoxH + 8; // ~43.5mm total
+  const currentFinalY = doc.lastAutoTable.finalY;
+  const bottomFooterLimit = pageHeight - 12; // 285mm (above bottom footer line)
 
-  // Check if signature section fits on current page, otherwise add a page
-  if (signY > pageHeight - 36) {
+  let signY;
+  // If content cannot fit on the current page before footer, add page 2
+  if (currentFinalY + neededSignSpace > bottomFooterLimit) {
     doc.addPage();
-    signY = 22;
+    signY = 16;
+  } else {
+    // If it fits on the current page (e.g. single-page bill with <= 8-10 plans):
+    // Anchor gracefully towards bottom to give a balanced, filled-out appearance
+    const minSignY = currentFinalY + 5;
+    const bottomAnchoredY = bottomFooterLimit - neededSignSpace - 2;
+    // On page 1 with few plans, anchor towards bottom; on continuation page, keep reasonably close
+    signY = doc.internal.getNumberOfPages() === 1
+      ? Math.max(minSignY, bottomAnchoredY)
+      : Math.max(minSignY, Math.min(minSignY + 12, bottomAnchoredY));
   }
 
-  // Terms Box (Left side)
+  // --- Terms Box (2 Clean Balanced Columns) ---
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(margin, signY, pageWidth - margin * 2, termsBoxH, 1.5, 1.5, 'FD');
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.8);
   doc.setTextColor(15, 23, 42);
-  doc.text('TERMS & CONDITIONS:', margin, signY);
+  doc.text('TERMS & CONDITIONS:', margin + 3.5, signY + 3.6);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.1);
   doc.setTextColor(100, 116, 139);
-  doc.text('1. All structural drawings are designed as per Indian Standard (IS 456 / NBC) soil & loading standards.', margin, signY + 3.8);
-  doc.text('2. Passing plans and loan estimates are certified for municipal sanction and banking valuation.', margin, signY + 7);
-  doc.text('3. Any revision beyond standard architectural draft will be charged as per agreed schedule.', margin, signY + 10.2);
-  doc.text('4. Complete drawing set and soft copy release are subject to full plan fee settlement.', margin, signY + 13.5);
+  const termsColW = (pageWidth - margin * 2 - 8) / 2;
 
-  // Signatures
-  const sigLineY = signY + 22;
+  // Left terms column
+  doc.text('1. Structural drawings designed per IS 456 / NBC loading & soil standards.', margin + 3.5, signY + 7.2);
+  doc.text('2. Sanction plans & loan estimates certified for municipal & banking valuation.', margin + 3.5, signY + 10.6);
 
-  // Client Signature (Left)
+  // Right terms column
+  const termsRightX = margin + termsColW + 6;
+  doc.text('3. Any revisions beyond agreed architectural draft will be charged as per schedule.', termsRightX, signY + 7.2);
+  doc.text('4. Complete drawing set & CAD soft copies released upon full plan fee settlement.', termsRightX, signY + 10.6);
+
+  // --- Signatures & Official Company Seal Section (3 Balanced Columns) ---
+  const sigSectionY = signY + termsBoxH + 4.5;
+  const availableWidth = pageWidth - margin * 2;
+  const colW = availableWidth / 3;
+
+  // 1. Client Acceptance (Left Column)
+  const clientSigX = margin;
+  const clientLineW = colW - 8;
+  const sigLineY = sigSectionY + 13;
+
   doc.setDrawColor(156, 163, 175);
   doc.setLineWidth(0.3);
-  doc.line(margin, sigLineY, margin + 45, sigLineY);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105);
-  doc.text('Client Acceptance Signature', margin, sigLineY + 3.8);
-  doc.text(`(${ownerName})`, margin, sigLineY + 7);
+  doc.line(clientSigX, sigLineY, clientSigX + clientLineW, sigLineY);
 
-  // Consultant Authorized Signature (Right)
-  const authSigX = pageWidth - margin - 58;
-  doc.line(authSigX, sigLineY, authSigX + 58, sigLineY);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(...rgbTheme);
-  doc.text(`For ${companyName}`, authSigX, sigLineY + 3.8);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.8);
   doc.setTextColor(71, 85, 105);
-  doc.text('Authorized Signatory & Seal', authSigX, sigLineY + 7);
+  doc.text('Client Acceptance Signature', clientSigX, sigLineY + 3.8);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('(Yogeshwar S. Patel / Shirish D. Patel)', authSigX, sigLineY + 10.2);
+  doc.setFontSize(7.2);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Client: ${ownerName}`, clientSigX, sigLineY + 7.2);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.2);
+  doc.setTextColor(148, 163, 184);
+  doc.text('Date: _______________', clientSigX, sigLineY + 10.5);
+
+  // 2. Official Company Seal & Stamp Box (Center Column)
+  const sealW = 54;
+  const sealH = 22;
+  const sealX = margin + colW + (colW - sealW) / 2;
+  const sealY = sigSectionY;
+
+  // Official dashed seal boundary in brand theme gold
+  doc.setDrawColor(217, 119, 6);
+  doc.setLineWidth(0.4);
+  doc.setLineDashPattern([1.5, 1.2], 0);
+  doc.roundedRect(sealX, sealY, sealW, sealH, 2, 2, 'D');
+  doc.setLineDashPattern([], 0); // reset dash
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.8);
+  doc.setTextColor(217, 119, 6); // amber-600
+  doc.text('OFFICIAL COMPANY SEAL / STAMP', sealX + sealW / 2, sealY + 4.2, { align: 'center' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text('YS CONSTRUCTION', sealX + sealW / 2, sealY + 9.2, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Consulting Engineers & Architects', sealX + sealW / 2, sealY + 13.5, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('ANGALDHARA • DIST. SURAT', sealX + sealW / 2, sealY + 17.5, { align: 'center' });
+
+  // 3. Consultant Authorized Signatory (Right Column)
+  const authSigW = colW - 6;
+  const authSigX = pageWidth - margin - authSigW;
+
+  doc.setDrawColor(156, 163, 175);
+  doc.setLineWidth(0.3);
+  doc.line(authSigX, sigLineY, authSigX + authSigW, sigLineY);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(217, 119, 6); // amber/gold
+  doc.text(`For ${companyName}`, authSigX, sigLineY + 3.8);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Authorized Signatory & Consultant', authSigX, sigLineY + 7.2);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.2);
+  doc.setTextColor(71, 85, 105);
+  doc.text('(Yogeshwar S. Patel / Shirish D. Patel)', authSigX, sigLineY + 10.5);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 9. CLEAN FOOTER & MULTI-PAGE NUMBERING (NO WATERMARK)
