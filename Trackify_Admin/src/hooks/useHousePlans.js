@@ -50,7 +50,18 @@ export function useHousePlans() {
 
 export function useMasterPlanCatalog() {
   const scopeId = useScopeId();
-  const [catalog, setCatalog] = useState(DEFAULT_MASTER_PLANS);
+  const [catalog, setCatalog] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && scopeId) {
+        const cached = localStorage.getItem(`trackify_master_catalog_${scopeId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      }
+    } catch (_) {}
+    return DEFAULT_MASTER_PLANS;
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,7 +72,20 @@ export function useMasterPlanCatalog() {
     }
 
     const unsub = subscribeMasterPlanCatalog(scopeId, (list) => {
-      setCatalog(list && list.length > 0 ? list : DEFAULT_MASTER_PLANS);
+      if (list && Array.isArray(list) && list.length > 0) {
+        // Ensure standard templates (like 22-Door Details) are merged in if missing from older saved list
+        const existingNames = new Set(list.map((m) => (m.mainName || m.name || '').toLowerCase()));
+        const missingDefaults = DEFAULT_MASTER_PLANS.filter(
+          (def) => !existingNames.has((def.mainName || def.name || '').toLowerCase())
+        );
+        const finalList = missingDefaults.length > 0 ? [...list, ...missingDefaults] : list;
+        setCatalog(finalList);
+        try {
+          localStorage.setItem(`trackify_master_catalog_${scopeId}`, JSON.stringify(finalList));
+        } catch (_) {}
+      } else {
+        setCatalog(DEFAULT_MASTER_PLANS);
+      }
       setLoading(false);
     });
 

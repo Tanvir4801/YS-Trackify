@@ -929,7 +929,7 @@ export default function Plans() {
   // ── MASTER CATALOG MANAGER ACTIONS ──────────────────────────────────
 
   const openCatalogManager = () => {
-    // If masterCatalog has legacy obsolete items (like "Typical Floor") or is not 21 items:
+    // If masterCatalog has legacy obsolete items (like "Typical Floor"):
     const hasLegacy = masterCatalog.some(
       (item) =>
         item.id?.startsWith('default_') ||
@@ -938,33 +938,49 @@ export default function Plans() {
         !item.num
     );
 
-    if (hasLegacy || masterCatalog.length !== 21) {
+    if (hasLegacy || !Array.isArray(masterCatalog) || masterCatalog.length === 0) {
       setLocalCatalog([...DEFAULT_MASTER_PLANS]);
       if (scopeId) {
         saveMasterPlanCatalog(scopeId, DEFAULT_MASTER_PLANS).catch(console.error);
+        try {
+          localStorage.setItem(`trackify_master_catalog_${scopeId}`, JSON.stringify(DEFAULT_MASTER_PLANS));
+        } catch (_) {}
       }
     } else {
-      setLocalCatalog([...masterCatalog]);
+      // Ensure standard defaults (including 22-Door Details) are merged in if missing
+      const existingNames = new Set(masterCatalog.map((m) => (m.mainName || m.name || '').toLowerCase()));
+      const missingDefaults = DEFAULT_MASTER_PLANS.filter(
+        (def) => !existingNames.has((def.mainName || def.name || '').toLowerCase())
+      );
+      const merged = missingDefaults.length > 0 ? [...masterCatalog, ...missingDefaults] : [...masterCatalog];
+      setLocalCatalog(merged);
     }
     setCatalogModalOpen(true);
   };
 
   const handleAddCatalogItem = () => {
     if (!newCatalogItemName.trim()) return toast.error('Plan name is required');
-    // Strip customer first names e.g. "01-SHAILESHBHAI KATSWEL-FINAL PLAN"
-    const cleaned = extractMainPlanName(newCatalogItemName.trim());
-    const pure = extractPureMainName(newCatalogItemName.trim());
-    const nextNum = String(localCatalog.length + 1).padStart(2, '0');
+    const inputVal = newCatalogItemName.trim();
+    const pure = extractPureMainName(inputVal);
+    
+    // Check if input had a specific number (e.g. "22" in "22-Door Details" or "22 - Door Details")
+    const matchedNum = inputVal.match(/^(\d+)/)?.[1];
+    const nextNum = matchedNum ? matchedNum.padStart(2, '0') : String(localCatalog.length + 1).padStart(2, '0');
+    
+    const formattedName = `${nextNum}-${pure}`;
+
     const newItem = {
-      id: `custom_${Date.now()}`,
-      num: cleaned.match(/^(\d+)/)?.[1] || nextNum,
-      name: cleaned.includes(' - ') ? cleaned : `${nextNum} - ${pure}`,
+      id: `custom_${Date.now()}_${nextNum}`,
+      num: nextNum,
+      name: formattedName,
       mainName: pure,
       category: newCatalogCategory,
-      desc: 'Custom engineering drawing template',
+      desc: 'Engineering drawing deliverable template',
     };
-    setLocalCatalog([...localCatalog, newItem]);
+    const updated = [...localCatalog, newItem];
+    setLocalCatalog(updated);
     setNewCatalogItemName('');
+    toast.success(`Added "${formattedName}" to list. Click "Save Catalog Templates" to save to cloud.`);
   };
 
   const handleDeleteCatalogItem = (id) => {
@@ -975,7 +991,10 @@ export default function Plans() {
     setSavingCatalog(true);
     try {
       await saveMasterPlanCatalog(scopeId, localCatalog);
-      toast.success('Master Plan Catalog saved successfully');
+      try {
+        localStorage.setItem(`trackify_master_catalog_${scopeId}`, JSON.stringify(localCatalog));
+      } catch (_) {}
+      toast.success(`Master Plan Catalog (${localCatalog.length} templates) saved successfully!`);
       setCatalogModalOpen(false);
     } catch (err) {
       console.error(err);
@@ -986,17 +1005,20 @@ export default function Plans() {
   };
 
   const handleResetCatalogToDefaults = async () => {
-    if (window.confirm('Reset catalog to the exact 21 engineering plan templates?')) {
+    if (window.confirm(`Reset catalog to the standard ${DEFAULT_MASTER_PLANS.length} engineering plan templates?`)) {
       setLocalCatalog([...DEFAULT_MASTER_PLANS]);
       if (scopeId) {
         try {
           await saveMasterPlanCatalog(scopeId, DEFAULT_MASTER_PLANS);
-          toast.success('Reset and saved standard 21 engineering templates');
+          try {
+            localStorage.setItem(`trackify_master_catalog_${scopeId}`, JSON.stringify(DEFAULT_MASTER_PLANS));
+          } catch (_) {}
+          toast.success(`Reset and saved ${DEFAULT_MASTER_PLANS.length} standard engineering templates`);
         } catch {
-          toast.success('Reset to standard 21 engineering templates');
+          toast.success(`Reset to ${DEFAULT_MASTER_PLANS.length} standard engineering templates`);
         }
       } else {
-        toast.success('Reset to standard 21 engineering templates');
+        toast.success(`Reset to ${DEFAULT_MASTER_PLANS.length} standard engineering templates`);
       }
     }
   };
@@ -1753,22 +1775,22 @@ export default function Plans() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        {/* Sync / Replace with Exact 21 Plans Button */}
+                        {/* Sync / Replace with Standard Master Plans Button */}
                         <button
                           onClick={handleSyncExact21Plans}
                           className="px-3 py-1.5 bg-gold text-bg-primary rounded-lg text-xs font-bold hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
-                          title="Sync to the EXACT 21 engineering drawings (01-FINAL PLAN to 21-Loan Estimate), removing old/duplicate plans"
+                          title={`Sync to the standard engineering drawings (including 22-Door Details), removing old/duplicate plans`}
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Sync Exact 21 Plans</span>
+                          <span>Sync Standard Plans ({DEFAULT_MASTER_PLANS.length})</span>
                         </button>
 
                         <button
                           onClick={handleAddAll21Plans}
                           className="px-3 py-1.5 bg-bg-input border border-border-strong hover:border-gold rounded-lg text-xs font-medium text-text-secondary hover:text-gold transition-colors"
-                          title="Add missing plans from the 21 master catalog"
+                          title="Add missing plans from the master catalog"
                         >
-                          + Add All 21 Plans
+                          + Add All Catalog Plans
                         </button>
 
                         <button
@@ -2648,7 +2670,7 @@ export default function Plans() {
       <Modal
         isOpen={catalogModalOpen}
         onClose={() => setCatalogModalOpen(false)}
-        title="Master Plan Catalog (21 Standard Engineering Templates)"
+        title={`Master Plan Catalog (${localCatalog.length} Engineering Templates)`}
         confirmText={savingCatalog ? 'Saving...' : 'Save Catalog Templates'}
         onConfirm={handleSaveCatalog}
         zIndex={100000}
@@ -2725,14 +2747,14 @@ export default function Plans() {
               onClick={handleResetCatalogToDefaults}
               className="text-[11px] text-text-muted hover:text-gold flex items-center gap-1 underline"
             >
-              <RotateCcw className="w-3 h-3" /> Reset to standard 21 templates
+              <RotateCcw className="w-3 h-3" /> Reset to standard {DEFAULT_MASTER_PLANS.length} templates
             </button>
           </div>
         </div>
       </Modal>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* ── ADD PLAN TO OWNER MODAL (FROM 21 CATALOG OR CUSTOM) ─────────── */}
+      {/* ── ADD PLAN TO OWNER MODAL (FROM CATALOG OR CUSTOM) ─────────────── */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       <Modal
         isOpen={addPlanModalOpen}
@@ -2746,7 +2768,7 @@ export default function Plans() {
         <div className="space-y-4 text-xs">
           <div>
             <Label className="text-xs">
-              Select from Master Catalog (21 Templates)
+              Select from Master Catalog ({masterCatalog.length} Templates)
             </Label>
             <select
               value={selectedCatalogPlanId}

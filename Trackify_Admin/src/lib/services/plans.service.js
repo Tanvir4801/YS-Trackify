@@ -93,6 +93,7 @@ export const DEFAULT_MASTER_PLANS = [
   { id: '19_ff_lintel_details', num: '19', name: '19-FF Lintel Details', mainName: 'FF Lintel Details', category: 'Structural', desc: 'First floor lintel beam rebar details' },
   { id: '20_passing_plan', num: '20', name: '20-Passing Plan', mainName: 'Passing Plan', category: 'Municipal', desc: 'Authority / Municipal passing sanction plan' },
   { id: '21_loan_estimate', num: '21', name: '21-Loan Estimate', mainName: 'Loan Estimate', category: 'Services', desc: 'Bank loan valuation & estimate sheet' },
+  { id: '22_door_details', num: '22', name: '22-Door Details', mainName: 'Door Details', category: 'Architectural', desc: 'Door and window schedule & joinery details' },
 ];
 
 // ==========================================
