@@ -86,11 +86,39 @@ const PLAN_STATUS_CONFIG = {
 
 // Payment status badge for plan fees
 function getPaymentStatusBadge(totalAmount, totalPaid) {
-  if (!totalAmount || totalAmount <= 0) return { label: 'No Fee Set', bg: 'bg-zinc-800 text-zinc-400 border-zinc-700' };
-  if (totalPaid >= totalAmount) return { label: 'Plan Fee Cleared (100%)', bg: 'bg-success/10 text-success border-success/30' };
-  if (totalPaid >= totalAmount * 0.5) return { label: 'Half Paid (50%+)', bg: 'bg-gold/10 text-gold border-gold/30' };
-  if (totalPaid > 0) return { label: 'Advance Received', bg: 'bg-cyan-950/40 text-cyan-400 border-cyan-500/30' };
-  return { label: 'Plan Fee Pending', bg: 'bg-danger/10 text-danger border-danger/30' };
+  if (!totalAmount || totalAmount <= 0) {
+    return {
+      label: 'No Fee Set',
+      bg: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+      dot: 'bg-zinc-400',
+    };
+  }
+  if (totalPaid >= totalAmount) {
+    return {
+      label: 'PLAN FEE CLEARED (100%)',
+      bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+      dot: 'bg-emerald-500',
+    };
+  }
+  if (totalPaid >= totalAmount * 0.5) {
+    return {
+      label: 'HALF PAID (50%+)',
+      bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
+      dot: 'bg-amber-500',
+    };
+  }
+  if (totalPaid > 0) {
+    return {
+      label: 'ADVANCE RECEIVED',
+      bg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30',
+      dot: 'bg-sky-500',
+    };
+  }
+  return {
+    label: 'PLAN FEE PENDING',
+    bg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30',
+    dot: 'bg-rose-500',
+  };
 }
 
 // Extracts clean 10-digit mobile number, handling +91, leading 0, spaces, and formatting
@@ -1194,97 +1222,96 @@ export default function Plans() {
                   setActiveOwnerId(owner.id);
                   setOwnerTab('plans');
                 }}
-                className="group relative bg-bg-card border border-border hover:border-gold/50 rounded-xl p-5 shadow-sm transition-all duration-200 cursor-pointer flex flex-col justify-between"
+                className="group relative bg-gradient-to-b from-bg-card via-bg-card to-bg-elevated/40 border border-border/80 hover:border-gold/60 rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.03)] hover:shadow-[0_16px_42px_rgba(245,166,35,0.12)] transition-all duration-300 cursor-pointer flex flex-col justify-between overflow-hidden"
               >
+                {/* Luminous Top Gold Hover Accent */}
+                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
                 <div>
-                  {/* Top: Plan No & 3D Serial */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        onClick={(e) => copyToClipboard(e, owner.planNumber, 'Plan No')}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-bg-elevated border border-border-strong text-gold font-mono text-xs font-semibold rounded-md hover:border-gold"
-                        title="Copy Plan No"
-                      >
-                        <Compass className="w-3.5 h-3.5" />
-                        {owner.planNumber || 'PLN-N/A'}
-                      </span>
+                  {/* Top Bar: Clean Plan No Badge (3D Serial Removed) & Payment Status */}
+                  <div className="flex items-center justify-between gap-2 mb-4">
+                    <span
+                      onClick={(e) => copyToClipboard(e, owner.planNumber, 'Plan No')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-mono text-xs font-bold rounded-lg shadow-sm transition-colors"
+                      title="Click to copy Plan No"
+                    >
+                      <Compass className="w-3.5 h-3.5 text-gold" />
+                      <span>{owner.planNumber || 'PLN'}</span>
+                    </span>
 
-                      {owner.serialNumber3D && (
-                        <span
-                          onClick={(e) => copyToClipboard(e, owner.serialNumber3D, '3D Serial')}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 font-mono text-xs font-semibold rounded-md hover:border-cyan-400"
-                          title="3D Plan Serial No"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          {owner.serialNumber3D}
-                        </span>
-                      )}
-                    </div>
-
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${paymentBadge.bg}`}>
-                      {paymentBadge.label}
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider border shadow-sm ${paymentBadge.bg}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${paymentBadge.dot || 'bg-current'} animate-pulse`} />
+                      <span>{paymentBadge.label}</span>
                     </span>
                   </div>
 
-                  {/* Owner Name & Town */}
-                  <div className="mb-3">
-                    <h3 className="text-lg font-bold text-text-primary group-hover:text-gold transition-colors flex items-center gap-2">
-                      <Home className="w-4 h-4 text-gold" />
-                      {owner.ownerName}
-                    </h3>
-                    <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5">
+                  {/* Owner Header Info */}
+                  <div className="mb-3.5">
+                    <div className="flex items-center gap-2.5 mb-1.5">
+                      <div className="p-2 bg-gradient-to-br from-gold/20 to-gold/5 text-gold border border-gold/25 rounded-xl shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                        <Home className="w-4 h-4" />
+                      </div>
+                      <h3 className="text-lg font-extrabold text-text-primary group-hover:text-gold transition-colors tracking-tight truncate">
+                        {owner.ownerName}
+                      </h3>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted pl-0.5">
                       {owner.ownerPhone && (
-                        <span className="flex items-center gap-1 font-mono text-text-secondary">
+                        <span className="font-mono text-[11px] font-medium text-text-secondary bg-bg-input/60 border border-border/60 px-2 py-0.5 rounded-md flex items-center gap-1">
                           <Phone className="w-3 h-3 text-text-muted" />
-                          {owner.ownerPhone}
+                          <span>{owner.ownerPhone}</span>
                         </span>
                       )}
                       {(owner.city || owner.town) && (
-                        <>
-                          <span>•</span>
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-text-muted" />
-                            {owner.city || owner.town}
-                          </span>
-                        </>
+                        <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          <span>{owner.city || owner.town}</span>
+                        </span>
+                      )}
+                      {owner.totalSqFt && (
+                        <span className="text-[11px] text-text-muted font-medium bg-bg-input/40 px-2 py-0.5 rounded-md border border-border/40">
+                          {Number(owner.totalSqFt).toLocaleString('en-IN')} sq.ft
+                        </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Engineering Plans Progress Card */}
-                  <div className="bg-bg-elevated/70 border border-border-strong rounded-lg p-3 mb-3">
-                    <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span className="font-semibold text-text-secondary flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-info" />
-                        House Plans:
+                  {/* Engineering Drawing Scope Progress Box */}
+                  <div className="bg-gradient-to-br from-bg-elevated/70 via-bg-input/40 to-bg-card border border-border/70 rounded-xl p-3.5 mb-3.5 shadow-sm">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="font-bold text-text-secondary flex items-center gap-1.5 text-xs">
+                        <Layers className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Drawing Scope:</span>
                       </span>
-                      <span className="font-bold text-text-primary">
-                        {completedCount} of {plans.length} Done ({progressPct}%)
+                      <span className="font-mono text-[11px] font-bold text-text-primary bg-bg-card px-2.5 py-0.5 rounded-md border border-border/60 shadow-xs">
+                        {completedCount} / {plans.length} Done ({progressPct}%)
                       </span>
                     </div>
 
-                    <div className="w-full bg-bg-input h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-border/40 h-2 rounded-full overflow-hidden p-0.5 mb-2.5">
                       <div
-                        className="bg-info h-full rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-500 h-full rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,166,35,0.4)]"
                         style={{ width: `${progressPct}%` }}
                       />
                     </div>
 
-                    <div className="flex flex-wrap gap-1 mt-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {plans.slice(0, 4).map((p) => (
                         <span
                           key={p.id}
-                          className={`text-[10px] px-2 py-0.5 rounded border ${
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-medium border flex items-center gap-1 transition-colors ${
                             p.status === 'completed'
-                              ? 'bg-success/10 border-success/30 text-success'
-                              : 'bg-bg-input border-border-strong text-text-muted'
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-semibold'
+                              : 'bg-bg-input/70 border-border/60 text-text-muted'
                           }`}
                         >
-                          {p.name.length > 18 ? p.name.substring(0, 16) + '...' : p.name}
+                          {p.status === 'completed' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                          <span>{p.name.length > 18 ? p.name.substring(0, 16) + '...' : p.name}</span>
                         </span>
                       ))}
                       {plans.length > 4 && (
-                        <span className="text-[10px] px-1.5 py-0.5 text-text-muted">
+                        <span className="text-[10px] font-mono px-2 py-0.5 text-text-muted bg-bg-elevated/80 border border-border/50 rounded-md">
                           +{plans.length - 4} more
                         </span>
                       )}
@@ -1297,54 +1324,62 @@ export default function Plans() {
                   </div>
 
                   {/* Financials Strip */}
-                  <div className="grid grid-cols-2 gap-2 bg-bg-input border border-border-strong rounded-lg p-2.5 text-xs mb-3">
+                  <div className="grid grid-cols-2 gap-3 bg-gradient-to-r from-bg-input/80 via-bg-elevated/40 to-bg-input/80 border border-border/70 rounded-xl p-3 text-xs mb-3 shadow-inner">
                     <div>
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
-                        Plan Fee
+                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-0.5">
+                        Agreed Plan Fee
                       </span>
-                      <span className="font-bold text-text-primary">
+                      <span className="font-extrabold text-sm text-text-primary">
                         {formatCurrency(owner.houseAmount)}
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
-                        Pending Fee
+                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-0.5">
+                        Remaining Balance
                       </span>
-                      <span className="font-bold text-warning">
-                        {formatCurrency(owner.pendingBalance)}
-                      </span>
+                      {Number(owner.pendingBalance) <= 0 && Number(owner.houseAmount) > 0 ? (
+                        <span className="font-extrabold text-sm text-emerald-500 flex items-center gap-1">
+                          <span>₹0</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 rounded text-emerald-500">PAID</span>
+                        </span>
+                      ) : (
+                        <span className="font-extrabold text-sm text-amber-500">
+                          {formatCurrency(owner.pendingBalance)}
+                        </span>
+                      )}
                     </div>
                   </div>
 
+                  {/* Engineer Info */}
                   {owner.engineerName && (
-                    <div className="flex items-center justify-between text-xs text-text-muted px-1">
-                      <span>Engineer:</span>
-                      <span className="text-gold font-medium flex items-center gap-1">
-                        <HardHat className="w-3 h-3" />
-                        {owner.engineerName}
+                    <div className="flex items-center justify-between text-[11px] text-text-muted px-1 mb-3">
+                      <span>Supervising Engineer:</span>
+                      <span className="text-amber-500 font-semibold flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                        <HardHat className="w-3 h-3 text-gold" />
+                        <span>{owner.engineerName}</span>
                       </span>
                     </div>
                   )}
                 </div>
 
                 {/* Footer Quick Actions */}
-                <div className="pt-3 border-t border-border mt-3 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                <div className="pt-3.5 border-t border-border/80 mt-1 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => {
                       setActiveOwnerId(owner.id);
                       setOwnerTab('plans');
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gold/10 hover:bg-gold text-gold hover:text-bg-primary border border-gold/30 rounded-lg text-xs font-semibold transition-all"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-bg-primary font-bold rounded-xl text-xs shadow-[0_4px_14px_rgba(245,166,35,0.25)] hover:shadow-[0_6px_18px_rgba(245,166,35,0.4)] active:scale-95 transition-all"
                   >
                     <span>Manage Plans & Payments</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
+                    <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
 
                   <button
                     onClick={(e) => handleDownloadPdfBill(e, owner)}
                     disabled={downloadingPdfId === owner.id}
-                    className="p-1.5 bg-bg-elevated hover:bg-gold/15 hover:border-gold/40 text-text-secondary hover:text-gold border border-border-strong rounded-lg transition-colors disabled:opacity-50"
+                    className="p-2 bg-bg-elevated hover:bg-amber-500/15 hover:border-amber-500/40 text-text-secondary hover:text-amber-500 border border-border/80 rounded-xl transition-all disabled:opacity-50 active:scale-90"
                     title="Download Branded PDF Bill"
                   >
                     <Printer className="w-3.5 h-3.5" />
@@ -1353,7 +1388,7 @@ export default function Plans() {
                   <button
                     onClick={(e) => handleSharePdfToWhatsApp(owner, e)}
                     disabled={sharingPdfId === owner.id}
-                    className="p-1.5 bg-bg-elevated hover:bg-emerald-600/20 hover:border-emerald-500/40 text-text-secondary hover:text-emerald-400 border border-border-strong rounded-lg transition-colors disabled:opacity-50"
+                    className="p-2 bg-bg-elevated hover:bg-emerald-500/15 hover:border-emerald-500/40 text-text-secondary hover:text-emerald-400 border border-border/80 rounded-xl transition-all disabled:opacity-50 active:scale-90"
                     title="Share PDF Bill with Thanks Message to Client on WhatsApp"
                   >
                     <Share2 className="w-3.5 h-3.5" />
@@ -1361,7 +1396,7 @@ export default function Plans() {
 
                   <button
                     onClick={(e) => openEditOwner(e, owner)}
-                    className="p-1.5 bg-bg-elevated hover:bg-bg-input border border-border-strong rounded-lg text-text-secondary hover:text-text-primary transition-colors"
+                    className="p-2 bg-bg-elevated hover:bg-sky-500/15 hover:border-sky-500/40 text-text-secondary hover:text-sky-400 border border-border/80 rounded-xl transition-all active:scale-90"
                     title="Edit Owner Info"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -1369,7 +1404,7 @@ export default function Plans() {
 
                   <button
                     onClick={(e) => handleDeleteOwner(e, owner.id, owner.ownerName)}
-                    className="p-1.5 bg-bg-elevated hover:bg-danger/20 hover:border-danger/30 hover:text-danger border border-border-strong rounded-lg text-text-muted transition-colors"
+                    className="p-2 bg-bg-elevated hover:bg-rose-500/15 hover:border-rose-500/40 text-text-muted hover:text-rose-400 border border-border/80 rounded-xl transition-all active:scale-90"
                     title="Delete Owner Project"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1386,7 +1421,7 @@ export default function Plans() {
             <table className="w-full text-left text-xs text-text-secondary">
               <thead className="bg-bg-elevated/70 text-[11px] uppercase tracking-wider text-text-muted border-b border-border">
                 <tr>
-                  <th className="py-3 px-4">Plan No / 3D Serial</th>
+                  <th className="py-3 px-4">Plan No</th>
                   <th className="py-3 px-4">House Client / Owner</th>
                   <th className="py-3 px-4">Plans Progress</th>
                   <th className="py-3 px-4 text-right">Plan Fee</th>
@@ -1412,13 +1447,7 @@ export default function Plans() {
                       className="hover:bg-bg-elevated/40 cursor-pointer transition-colors"
                     >
                       <td className="py-3.5 px-4 font-mono font-medium">
-                        <div className="text-gold font-semibold">{owner.planNumber}</div>
-                        {owner.serialNumber3D && (
-                          <div className="text-cyan-400 text-[11px] flex items-center gap-1 mt-0.5">
-                            <Sparkles className="w-3 h-3" />
-                            {owner.serialNumber3D}
-                          </div>
-                        )}
+                        <div className="text-gold font-semibold">{owner.planNumber || 'PLN'}</div>
                       </td>
 
                       <td className="py-3.5 px-4">
