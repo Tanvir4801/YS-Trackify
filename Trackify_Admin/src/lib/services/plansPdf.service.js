@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { DEFAULT_BRANDING } from '../../context/BrandingContext';
+import { OFFICIAL_YS_LOGO_DATA_URL } from '../../assets/ysLogoBase64';
 import { DEFAULT_MASTER_PLANS } from './plans.service';
 import { formatDate } from '../utils';
 
@@ -59,62 +60,96 @@ function parseDataUrlDimensions(dataUrl) {
 /**
  * Robust logo loader with multi-layer fallback:
  * 1. If base64 data URL provided directly, return immediately.
- * 2. Fetch via fetch() -> blob -> FileReader (bypasses canvas taint on Firebase Storage).
- * 3. Image element with crossOrigin Anonymous + canvas fallback.
+ * 2. Check localStorage for user's uploaded logo data URL.
+ * 3. Fetch via fetch() -> blob -> FileReader (bypasses canvas taint on Firebase Storage).
+ * 4. Image element with crossOrigin Anonymous + canvas fallback.
+ * 5. Ultimate fallback: Official YS Construction Logo in high-resolution base64.
  */
 async function loadLogoDataUrl(url, dataUrlFallback) {
+  // Layer 1: Direct base64 DataURL passed in
   if (dataUrlFallback && typeof dataUrlFallback === 'string' && dataUrlFallback.startsWith('data:image/')) {
     const parsed = await parseDataUrlDimensions(dataUrlFallback);
     if (parsed) return parsed;
   }
-  if (!url) return null;
   if (typeof url === 'string' && url.startsWith('data:image/')) {
     return await parseDataUrlDimensions(url);
   }
 
-  // Layer 1: Fetch as Blob (avoids canvas taint issues on cross-origin Firebase Storage)
+  // Layer 2: Check localStorage for cached uploaded logo
   try {
-    const res = await fetch(url, { mode: 'cors' });
-    if (res.ok) {
-      const blob = await res.blob();
-      const b64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      if (b64) {
-        const parsed = await parseDataUrlDimensions(b64);
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('trackify_brand_logo_data_url');
+      if (cached && cached.startsWith('data:image/')) {
+        const parsed = await parseDataUrlDimensions(cached);
         if (parsed) return parsed;
       }
     }
-  } catch (err) {
-    console.warn('Fetch blob for logo failed, falling back:', err);
+  } catch (_) {}
+
+  // Layer 3: Fetch as Blob (avoids canvas taint issues on cross-origin Firebase Storage)
+  if (url && typeof url === 'string') {
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (res.ok) {
+        const blob = await res.blob();
+        const b64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        if (b64) {
+          const parsed = await parseDataUrlDimensions(b64);
+          if (parsed) {
+            try {
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('trackify_brand_logo_data_url', b64);
+              }
+            } catch (_) {}
+            return parsed;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Fetch blob for logo failed, falling back:', err);
+    }
+
+    // Layer 4: Image element with crossOrigin
+    try {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.src = url;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        setTimeout(() => reject(new Error('Logo image load timed out')), 2500);
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const b64 = canvas.toDataURL('image/png');
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('trackify_brand_logo_data_url', b64);
+        }
+      } catch (_) {}
+      return {
+        dataUrl: b64,
+        width: canvas.width,
+        height: canvas.height,
+      };
+    } catch (canvasErr) {
+      console.warn('Canvas toDataURL failed:', canvasErr);
+    }
   }
 
-  // Layer 2: Image element with crossOrigin
-  try {
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.src = url;
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-      setTimeout(() => reject(new Error('Logo image load timed out')), 2500);
-    });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    return {
-      dataUrl: canvas.toDataURL('image/png'),
-      width: canvas.width,
-      height: canvas.height,
-    };
-  } catch (canvasErr) {
-    console.warn('Canvas toDataURL failed:', canvasErr);
+  // Layer 5: Authentic Official YS Construction Brand Logo (High-Res)
+  if (OFFICIAL_YS_LOGO_DATA_URL) {
+    const parsed = await parseDataUrlDimensions(OFFICIAL_YS_LOGO_DATA_URL);
+    if (parsed) return parsed;
   }
 
   return null;
@@ -125,10 +160,10 @@ async function loadLogoDataUrl(url, dataUrlFallback) {
  * and Curved Foundation Arc Logo directly from the YS Construction Business Card.
  */
 function drawBusinessCardVectorLogo(doc, x, y, width, height) {
-  // Rich dark bronze card background (#1A1715)
-  doc.setFillColor(26, 23, 21);
-  doc.setDrawColor(245, 166, 35);
-  doc.setLineWidth(0.6);
+  // Clean white card background with subtle border
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
   doc.roundedRect(x, y, width, height, 2, 2, 'FD');
 
   const centerX = x + width / 2;
@@ -196,8 +231,14 @@ export async function generateHousePlanInvoicePDF({
 
   let effectiveBranding = { ...DEFAULT_BRANDING, ...(branding || {}) };
 
+  // Check localStorage for uploaded logo if not in effectiveBranding
+  if (typeof window !== 'undefined' && !effectiveBranding.logoDataUrl) {
+    const cached = localStorage.getItem('trackify_brand_logo_data_url');
+    if (cached) effectiveBranding.logoDataUrl = cached;
+  }
+
   // If branding passed from context is missing uploaded logo, query contractor Firestore doc directly
-  if ((!effectiveBranding.logoUrl && !effectiveBranding.logoDataUrl) && owner.contractorId) {
+  if (!effectiveBranding.logoDataUrl && owner.contractorId) {
     try {
       const contractorSnap = await getDoc(doc(db, 'contractors', owner.contractorId));
       if (contractorSnap.exists() && contractorSnap.data()?.branding) {
@@ -331,7 +372,14 @@ export async function generateHousePlanInvoicePDF({
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.3);
       doc.roundedRect(logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, 2, 2, 'FD');
-      doc.addImage(logoInfo.dataUrl, 'PNG', renderX, renderY, renderW, renderH);
+
+      let imgFormat = 'PNG';
+      if (logoInfo.dataUrl.startsWith('data:image/jpeg') || logoInfo.dataUrl.startsWith('data:image/jpg')) {
+        imgFormat = 'JPEG';
+      } else if (logoInfo.dataUrl.startsWith('data:image/webp')) {
+        imgFormat = 'WEBP';
+      }
+      doc.addImage(logoInfo.dataUrl, imgFormat, renderX, renderY, renderW, renderH);
     } catch (e) {
       console.warn('Logo draw fallback, rendering vector emblem:', e);
       drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);

@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../store/authStore';
+import { OFFICIAL_YS_LOGO_DATA_URL } from '../assets/ysLogoBase64';
 
 const BrandingContext = createContext(null);
 
@@ -12,8 +13,8 @@ export const DEFAULT_BRANDING = {
   phone:          '+91 80003 40720, +91 99044 45077',
   email:          'ysconstruction24@gmail.com',
   gstNumber:      '',
-  logoUrl:        null,
-  logoDataUrl:    null,
+  logoUrl:        '/ys_logo.png',
+  logoDataUrl:    OFFICIAL_YS_LOGO_DATA_URL,
   logoStoragePath:null,
   themeColor:     '#F5A623',
   themeColorDark: '#D97706',
@@ -24,15 +25,29 @@ export const DEFAULT_BRANDING = {
 };
 
 export function BrandingProvider({ children }) {
-  // We'll use the userContractorId (for contractor users) or activeContractorId (for super_admins viewing a specific contractor)
-  // useScopeId returns the appropriate contractor ID based on role
+  // Use activeContractorId, userContractorId, or uid fallback
   const contractorId = useAuthStore((s) => {
-    if (s.role === 'super_admin') return s.activeContractorId;
+    if (s.role === 'super_admin') return s.activeContractorId || s.userContractorId || s.uid;
     if (s.role === 'contractor') return s.userContractorId || s.activeContractorId || s.uid;
-    return s.userContractorId || s.uid; // fallback
+    return s.userContractorId || s.uid;
   });
   
-  const [branding, setBranding] = useState(DEFAULT_BRANDING);
+  const [branding, setBranding] = useState(() => {
+    try {
+      const cached = typeof window !== 'undefined' ? localStorage.getItem('trackify_cached_branding') : null;
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const cachedLogoData = localStorage.getItem('trackify_brand_logo_data_url');
+        return {
+          ...DEFAULT_BRANDING,
+          ...parsed,
+          logoDataUrl: parsed.logoDataUrl || cachedLogoData || DEFAULT_BRANDING.logoDataUrl,
+        };
+      }
+    } catch (_) {}
+    return DEFAULT_BRANDING;
+  });
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,9 +63,12 @@ export function BrandingProvider({ children }) {
         if (snap.exists()) {
           const data = snap.data();
           const b = data.branding || {};
+          const cachedLogoData = typeof window !== 'undefined' ? localStorage.getItem('trackify_brand_logo_data_url') : null;
           const mergedBranding = {
             ...DEFAULT_BRANDING,
             ...b,
+            logoUrl: b.logoUrl || DEFAULT_BRANDING.logoUrl,
+            logoDataUrl: b.logoDataUrl || cachedLogoData || DEFAULT_BRANDING.logoDataUrl,
             companyName: (b.companyName && b.companyName.toLowerCase() !== 'trackify')
               ? b.companyName
               : ((data.name && data.name.toLowerCase() !== 'trackify') ? data.name : DEFAULT_BRANDING.companyName),
@@ -60,6 +78,12 @@ export function BrandingProvider({ children }) {
             email: b.email || DEFAULT_BRANDING.email,
           };
           setBranding(mergedBranding);
+          try {
+            if (mergedBranding.logoDataUrl) {
+              localStorage.setItem('trackify_brand_logo_data_url', mergedBranding.logoDataUrl);
+            }
+            localStorage.setItem('trackify_cached_branding', JSON.stringify(mergedBranding));
+          } catch (_) {}
           applyTheme(mergedBranding.themeColor || '#F5A623');
         }
         setLoading(false);
@@ -96,16 +120,23 @@ export function BrandingProvider({ children }) {
   };
 
   const updateBranding = async (updates) => {
-    if (!contractorId) return;
-    const ref = doc(db, 'contractors', contractorId);
-    await updateDoc(ref, {
-      branding: {
-        ...branding,
-        ...updates,
-        updatedAt: new Date(),
-        updatedBy: contractorId,
+    const targetCid = contractorId || useAuthStore.getState().userContractorId || useAuthStore.getState().activeContractorId || useAuthStore.getState().uid;
+    if (!targetCid) return;
+    const ref = doc(db, 'contractors', targetCid);
+    const updated = {
+      ...branding,
+      ...updates,
+      updatedAt: new Date(),
+      updatedBy: targetCid,
+    };
+    await setDoc(ref, { branding: updated }, { merge: true });
+    setBranding(updated);
+    try {
+      if (updated.logoDataUrl) {
+        localStorage.setItem('trackify_brand_logo_data_url', updated.logoDataUrl);
       }
-    });
+      localStorage.setItem('trackify_cached_branding', JSON.stringify(updated));
+    } catch (_) {}
   };
 
   return (

@@ -109,6 +109,9 @@ export default function BrandingSettings() {
 
   const handleRemoveLogo = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('trackify_brand_logo_data_url');
+      }
       await updateBranding({ 
         logoUrl: null,
         logoDataUrl: null,
