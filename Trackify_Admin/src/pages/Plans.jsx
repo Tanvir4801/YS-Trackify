@@ -150,6 +150,8 @@ export default function Plans() {
   const [sharingPdfId, setSharingPdfId] = useState(null);
   const [whatsappShareData, setWhatsappShareData] = useState(null);
   const [customSharePhone, setCustomSharePhone] = useState('');
+  const [savingWorkspace, setSavingWorkspace] = useState(false);
+  const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
   // Search, filter, view mode
   const [search, setSearch] = useState('');
@@ -694,6 +696,46 @@ export default function Plans() {
   const handleAddAll16Plans = handleAddAll21Plans;
   const handleAddDefaultStandardPlans = handleAddAll21Plans;
 
+  // ── SAVE WORKSPACE (Explicit save button with prominent foreground feedback) ──
+  const handleSaveWorkspace = async () => {
+    if (!activeOwner) return;
+    setSavingWorkspace(true);
+    const toastId = toast.loading(`Saving workspace for ${activeOwner.ownerName}...`);
+
+    try {
+      const effectivePlans = activeOwner.plansList || [];
+      const effectivePayments = activeOwner.payments || [];
+      const totalPaid = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const houseAmount = Number(activeOwner.houseAmount) || 0;
+      const pendingBalance = Math.max(0, houseAmount - totalPaid);
+
+      await updateHousePlan(activeOwner.id, {
+        plansList: effectivePlans,
+        payments: effectivePayments,
+        totalPaid,
+        pendingBalance,
+        contractorId: activeOwner.contractorId || scopeId,
+      });
+
+      toast.dismiss(toastId);
+      toast.success(`Workspace saved successfully for ${activeOwner.ownerName}!`, {
+        duration: 4000,
+      });
+
+      // Show prominent in-screen foreground banner
+      setSaveSuccessNotice(true);
+      setTimeout(() => {
+        setSaveSuccessNotice(false);
+      }, 3500);
+    } catch (err) {
+      console.error('Failed to save workspace:', err);
+      toast.dismiss(toastId);
+      toast.error(`Failed to save workspace: ${err.message || 'Error'}`);
+    } finally {
+      setSavingWorkspace(false);
+    }
+  };
+
   // ── PAYMENTS WORKFLOW ACTIONS ────────────────────────────────────────
 
   // Add payment installment
@@ -1062,7 +1104,7 @@ export default function Plans() {
             className="flex items-center gap-2 px-4 py-2 bg-gold text-bg-primary font-semibold text-xs rounded-lg shadow-[0_0_15px_rgba(245,166,35,0.25)] hover:scale-105 active:scale-95 transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Add New House Owner</span>
+            <span>Add New House Owner</span>
           </button>
         </div>
       </div>
@@ -1453,6 +1495,27 @@ export default function Plans() {
                   transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                   className="relative w-full max-w-5xl bg-bg-card border border-border rounded-2xl shadow-[0_30px_90px_rgba(0,0,0,0.85)] overflow-hidden z-10 max-h-[92vh] flex flex-col"
                 >
+                  {/* Floating In-Card Success Banner (Guaranteed 100% in front of everything) */}
+                  <AnimatePresence>
+                    {saveSuccessNotice && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -25, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                        transition={{ type: 'spring', damping: 22, stiffness: 320 }}
+                        className="absolute top-3 left-1/2 -translate-x-1/2 z-[200] bg-emerald-600 border border-emerald-400 text-white px-5 py-2.5 rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.7)] flex items-center gap-3 font-bold text-xs pointer-events-none"
+                      >
+                        <div className="p-1 bg-white/20 rounded-full shrink-0">
+                          <Check className="w-4 h-4 text-white stroke-[3]" />
+                        </div>
+                        <div className="text-left">
+                          <div className="font-bold text-white text-xs">Workspace Saved Successfully!</div>
+                          <div className="text-[10px] text-emerald-100 font-normal">All drawings, payments, and specs for {activeOwner.ownerName} are saved in cloud.</div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   {/* Upper Header Bar with Full Pending & Fee UI */}
                   <div className="border-b border-border bg-bg-elevated/60 px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-sm">
                     <div className="flex items-center gap-3 min-w-0">
@@ -1548,6 +1611,16 @@ export default function Plans() {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                         <span>Edit Fee & Details</span>
+                      </button>
+
+                      <button
+                        onClick={handleSaveWorkspace}
+                        disabled={savingWorkspace}
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-sm hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                        title="Save all changes in this workspace to cloud"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{savingWorkspace ? 'Saving...' : 'Save Workspace'}</span>
                       </button>
 
                       <button
@@ -1867,7 +1940,7 @@ export default function Plans() {
                           title="Record advance booking, half payment (50%), or milestone installment"
                         >
                           <Plus className="w-4 h-4" />
-                          <span>+ Record Payment</span>
+                          <span>Record Payment</span>
                         </button>
                       </div>
                     </div>
@@ -1887,7 +1960,7 @@ export default function Plans() {
                           className="inline-flex items-center gap-1.5 px-4 py-2 bg-gold text-bg-primary text-xs font-bold rounded-lg shadow-sm hover:scale-105 active:scale-95 transition-all"
                         >
                           <Plus className="w-4 h-4" />
-                          <span>+ Record Payment</span>
+                          <span>Record Payment</span>
                         </button>
                       </div>
                     ) : (
@@ -2043,12 +2116,24 @@ export default function Plans() {
                   Owner ID: {activeOwner.id}
                 </span>
 
-                <button
-                  onClick={() => setActiveOwnerId(null)}
-                  className="px-4 py-2 bg-bg-input border border-border-strong rounded-lg text-xs font-semibold text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  Close Workspace
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setActiveOwnerId(null)}
+                    className="px-4 py-2 bg-bg-input border border-border-strong rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Close Workspace
+                  </button>
+
+                  <button
+                    onClick={handleSaveWorkspace}
+                    disabled={savingWorkspace}
+                    className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-[0_4px_14px_rgba(16,185,129,0.35)] transition-all disabled:opacity-50"
+                    title="Save all changes in this workspace to cloud"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{savingWorkspace ? 'Saving...' : 'Save Workspace'}</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

@@ -329,11 +329,11 @@ export async function generateHousePlanInvoicePDF({
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255); // Crisp White
-  doc.text('•   Mo. 80003 40720', margin + p1Width + 3.5, 4.8);
+  doc.text('•    Mo. 80003 40720', margin + p1Width + 6, 4.8);
 
   // Right Partner: Shirish D. Patel
   const rightPartnerX = pageWidth - margin;
-  const p2PhoneText = '•   Mo. 99044 45077';
+  const p2PhoneText = '•    Mo. 99044 45077';
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255); // Crisp White
@@ -344,7 +344,7 @@ export async function generateHousePlanInvoicePDF({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(245, 166, 35); // Crisp Bright Gold
-  doc.text(p2Name, rightPartnerX - phoneW - 3.5, 4.8, { align: 'right' });
+  doc.text(p2Name, rightPartnerX - phoneW - 6, 4.8, { align: 'right' });
 
   // ─────────────────────────────────────────────────────────────────────────
   // 2. MAIN BRAND HEADER BLOCK (Modern Clean Luxury Layout)
