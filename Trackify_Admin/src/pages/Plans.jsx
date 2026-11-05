@@ -93,6 +93,25 @@ function getPaymentStatusBadge(totalAmount, totalPaid) {
   return { label: 'Plan Fee Pending', bg: 'bg-danger/10 text-danger border-danger/30' };
 }
 
+// Safely normalize any Indian or international phone number for WhatsApp direct unsaved chat
+function normalizeWhatsAppNumber(phone) {
+  if (!phone) return '';
+  let digits = String(phone).replace(/[^0-9]/g, '');
+  if (digits.startsWith('0') && digits.length === 11) {
+    digits = digits.substring(1);
+  }
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+  if (digits.startsWith('91') && digits.length === 12) {
+    return digits;
+  }
+  if (digits.length >= 11 && digits.length <= 15) {
+    return digits;
+  }
+  return digits;
+}
+
 const EMPTY_OWNER_FORM = {
   ownerName: '',
   ownerPhone: '',
@@ -130,6 +149,7 @@ export default function Plans() {
   const [downloadingPdfId, setDownloadingPdfId] = useState(null);
   const [sharingPdfId, setSharingPdfId] = useState(null);
   const [whatsappShareData, setWhatsappShareData] = useState(null);
+  const [customSharePhone, setCustomSharePhone] = useState('');
 
   // Search, filter, view mode
   const [search, setSearch] = useState('');
@@ -431,10 +451,42 @@ export default function Plans() {
       return;
     }
 
-    setSharingPdfId(ownerToBill.id);
-    const toastId = toast.loading(`Preparing PDF bill & WhatsApp share for ${ownerToBill.ownerName}...`);
+    // 1. CRITICAL: Open window synchronously on the click gesture to defeat browser popup blockers!
+    let waTab = null;
     try {
-      // 1. Generate jsPDF instance in memory
+      waTab = window.open('', '_blank');
+      if (waTab) {
+        waTab.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Opening WhatsApp...</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #09090b; color: #f4f4f5; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                .card { background: #18181b; border: 1px solid #27272a; border-radius: 16px; padding: 28px 32px; text-align: center; max-width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+                .spinner { width: 40px; height: 40px; border: 3px solid #27272a; border-top-color: #10b981; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+                @keyframes spin { to { transform: rotate(360deg); } }
+                h3 { margin: 0 0 8px; font-size: 17px; color: #10b981; }
+                p { margin: 0; font-size: 13px; color: #a1a1aa; line-height: 1.5; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="spinner"></div>
+                <h3>Preparing WhatsApp Bill...</h3>
+                <p>Generating official PDF bill for <strong>${ownerToBill.ownerName || 'Client'}</strong> and opening WhatsApp chat...</p>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+    } catch (_) {}
+
+    setSharingPdfId(ownerToBill.id);
+    const toastId = toast.loading(`Preparing PDF bill & opening WhatsApp for ${ownerToBill.ownerName}...`);
+    try {
+      // 2. Generate jsPDF instance in memory
       const doc = await generateHousePlanInvoicePDF({
         owner: { ...ownerToBill, contractorId: ownerToBill.contractorId || scopeId },
         branding,
@@ -446,7 +498,7 @@ export default function Plans() {
       const planNumber = ownerToBill.planNumber || 'PLN';
       const safeFilename = `YS_Construction_Bill_${cleanOwnerFileName}_${planNumber}.pdf`;
 
-      // 2. Prepare professional Thank You message with complete project and billing details
+      // 3. Prepare professional Thank You message with complete project and billing details
       const totalFee = formatCurrency(ownerToBill.houseAmount);
       const paid = formatCurrency(ownerToBill.totalPaid);
       const pending = formatCurrency(ownerToBill.pendingBalance);
@@ -457,45 +509,27 @@ export default function Plans() {
 
       const thanksMessage = `Namaste *${ownerName}* ji, 🙏\n\nThank you for choosing *${coName}* for your house planning and architectural engineering drawings! We truly appreciate your trust and partnership.\n\n📋 *PROJECT DETAILS:*\n• *Plan Ref:* ${planNumber}\n• *Site Location:* ${siteLoc}\n• *Built-up Area:* ${builtUpArea}\n• *Scope of Drawings:* ${plansCount} Deliverables\n\n💰 *PAYMENT STATUS:*\n• *Total Plan Fee:* ${totalFee}\n• *Advance Cleared:* ${paid}\n• *Net Remaining Balance:* ${pending}\n\n📄 *Please find your official Planning Invoice & Deliverables Bill (PDF) attached.* Thank you for your business!\n\nWarm regards,\n*${coName}*\n_Architecture • Planner • Consultant • Interior Designer_\n📞 Mo: 80003 40720, 99044 45077\n📍 Gokuldham Complex, Angaldhara, Surat`;
 
-      const rawPhone = (ownerToBill.ownerPhone || '').replace(/[^0-9]/g, '');
-      const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+      const cleanPhone = normalizeWhatsAppNumber(ownerToBill.ownerPhone);
+      setCustomSharePhone(ownerToBill.ownerPhone || '');
 
-      // 3. Check for Web Share API support with files (native share on mobile/Safari)
-      const pdfBlob = doc.output('blob');
-      const pdfFile = new File([pdfBlob], safeFilename, { type: 'application/pdf' });
-
-      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        try {
-          await navigator.share({
-            title: `${coName} - Official Plan Bill for ${ownerName}`,
-            text: thanksMessage,
-            files: [pdfFile],
-          });
-          toast.success(`PDF Bill & Thanks message shared to WhatsApp!`, { id: toastId });
-          return;
-        } catch (shareErr) {
-          if (shareErr.name === 'AbortError') {
-            toast.dismiss(toastId);
-            return;
-          }
-          console.warn('Native share failed, using WhatsApp Web fallback:', shareErr);
-        }
-      }
-
-      // 4. Fallback for Desktop / WhatsApp Web:
-      // Download the PDF automatically so the user has the file right in their Downloads
+      // 4. Download PDF automatically for attaching into chat
       doc.save(safeFilename);
 
+      // WhatsApp URL supporting any unsaved number
       const waUrl = cleanPhone && cleanPhone.length >= 10
-        ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(thanksMessage)}`
-        : `https://wa.me/?text=${encodeURIComponent(thanksMessage)}`;
+        ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(thanksMessage)}`
+        : `https://api.whatsapp.com/send?text=${encodeURIComponent(thanksMessage)}`;
 
-      // Attempt to open WhatsApp window directly
-      try {
-        window.open(waUrl, '_blank');
-      } catch (_) {}
+      const waWebUrl = cleanPhone && cleanPhone.length >= 10
+        ? `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(thanksMessage)}`
+        : `https://web.whatsapp.com/send?text=${encodeURIComponent(thanksMessage)}`;
 
-      // Open the dedicated, high-priority WhatsApp Share Modal right in front of the screen
+      // 5. Automatically redirect the synchronously opened tab
+      if (waTab && !waTab.closed) {
+        waTab.location.href = waUrl;
+      }
+
+      // 6. Open the foreground modal so the user has full control (can send to new numbers, copy, etc.)
       setWhatsappShareData({
         owner: ownerToBill,
         ownerName,
@@ -504,14 +538,18 @@ export default function Plans() {
         safeFilename,
         thanksMessage,
         waUrl,
+        waWebUrl,
         doc,
       });
 
-      toast.success(`PDF Bill ready! Click "Open WhatsApp Chat Now" in the dialog.`, {
+      toast.success(`PDF Bill downloaded & WhatsApp chat opened for ${ownerName}!`, {
         id: toastId,
-        duration: 5000,
+        duration: 4000,
       });
     } catch (err) {
+      if (waTab && !waTab.closed) {
+        try { waTab.close(); } catch (_) {}
+      }
       console.error('Failed to share PDF via WhatsApp:', err);
       toast.error(`Failed to share PDF: ${err.message || 'Error'}`, { id: toastId });
     } finally {
@@ -2264,12 +2302,14 @@ export default function Plans() {
         isOpen={!!whatsappShareData}
         onClose={() => setWhatsappShareData(null)}
         title="Share Bill & Thanks Message on WhatsApp"
-        confirmText="Open WhatsApp Chat Now"
+        confirmText="Open in WhatsApp"
         cancelText="Close"
         onConfirm={() => {
-          if (whatsappShareData?.waUrl) {
-            window.open(whatsappShareData.waUrl, '_blank');
-          }
+          const targetPhone = normalizeWhatsAppNumber(customSharePhone) || whatsappShareData?.cleanPhone;
+          const url = targetPhone && targetPhone.length >= 10
+            ? `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`
+            : whatsappShareData?.waUrl;
+          if (url) window.open(url, '_blank');
         }}
         zIndex={100000}
         className="max-w-xl"
@@ -2296,6 +2336,57 @@ export default function Plans() {
               </span>
             </div>
 
+            {/* SEND TO NEW OR UNSAVED NUMBER SECTION */}
+            <div className="bg-bg-input/60 border border-border-strong rounded-xl p-3.5 space-y-2">
+              <label className="text-xs font-semibold text-text-muted uppercase flex items-center justify-between">
+                <span>Send to WhatsApp Number (New or Unsaved Number)</span>
+                <span className="text-[10px] text-emerald-400 font-medium">✓ No need to save contact</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={customSharePhone}
+                  onChange={(e) => setCustomSharePhone(e.target.value)}
+                  placeholder="Enter 10-digit mobile (e.g. 9876543210 or +91 9876543210)"
+                  className="font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const clean = normalizeWhatsAppNumber(customSharePhone);
+                    if (!clean || clean.length < 10) {
+                      toast.error('Please enter a valid 10-digit mobile number');
+                      return;
+                    }
+                    const url = `https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`;
+                    window.open(url, '_blank');
+                  }}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 flex items-center gap-1.5"
+                  title="Open direct chat with this phone number"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const clean = normalizeWhatsAppNumber(customSharePhone) || whatsappShareData.cleanPhone;
+                    const url = clean && clean.length >= 10
+                      ? `https://web.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`
+                      : `https://web.whatsapp.com/send?text=${encodeURIComponent(whatsappShareData.thanksMessage)}`;
+                    window.open(url, '_blank');
+                  }}
+                  className="text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-medium"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>Open in WhatsApp Web directly</span>
+                </button>
+                <span className="text-text-muted">•</span>
+                <span className="text-text-muted">Chat opens even if not saved in your phone</span>
+              </div>
+            </div>
+
             {/* Generated PDF File Badge */}
             <div className="flex items-center justify-between p-2.5 bg-bg-elevated/70 border border-border rounded-lg text-xs">
               <div className="flex items-center gap-2 truncate mr-2 font-mono text-[11px] text-gold">
@@ -2303,6 +2394,7 @@ export default function Plans() {
                 <span className="truncate">{whatsappShareData.safeFilename}</span>
               </div>
               <button
+                type="button"
                 onClick={() => whatsappShareData.doc?.save(whatsappShareData.safeFilename)}
                 className="text-xs text-gold hover:text-gold/80 hover:underline font-semibold shrink-0"
                 title="Download another copy of the PDF"
@@ -2318,6 +2410,7 @@ export default function Plans() {
                   Thank You & Bill Summary (WhatsApp Text)
                 </label>
                 <button
+                  type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(whatsappShareData.thanksMessage);
                     toast.success('Message copied to clipboard!');
@@ -2328,13 +2421,13 @@ export default function Plans() {
                   <span>Copy Message</span>
                 </button>
               </div>
-              <div className="bg-bg-input border border-border-strong rounded-xl p-3 text-xs text-text-secondary max-h-48 overflow-y-auto whitespace-pre-wrap font-sans leading-relaxed select-all">
+              <div className="bg-bg-input border border-border-strong rounded-xl p-3 text-xs text-text-secondary max-h-40 overflow-y-auto whitespace-pre-wrap font-sans leading-relaxed select-all">
                 {whatsappShareData.thanksMessage}
               </div>
             </div>
 
             <p className="text-[11px] text-text-muted leading-tight">
-              💡 <span className="font-semibold text-text-secondary">Instructions:</span> Clicking <span className="text-emerald-400 font-semibold">"Open WhatsApp Chat Now"</span> below opens WhatsApp with {whatsappShareData.ownerName} and the pre-filled thank you message. Attach the downloaded PDF bill to the chat before sending!
+              💡 <span className="font-semibold text-text-secondary">Instructions:</span> WhatsApp opens directly in chat with the pre-filled thank you message. Attach the downloaded PDF bill (<span className="text-gold font-mono">{whatsappShareData.safeFilename}</span>) before pressing send!
             </p>
           </div>
         )}
