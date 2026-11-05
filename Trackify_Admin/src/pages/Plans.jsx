@@ -93,23 +93,33 @@ function getPaymentStatusBadge(totalAmount, totalPaid) {
   return { label: 'Plan Fee Pending', bg: 'bg-danger/10 text-danger border-danger/30' };
 }
 
+// Extracts clean 10-digit mobile number, handling +91, leading 0, spaces, and formatting
+export function extract10DigitPhone(phone) {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('91') && digits.length === 12) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('0') && digits.length === 11) {
+    digits = digits.slice(1);
+  }
+  return digits.slice(0, 10);
+}
+
 // Safely normalize any Indian or international phone number for WhatsApp direct unsaved chat
 function normalizeWhatsAppNumber(phone) {
   if (!phone) return '';
-  let digits = String(phone).replace(/[^0-9]/g, '');
-  if (digits.startsWith('0') && digits.length === 11) {
-    digits = digits.substring(1);
+  const clean10 = extract10DigitPhone(phone);
+  if (clean10 && clean10.length === 10) {
+    return `91${clean10}`;
   }
-  if (digits.length === 10) {
-    return `91${digits}`;
+  const rawDigits = String(phone).replace(/\D/g, '');
+  if (rawDigits.startsWith('91')) {
+    return rawDigits.length === 12 ? rawDigits : '';
   }
-  if (digits.startsWith('91') && digits.length === 12) {
-    return digits;
+  if (rawDigits.length >= 11 && rawDigits.length <= 15) {
+    return rawDigits;
   }
-  if (digits.length >= 11 && digits.length <= 15) {
-    return digits;
-  }
-  return digits;
+  return '';
 }
 
 const EMPTY_OWNER_FORM = {
@@ -299,7 +309,7 @@ export default function Plans() {
 
     setOwnerForm({
       ownerName: target.ownerName || '',
-      ownerPhone: target.ownerPhone || '',
+      ownerPhone: extract10DigitPhone(target.ownerPhone),
       ownerEmail: target.ownerEmail || '',
       ownerAddress: target.ownerAddress || '',
       city: target.city || target.town || '',
@@ -327,7 +337,17 @@ export default function Plans() {
   // Save Owner
   const handleSaveOwner = async () => {
     if (!ownerForm.ownerName.trim()) return toast.error('Owner / Customer Name is required');
-    if (!ownerForm.ownerPhone.trim()) return toast.error('Owner Phone Number is required');
+    
+    const cleanPhone = extract10DigitPhone(ownerForm.ownerPhone);
+    if (!cleanPhone) {
+      return toast.error('Owner 10-digit Mobile Number is required');
+    }
+    if (cleanPhone.length !== 10) {
+      return toast.error(`Mobile number must be exactly 10 digits (currently ${cleanPhone.length} digits)`);
+    }
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      return toast.error('Mobile number must be a valid 10-digit Indian number starting with 6, 7, 8, or 9');
+    }
     if (!ownerForm.houseAmount || Number(ownerForm.houseAmount) <= 0) {
       return toast.error('Total Plan Fee is required (e.g. ₹20,000 or ₹35,000)');
     }
@@ -339,9 +359,14 @@ export default function Plans() {
     const toastId = toast.loading(editingOwnerId ? 'Updating owner project...' : 'Adding new client project for plans...');
 
     try {
+      const sanitizedPayload = {
+        ...ownerForm,
+        ownerPhone: `+91 ${cleanPhone}`,
+      };
+
       if (editingOwnerId) {
         await updateHousePlan(editingOwnerId, {
-          ...ownerForm,
+          ...sanitizedPayload,
           contractorId: scopeId,
         });
         toast.dismiss(toastId);
@@ -374,7 +399,7 @@ export default function Plans() {
         }));
 
         const newId = await addHousePlan({
-          ...ownerForm,
+          ...sanitizedPayload,
           contractorId: scopeId,
           plansList: initial21Plans,
           payments: initialPayments,
@@ -512,23 +537,44 @@ export default function Plans() {
       const thanksMessage = `Namaste *${ownerName}* ji, 🙏\n\nThank you for choosing *${coName}* for your house planning and architectural engineering drawings! We truly appreciate your trust and partnership.\n\n📋 *PROJECT DETAILS:*\n• *Plan Ref:* ${planNumber}\n• *Site Location:* ${siteLoc}\n• *Built-up Area:* ${builtUpArea}\n• *Scope of Drawings:* ${plansCount} Deliverables\n\n💰 *PAYMENT STATUS:*\n• *Total Plan Fee:* ${totalFee}\n• *Advance Cleared:* ${paid}\n• *Net Remaining Balance:* ${pending}\n\n📄 *Please find your official Planning Invoice & Deliverables Bill (PDF) attached.* Thank you for your business!\n\nWarm regards,\n*${coName}*\n_Architecture • Planner • Consultant • Interior Designer_\n📞 Mo: 80003 40720, 99044 45077\n📍 Gokuldham Complex, Angaldhara, Surat`;
 
       const cleanPhone = normalizeWhatsAppNumber(ownerToBill.ownerPhone);
-      setCustomSharePhone(ownerToBill.ownerPhone || '');
+      const clean10 = extract10DigitPhone(ownerToBill.ownerPhone);
+      setCustomSharePhone(clean10 || '');
 
       // 4. Download PDF automatically for attaching into chat
       doc.save(safeFilename);
 
       // WhatsApp URL supporting any unsaved number
-      const waUrl = cleanPhone && cleanPhone.length >= 10
+      const waUrl = cleanPhone
         ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(thanksMessage)}`
-        : `https://api.whatsapp.com/send?text=${encodeURIComponent(thanksMessage)}`;
+        : null;
 
-      const waWebUrl = cleanPhone && cleanPhone.length >= 10
+      const waWebUrl = cleanPhone
         ? `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(thanksMessage)}`
-        : `https://web.whatsapp.com/send?text=${encodeURIComponent(thanksMessage)}`;
+        : null;
 
-      // 5. Automatically redirect the synchronously opened tab
-      if (waTab && !waTab.closed) {
+      // 5. Automatically redirect the synchronously opened tab IF phone number is valid 10 digits
+      if (cleanPhone && waTab && !waTab.closed) {
         waTab.location.href = waUrl;
+      } else if (!cleanPhone && waTab && !waTab.closed) {
+        try {
+          waTab.document.write(`
+            <html>
+              <head><title>10-Digit Mobile Number Required</title></head>
+              <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f172a;color:#f8fafc;text-align:center;">
+                <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px;max-width:440px;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
+                  <div style="font-size:36px;margin-bottom:12px;">📱</div>
+                  <h3 style="margin:0 0 10px;font-size:18px;color:#f5a623;">10-Digit Mobile Number Required</h3>
+                  <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin:0 0 16px;">
+                    <b>${ownerName}</b>'s registered phone number has only ${clean10.length} digits (${ownerToBill.ownerPhone || 'Incomplete'}).
+                  </p>
+                  <p style="font-size:13px;color:#cbd5e1;line-height:1.5;margin:0;">
+                    Please enter the full 10-digit number in the popup on Trackify to open WhatsApp chat.
+                  </p>
+                </div>
+              </body>
+            </html>
+          `);
+        } catch (_) {}
       }
 
       // 6. Open the foreground modal so the user has full control (can send to new numbers, copy, etc.)
@@ -544,10 +590,17 @@ export default function Plans() {
         doc,
       });
 
-      toast.success(`PDF Bill downloaded & WhatsApp chat opened for ${ownerName}!`, {
-        id: toastId,
-        duration: 4000,
-      });
+      if (cleanPhone) {
+        toast.success(`PDF Bill downloaded & WhatsApp chat opened for ${ownerName}!`, {
+          id: toastId,
+          duration: 4000,
+        });
+      } else {
+        toast.dismiss(toastId);
+        toast.error(`Phone number has only ${clean10.length} digits. Enter 10 digits in the box below to open WhatsApp.`, {
+          duration: 6000,
+        });
+      }
     } catch (err) {
       if (waTab && !waTab.closed) {
         try { waTab.close(); } catch (_) {}
@@ -833,16 +886,15 @@ export default function Plans() {
 
     const message = `Namaste ${ownerName} ji,\n\nThis is a payment request from *${coName}* regarding your House Planning project (*${planNum}*).\n\n• *Total Plan Fee:* ${totalFee}\n• *Amount Received:* ${paid}\n• *Pending Balance:* ${pending}\n\nKindly process the pending installment payment at your earliest convenience.\n\nThank you,\n*${coName}*`;
 
-    const rawPhone = (activeOwner.ownerPhone || '').replace(/[^0-9]/g, '');
-    const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+    const cleanPhone = normalizeWhatsAppNumber(activeOwner.ownerPhone);
 
-    if (cleanPhone && cleanPhone.length >= 10) {
-      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    if (cleanPhone) {
+      const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
       toast.success(`Opening WhatsApp payment request for ${ownerName}`);
     } else {
       navigator.clipboard.writeText(message);
-      toast.success(`Payment request message copied to clipboard for ${ownerName}!`);
+      toast.error(`Invalid mobile number (${activeOwner.ownerPhone || 'Empty'}). Payment request text copied to clipboard!`);
     }
   };
 
@@ -2157,15 +2209,35 @@ export default function Plans() {
               </div>
 
               <div>
-                <Label className="text-xs">
-                  Phone Number <span className="text-danger">*</span>
-                </Label>
-                <Input
-                  value={ownerForm.ownerPhone}
-                  onChange={(e) => setOwnerForm({ ...ownerForm, ownerPhone: e.target.value })}
-                  placeholder="e.g. +91 98765 43210"
-                  className="mt-1"
-                />
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">
+                    Mobile Number <span className="text-danger">*</span>
+                  </Label>
+                  <span className={`text-[10px] font-mono font-bold ${
+                    extract10DigitPhone(ownerForm.ownerPhone).length === 10 ? 'text-emerald-400' : 'text-text-muted'
+                  }`}>
+                    {extract10DigitPhone(ownerForm.ownerPhone).length}/10 digits
+                    {extract10DigitPhone(ownerForm.ownerPhone).length === 10 ? ' ✓' : ''}
+                  </span>
+                </div>
+                <div className="flex items-center mt-1">
+                  <span className="px-2.5 py-2 bg-bg-elevated border border-r-0 border-border-strong rounded-l-lg text-xs font-semibold text-text-secondary select-none flex items-center gap-1 shrink-0">
+                    <span>🇮🇳</span>
+                    <span>+91</span>
+                  </span>
+                  <Input
+                    type="tel"
+                    value={extract10DigitPhone(ownerForm.ownerPhone)}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      const cleaned = raw.startsWith('91') && raw.length === 12 ? raw.slice(2) : raw.slice(0, 10);
+                      setOwnerForm({ ...ownerForm, ownerPhone: cleaned });
+                    }}
+                    maxLength={10}
+                    placeholder="10-digit mobile (e.g. 9876543210)"
+                    className="rounded-l-none font-mono text-xs tracking-wider"
+                  />
+                </div>
               </div>
 
               <div>
@@ -2373,11 +2445,20 @@ export default function Plans() {
         confirmText="Open in WhatsApp"
         cancelText="Close"
         onConfirm={() => {
-          const targetPhone = normalizeWhatsAppNumber(customSharePhone) || whatsappShareData?.cleanPhone;
-          const url = targetPhone && targetPhone.length >= 10
-            ? `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`
-            : whatsappShareData?.waUrl;
-          if (url) window.open(url, '_blank');
+          const clean10 = extract10DigitPhone(customSharePhone) || extract10DigitPhone(whatsappShareData?.cleanPhone);
+          if (!clean10 || clean10.length !== 10) {
+            toast.error(`Please enter exactly 10 digits for mobile number (currently ${clean10 ? clean10.length : 0} digits)`);
+            return;
+          }
+          if (!/^[6-9]\d{9}$/.test(clean10)) {
+            toast.error('Mobile number must be a valid 10-digit Indian number starting with 6, 7, 8, or 9');
+            return;
+          }
+          if (whatsappShareData?.owner?.id) {
+            updateHousePlan(whatsappShareData.owner.id, { ownerPhone: `+91 ${clean10}` }).catch(() => {});
+          }
+          const url = `https://api.whatsapp.com/send?phone=91${clean10}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`;
+          window.open(url, '_blank');
         }}
         zIndex={100000}
         className="max-w-xl"
@@ -2406,29 +2487,55 @@ export default function Plans() {
 
             {/* SEND TO NEW OR UNSAVED NUMBER SECTION */}
             <div className="bg-bg-input/60 border border-border-strong rounded-xl p-3.5 space-y-2">
-              <label className="text-xs font-semibold text-text-muted uppercase flex items-center justify-between">
-                <span>Send to WhatsApp Number (New or Unsaved Number)</span>
-                <span className="text-[10px] text-emerald-400 font-medium">✓ No need to save contact</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-text-muted uppercase">
+                  WhatsApp Mobile Number (10 Digits)
+                </label>
+                <span className={`text-[11px] font-mono font-bold ${
+                  extract10DigitPhone(customSharePhone).length === 10 ? 'text-emerald-400' : 'text-amber-400'
+                }`}>
+                  {extract10DigitPhone(customSharePhone).length}/10 digits
+                  {extract10DigitPhone(customSharePhone).length === 10 ? ' ✓' : ''}
+                </span>
+              </div>
               <div className="flex items-center gap-2">
-                <Input
-                  value={customSharePhone}
-                  onChange={(e) => setCustomSharePhone(e.target.value)}
-                  placeholder="Enter 10-digit mobile (e.g. 9876543210 or +91 9876543210)"
-                  className="font-mono text-sm"
-                />
+                <div className="flex items-center flex-1">
+                  <span className="px-2.5 py-2 bg-bg-elevated border border-r-0 border-border-strong rounded-l-lg text-xs font-semibold text-text-secondary select-none flex items-center gap-1 shrink-0">
+                    <span>🇮🇳</span>
+                    <span>+91</span>
+                  </span>
+                  <Input
+                    type="tel"
+                    value={extract10DigitPhone(customSharePhone)}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      const cleaned = raw.startsWith('91') && raw.length === 12 ? raw.slice(2) : raw.slice(0, 10);
+                      setCustomSharePhone(cleaned);
+                    }}
+                    maxLength={10}
+                    placeholder="Enter 10-digit mobile (e.g. 9876543210)"
+                    className="rounded-l-none font-mono text-sm tracking-wider"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => {
-                    const clean = normalizeWhatsAppNumber(customSharePhone);
-                    if (!clean || clean.length < 10) {
-                      toast.error('Please enter a valid 10-digit mobile number');
+                    const clean10 = extract10DigitPhone(customSharePhone);
+                    if (!clean10 || clean10.length !== 10) {
+                      toast.error(`Please enter exactly 10 digits (currently ${clean10 ? clean10.length : 0} digits)`);
                       return;
                     }
-                    const url = `https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`;
+                    if (!/^[6-9]\d{9}$/.test(clean10)) {
+                      toast.error('Mobile number must start with 6, 7, 8, or 9');
+                      return;
+                    }
+                    if (whatsappShareData?.owner?.id) {
+                      updateHousePlan(whatsappShareData.owner.id, { ownerPhone: `+91 ${clean10}` }).catch(() => {});
+                    }
+                    const url = `https://api.whatsapp.com/send?phone=91${clean10}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`;
                     window.open(url, '_blank');
                   }}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 flex items-center gap-1.5"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 flex items-center gap-1.5"
                   title="Open direct chat with this phone number"
                 >
                   <Send className="w-3.5 h-3.5" />
@@ -2439,10 +2546,15 @@ export default function Plans() {
                 <button
                   type="button"
                   onClick={() => {
-                    const clean = normalizeWhatsAppNumber(customSharePhone) || whatsappShareData.cleanPhone;
-                    const url = clean && clean.length >= 10
-                      ? `https://web.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`
-                      : `https://web.whatsapp.com/send?text=${encodeURIComponent(whatsappShareData.thanksMessage)}`;
+                    const clean10 = extract10DigitPhone(customSharePhone) || extract10DigitPhone(whatsappShareData.cleanPhone);
+                    if (!clean10 || clean10.length !== 10) {
+                      toast.error('Please enter a valid 10-digit mobile number first');
+                      return;
+                    }
+                    if (whatsappShareData?.owner?.id) {
+                      updateHousePlan(whatsappShareData.owner.id, { ownerPhone: `+91 ${clean10}` }).catch(() => {});
+                    }
+                    const url = `https://web.whatsapp.com/send?phone=91${clean10}&text=${encodeURIComponent(whatsappShareData.thanksMessage)}`;
                     window.open(url, '_blank');
                   }}
                   className="text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-medium"
@@ -2451,7 +2563,7 @@ export default function Plans() {
                   <span>Open in WhatsApp Web directly</span>
                 </button>
                 <span className="text-text-muted">•</span>
-                <span className="text-text-muted">Chat opens even if not saved in your phone</span>
+                <span className="text-text-muted">Chat opens even if not saved in contacts</span>
               </div>
             </div>
 
