@@ -124,18 +124,18 @@ async function loadLogoDataUrl(url, dataUrlFallback) {
  * Draws the authentic Architectural Roof, Chimney, 4-Pane Window,
  * and Curved Foundation Arc Logo directly from the YS Construction Business Card.
  */
-function drawBusinessCardVectorLogo(doc, x, y, width, height, rgbTheme) {
+function drawBusinessCardVectorLogo(doc, x, y, width, height) {
   // Rich dark bronze card background (#1A1715)
   doc.setFillColor(26, 23, 21);
-  doc.setDrawColor(...rgbTheme);
-  doc.setLineWidth(0.5);
+  doc.setDrawColor(245, 166, 35);
+  doc.setLineWidth(0.6);
   doc.roundedRect(x, y, width, height, 2, 2, 'FD');
 
   const centerX = x + width / 2;
   const topY = y + 3.8;
 
   // Gold stroke for architectural gable roof
-  doc.setDrawColor(...rgbTheme);
+  doc.setDrawColor(245, 166, 35);
   doc.setLineWidth(0.8);
 
   // Left roof slope
@@ -144,7 +144,7 @@ function drawBusinessCardVectorLogo(doc, x, y, width, height, rgbTheme) {
   doc.line(centerX, topY, x + width - 3.5, y + 13.5);
 
   // Chimney / Tower on right
-  doc.setFillColor(...rgbTheme);
+  doc.setFillColor(245, 166, 35);
   doc.rect(centerX + 3.5, topY + 1.2, 2.2, 4.2, 'F');
 
   // 4-Pane Square Window in Center
@@ -174,7 +174,7 @@ function drawBusinessCardVectorLogo(doc, x, y, width, height, rgbTheme) {
   // Brand Name underneath
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
-  doc.setTextColor(...rgbTheme);
+  doc.setTextColor(245, 166, 35);
   doc.text('YS Construction', centerX, y + 21.2, { align: 'center' });
 }
 
@@ -272,41 +272,42 @@ export async function generateHousePlanInvoicePDF({
   doc.rect(0, 0, pageWidth, 7, 'F');
 
   // Subtle bottom gold accent line (0.4mm)
-  doc.setFillColor(...rgbTheme);
+  doc.setFillColor(245, 166, 35);
   doc.rect(0, 6.6, pageWidth, 0.4, 'F');
 
   // Left Partner: Yogeshwar S. Patel
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.setTextColor(...rgbTheme); // Gold
-  doc.text('Yogeshwar S. Patel', margin, 4.8);
+  doc.setTextColor(245, 166, 35); // Crisp Bright Gold
+  const p1Name = 'YOGESHWAR S. PATEL';
+  doc.text(p1Name, margin, 4.8);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.setTextColor(203, 213, 225); // slate-300
-  doc.text(' • Mo. 80003 40720', margin + doc.getTextWidth('Yogeshwar S. Patel'), 4.8);
+  doc.setTextColor(255, 255, 255); // Crisp White
+  doc.text('  •  Mo. 80003 40720', margin + doc.getTextWidth(p1Name), 4.8);
 
   // Right Partner: Shirish D. Patel
   const rightPartnerX = pageWidth - margin;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.setTextColor(203, 213, 225);
-  const phoneText = ' • Mo. 99044 45077';
+  doc.setTextColor(255, 255, 255); // Crisp White
+  const phoneText = '  •  Mo. 99044 45077';
   const phoneW = doc.getTextWidth(phoneText);
   doc.text(phoneText, rightPartnerX, 4.8, { align: 'right' });
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.setTextColor(...rgbTheme);
-  doc.text('Shirish D. Patel', rightPartnerX - phoneW, 4.8, { align: 'right' });
+  doc.setTextColor(245, 166, 35); // Crisp Bright Gold
+  doc.text('SHIRISH D. PATEL', rightPartnerX - phoneW, 4.8, { align: 'right' });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 2. MAIN BRAND HEADER BLOCK (Modern Architectural Luxury)
+  // 2. MAIN BRAND HEADER BLOCK (Modern Clean Luxury Layout)
   // ─────────────────────────────────────────────────────────────────────────
-  // White header canvas (y = 7mm to 41mm)
+  // White header canvas (y = 7mm to 39mm)
   doc.setFillColor(255, 255, 255);
-  doc.rect(0, 7, pageWidth, 34, 'F');
+  doc.rect(0, 7, pageWidth, 32, 'F');
   doc.setDrawColor(226, 232, 240); // slate-200
   doc.setLineWidth(0.3);
-  doc.line(margin, 41, pageWidth - margin, 41);
+  doc.line(margin, 39, pageWidth - margin, 39);
 
   // Load logo from branding screen (logoDataUrl or logoUrl)
   const logoInfo = await loadLogoDataUrl(effectiveBranding?.logoUrl, effectiveBranding?.logoDataUrl);
@@ -333,43 +334,25 @@ export async function generateHousePlanInvoicePDF({
       doc.addImage(logoInfo.dataUrl, 'PNG', renderX, renderY, renderW, renderH);
     } catch (e) {
       console.warn('Logo draw fallback, rendering vector emblem:', e);
-      drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, rgbTheme);
+      drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
     }
   } else {
     // Exact architectural house & curved foundation arc logo from business card
-    drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, rgbTheme);
+    drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
   }
 
-  // Company Information
-  const brandTextX = margin + logoBoxSize + 4.5;
+  // Company Information: ONLY Title and Tagline (Clean & Executive)
+  const brandTextX = margin + logoBoxSize + 6;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(18);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(companyName.toUpperCase(), brandTextX, 16.5);
+  doc.text(companyName.toUpperCase(), brandTextX, 20.5);
 
-  // Tagline / Nature of Business in Gold
+  // Tagline / Nature of Business in Warm Amber Gold
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.2);
-  doc.setTextColor(...rgbTheme);
-  doc.text(tagline.toUpperCase(), brandTextX, 21.5);
-
-  // Services Subtitle
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
-  doc.setTextColor(100, 116, 139); // slate-500
-  doc.text('2D Architectural Working • 3D Elevation • IS-456 Structural Drawings • Sanction Plans', brandTextX, 26);
-
-  // Address Line from Business Card
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
-  doc.setTextColor(51, 65, 85); // slate-700
-  doc.text(companyAddress, brandTextX, 30.5);
-
-  // Email & Contact
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.2);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`E-mail: ${companyEmail}  •  Mo: 80003 40720, 99044 45077`, brandTextX, 35);
+  doc.setFontSize(8.5);
+  doc.setTextColor(217, 119, 6); // amber-600 / gold
+  doc.text(tagline.toUpperCase(), brandTextX, 26.5);
 
   // Right Header: Invoice Title & Meta
   const rightX = pageWidth - margin;
@@ -380,7 +363,7 @@ export async function generateHousePlanInvoicePDF({
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
-  doc.setTextColor(...rgbTheme);
+  doc.setTextColor(217, 119, 6);
   doc.text(`Bill Ref: ${billInvoiceNo}`, rightX, 20.5, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
@@ -397,77 +380,115 @@ export async function generateHousePlanInvoicePDF({
   doc.text(paymentBadgeText, rightX - 22, 32.5, { align: 'center' });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 3. CONTACT DETAILS & CLIENT INFORMATION CARDS
+  // 3. CONTACT DETAILS & CLIENT INFORMATION CARDS (Auto-Wrapping & Dynamic Height)
   // ─────────────────────────────────────────────────────────────────────────
-  const infoTopY = 44;
-  const colWidth = (pageWidth - margin * 2 - 6) / 2;
-  const infoBoxHeight = 31;
+  const infoTopY = 42.5;
+  const colWidth = (pageWidth - margin * 2 - 6) / 2; // 88mm
+  const innerPad = 6;
+  const maxTextW = colWidth - innerPad - 4; // 78mm inner text width
 
-  // Left Box: Consultancy Info (with left accent border)
+  // Auto-wrap office address for Left Box (Issued By)
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  const leftAddressLines = doc.splitTextToSize(`Office: ${companyAddress}`, maxTextW);
+
+  // Auto-wrap full site address for Right Box (Billed To)
+  const clientFullAddr = [
+    owner.ownerAddress,
+    owner.city || owner.town,
+  ].filter(Boolean).join(', ') || owner.city || owner.town || owner.ownerAddress || 'Anaval';
+  const rightSiteLines = doc.splitTextToSize(`Site Location: ${clientFullAddr}`, maxTextW);
+
+  // Dynamic box height calculation: ensures text NEVER spills out of container
+  const leftTotalH = 6 + 5 + 4.5 + (leftAddressLines.length * 3.8) + 3.8 + 3.8 + 4.5;
+  const rightTotalH = 6 + 5 + 4.5 + (rightSiteLines.length * 3.8) + 3.8 + 3.8 + 4.5;
+  const containerHeight = Math.max(38, Math.max(leftTotalH, rightTotalH));
+
+  // --- DRAW LEFT BOX: ISSUED BY (PLANNING CONSULTANT) ---
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.3);
-  doc.roundedRect(margin, infoTopY, colWidth, infoBoxHeight, 2, 2, 'FD');
+  doc.roundedRect(margin, infoTopY, colWidth, containerHeight, 2, 2, 'FD');
 
   // Solid left accent bar
   doc.setFillColor(...rgbTheme);
-  doc.rect(margin, infoTopY, 2.5, infoBoxHeight, 'F');
+  doc.rect(margin, infoTopY, 2.5, containerHeight, 'F');
 
+  let curLeftY = infoTopY + 5.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('ISSUED BY (PLANNING CONSULTANT):', margin + 6, infoTopY + 5.5);
+  doc.text('ISSUED BY (PLANNING CONSULTANT):', margin + innerPad, curLeftY);
 
+  curLeftY += 5;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(companyName, margin + 6, infoTopY + 11);
+  doc.text(companyName, margin + innerPad, curLeftY);
 
+  curLeftY += 4.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.2);
-  doc.setTextColor(...rgbTheme);
-  doc.text('Principals: Yogeshwar S. Patel & Shirish D. Patel', margin + 6, infoTopY + 15.5);
+  doc.setTextColor(217, 119, 6); // amber/gold
+  doc.text('Principals: Yogeshwar S. Patel & Shirish D. Patel', margin + innerPad, curLeftY);
 
+  curLeftY += 4.2;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.2);
   doc.setTextColor(71, 85, 105);
-  doc.text('Office: Gokuldham Complex, Opp. Doodh Dairy,', margin + 6, infoTopY + 20);
-  doc.text('ANGALDHARA, Ta. Mahuva, Dist. Surat', margin + 6, infoTopY + 24);
-  doc.text(`Phone: 8000340720, 9904445077  •  Email: ${companyEmail}`, margin + 6, infoTopY + 28);
+  leftAddressLines.forEach((line) => {
+    doc.text(line, margin + innerPad, curLeftY);
+    curLeftY += 3.8;
+  });
 
-  // Right Box: Billed To (Client / Owner)
+  doc.text(`Phone: 80003 40720, 99044 45077`, margin + innerPad, curLeftY);
+  curLeftY += 3.8;
+  doc.text(`Email: ${companyEmail}`, margin + innerPad, curLeftY);
+
+  // --- DRAW RIGHT BOX: BILLED TO (HOUSE OWNER / CLIENT) ---
   const clientBoxX = margin + colWidth + 6;
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.3);
-  doc.roundedRect(clientBoxX, infoTopY, colWidth, infoBoxHeight, 2, 2, 'FD');
+  doc.roundedRect(clientBoxX, infoTopY, colWidth, containerHeight, 2, 2, 'FD');
 
   // Solid left accent bar
   doc.setFillColor(...rgbTheme);
-  doc.rect(clientBoxX, infoTopY, 2.5, infoBoxHeight, 'F');
+  doc.rect(clientBoxX, infoTopY, 2.5, containerHeight, 'F');
 
+  let curRightY = infoTopY + 5.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('BILLED TO (HOUSE OWNER / CLIENT):', clientBoxX + 6, infoTopY + 5.5);
+  doc.text('BILLED TO (HOUSE OWNER / CLIENT):', clientBoxX + innerPad, curRightY);
 
+  curRightY += 5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(ownerName.toUpperCase(), clientBoxX + 6, infoTopY + 11.5);
+  doc.text(ownerName.toUpperCase(), clientBoxX + innerPad, curRightY);
 
+  curRightY += 4.5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Phone: ${owner.ownerPhone || 'N/A'}`, clientBoxX + 6, infoTopY + 16.5);
-  doc.text(`Site Location: ${owner.city || owner.town || owner.ownerAddress || 'Anaval'}`, clientBoxX + 6, infoTopY + 21);
-  doc.text(`Plan Serial No: ${planNumber}  •  3D Model Ref: ${serialNumber3D}`, clientBoxX + 6, infoTopY + 25.5);
-  doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, clientBoxX + 6, infoTopY + 29.5);
+  doc.text(`Phone: ${owner.ownerPhone || 'N/A'}`, clientBoxX + innerPad, curRightY);
+
+  curRightY += 4.2;
+  doc.setFontSize(7.2);
+  rightSiteLines.forEach((line) => {
+    doc.text(line, clientBoxX + innerPad, curRightY);
+    curRightY += 3.8;
+  });
+
+  doc.text(`Plan Serial No: ${planNumber}  •  3D Model Ref: ${serialNumber3D}`, clientBoxX + innerPad, curRightY);
+  curRightY += 3.8;
+  doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, clientBoxX + innerPad, curRightY);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 4. PROJECT & ARCHITECTURE SPECIFICATIONS BAR
   // ─────────────────────────────────────────────────────────────────────────
-  const specY = 78.5;
+  const specY = infoTopY + containerHeight + 3.5;
   doc.setFillColor(241, 245, 249);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.3);
@@ -506,13 +527,13 @@ export async function generateHousePlanInvoicePDF({
   doc.setTextColor(100, 116, 139);
   doc.text('PROJECT ENGINEER:', margin + specColWidth * 3 + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...rgbTheme);
+  doc.setTextColor(217, 119, 6);
   doc.text(owner.engineerName || 'Er. YS_Construction', margin + specColWidth * 3 + 4, specY + 8.2);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 5. PAYMENTS & ADVANCE INSTALLMENTS LEDGER TABLE
   // ─────────────────────────────────────────────────────────────────────────
-  const paymentSectionY = 92;
+  const paymentSectionY = specY + 14;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
