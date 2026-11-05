@@ -700,7 +700,6 @@ export default function Plans() {
   const handleSaveWorkspace = async () => {
     if (!activeOwner) return;
     setSavingWorkspace(true);
-    const toastId = toast.loading(`Saving workspace for ${activeOwner.ownerName}...`);
 
     try {
       const effectivePlans = activeOwner.plansList || [];
@@ -717,19 +716,13 @@ export default function Plans() {
         contractorId: activeOwner.contractorId || scopeId,
       });
 
-      toast.dismiss(toastId);
-      toast.success(`Workspace saved successfully for ${activeOwner.ownerName}!`, {
-        duration: 4000,
-      });
-
-      // Show prominent in-screen foreground banner
+      // Show prominent in-screen foreground banner only (no duplicate black toast popup)
       setSaveSuccessNotice(true);
       setTimeout(() => {
         setSaveSuccessNotice(false);
       }, 3500);
     } catch (err) {
       console.error('Failed to save workspace:', err);
-      toast.dismiss(toastId);
       toast.error(`Failed to save workspace: ${err.message || 'Error'}`);
     } finally {
       setSavingWorkspace(false);
@@ -1611,16 +1604,6 @@ export default function Plans() {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                         <span>Edit Fee & Details</span>
-                      </button>
-
-                      <button
-                        onClick={handleSaveWorkspace}
-                        disabled={savingWorkspace}
-                        className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-sm hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
-                        title="Save all changes in this workspace to cloud"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{savingWorkspace ? 'Saving...' : 'Save Workspace'}</span>
                       </button>
 
                       <button
