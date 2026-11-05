@@ -759,11 +759,11 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 8. TERMS, CONDITIONS & AUTHORIZED SIGNATURE / OFFICIAL SEAL BLOCKS
+  // 8. TERMS, CONDITIONS & AUTHORIZED SIGNATURE BLOCKS
   // ─────────────────────────────────────────────────────────────────────────
-  const termsBoxH = 13.5;
-  const sigBoxH = 22;
-  const neededSignSpace = termsBoxH + sigBoxH + 8; // ~43.5mm total
+  const termsBoxH = 13;
+  const sigBoxH = 18;
+  const neededSignSpace = termsBoxH + sigBoxH + 6; // ~37mm total
   const currentFinalY = doc.lastAutoTable.finalY;
   const bottomFooterLimit = pageHeight - 12; // 285mm (above bottom footer line)
 
@@ -808,15 +808,13 @@ export async function generateHousePlanInvoicePDF({
   doc.text('3. Any revisions beyond agreed architectural draft will be charged as per schedule.', termsRightX, signY + 7.2);
   doc.text('4. Complete drawing set & CAD soft copies released upon full plan fee settlement.', termsRightX, signY + 10.6);
 
-  // --- Signatures & Official Company Seal Section (3 Balanced Columns) ---
-  const sigSectionY = signY + termsBoxH + 4.5;
-  const availableWidth = pageWidth - margin * 2;
-  const colW = availableWidth / 3;
+  // --- Signatures Section (Clean 2-Column: Client Left & Consultant Right) ---
+  const sigSectionY = signY + termsBoxH + 5;
+  const sigLineY = sigSectionY + 11;
 
-  // 1. Client Acceptance (Left Column)
+  // 1. Client Acceptance (Left)
   const clientSigX = margin;
-  const clientLineW = colW - 8;
-  const sigLineY = sigSectionY + 13;
+  const clientLineW = 55;
 
   doc.setDrawColor(156, 163, 175);
   doc.setLineWidth(0.3);
@@ -835,41 +833,8 @@ export async function generateHousePlanInvoicePDF({
   doc.setTextColor(148, 163, 184);
   doc.text('Date: _______________', clientSigX, sigLineY + 10.5);
 
-  // 2. Official Company Seal & Stamp Box (Center Column)
-  const sealW = 54;
-  const sealH = 22;
-  const sealX = margin + colW + (colW - sealW) / 2;
-  const sealY = sigSectionY;
-
-  // Official dashed seal boundary in brand theme gold
-  doc.setDrawColor(217, 119, 6);
-  doc.setLineWidth(0.4);
-  doc.setLineDashPattern([1.5, 1.2], 0);
-  doc.roundedRect(sealX, sealY, sealW, sealH, 2, 2, 'D');
-  doc.setLineDashPattern([], 0); // reset dash
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.8);
-  doc.setTextColor(217, 119, 6); // amber-600
-  doc.text('OFFICIAL COMPANY SEAL / STAMP', sealX + sealW / 2, sealY + 4.2, { align: 'center' });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(15, 23, 42); // slate-900
-  doc.text('YS CONSTRUCTION', sealX + sealW / 2, sealY + 9.2, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.8);
-  doc.setTextColor(71, 85, 105);
-  doc.text('Consulting Engineers & Architects', sealX + sealW / 2, sealY + 13.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text('ANGALDHARA • DIST. SURAT', sealX + sealW / 2, sealY + 17.5, { align: 'center' });
-
-  // 3. Consultant Authorized Signatory (Right Column)
-  const authSigW = colW - 6;
+  // 2. Consultant Authorized Signatory (Right)
+  const authSigW = 60;
   const authSigX = pageWidth - margin - authSigW;
 
   doc.setDrawColor(156, 163, 175);
