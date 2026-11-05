@@ -38,6 +38,7 @@ import {
   Printer,
   Calendar,
   Send,
+  Share2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -125,8 +126,9 @@ export default function Plans() {
   const { data: owners = [], isLoading, error } = useHousePlans();
   const { catalog: masterCatalog = DEFAULT_MASTER_PLANS } = useMasterPlanCatalog();
 
-  // PDF Export state
+  // PDF Export and WhatsApp Share state
   const [downloadingPdfId, setDownloadingPdfId] = useState(null);
+  const [sharingPdfId, setSharingPdfId] = useState(null);
 
   // Search, filter, view mode
   const [search, setSearch] = useState('');
@@ -398,6 +400,88 @@ export default function Plans() {
       toast.error(`Failed to generate PDF Bill: ${err.message || 'Error'}`, { id: toastId });
     } finally {
       setDownloadingPdfId(null);
+    }
+  };
+
+  // ── SHARE PDF BILL & THANKS MESSAGE TO WHATSAPP ─────────────────────
+  const handleSharePdfToWhatsApp = async (targetOwner, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const ownerToBill = targetOwner || activeOwner;
+    if (!ownerToBill) {
+      toast.error('No owner selected for WhatsApp sharing');
+      return;
+    }
+
+    setSharingPdfId(ownerToBill.id);
+    const toastId = toast.loading(`Preparing PDF bill & WhatsApp share for ${ownerToBill.ownerName}...`);
+    try {
+      // 1. Generate jsPDF instance in memory
+      const doc = await generateHousePlanInvoicePDF({
+        owner: { ...ownerToBill, contractorId: ownerToBill.contractorId || scopeId },
+        branding,
+        saveImmediately: false,
+      });
+
+      const ownerName = ownerToBill.ownerName || 'Client';
+      const cleanOwnerFileName = ownerName.replace(/[^A-Za-z0-9_-]/g, '_');
+      const planNumber = ownerToBill.planNumber || 'PLN';
+      const safeFilename = `YS_Construction_Bill_${cleanOwnerFileName}_${planNumber}.pdf`;
+
+      // 2. Prepare professional Thank You message with complete project and billing details
+      const totalFee = formatCurrency(ownerToBill.houseAmount);
+      const paid = formatCurrency(ownerToBill.totalPaid);
+      const pending = formatCurrency(ownerToBill.pendingBalance);
+      const coName = branding?.companyName || 'YS Construction';
+      const siteLoc = [ownerToBill.ownerAddress, ownerToBill.city || ownerToBill.town].filter(Boolean).join(', ') || ownerToBill.city || '-';
+      const builtUpArea = ownerToBill.totalSqFt ? `${Number(ownerToBill.totalSqFt).toLocaleString('en-IN')} sq.ft` : '-';
+      const plansCount = (ownerToBill.plansList || []).length || 21;
+
+      const thanksMessage = `Namaste *${ownerName}* ji, 🙏\n\nThank you for choosing *${coName}* for your house planning and architectural engineering drawings! We truly appreciate your trust and partnership.\n\n📋 *PROJECT DETAILS:*\n• *Plan Ref:* ${planNumber}\n• *Site Location:* ${siteLoc}\n• *Built-up Area:* ${builtUpArea}\n• *Scope of Drawings:* ${plansCount} Deliverables\n\n💰 *PAYMENT STATUS:*\n• *Total Plan Fee:* ${totalFee}\n• *Advance Cleared:* ${paid}\n• *Net Remaining Balance:* ${pending}\n\n📄 *Please find your official Planning Invoice & Deliverables Bill (PDF) attached.* Thank you for your business!\n\nWarm regards,\n*${coName}*\n_Architecture • Planner • Consultant • Interior Designer_\n📞 Mo: 80003 40720, 99044 45077\n📍 Gokuldham Complex, Angaldhara, Surat`;
+
+      const rawPhone = (ownerToBill.ownerPhone || '').replace(/[^0-9]/g, '');
+      const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+
+      // 3. Check for Web Share API support with files (native share on mobile/Safari)
+      const pdfBlob = doc.output('blob');
+      const pdfFile = new File([pdfBlob], safeFilename, { type: 'application/pdf' });
+
+      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        try {
+          await navigator.share({
+            title: `${coName} - Official Plan Bill for ${ownerName}`,
+            text: thanksMessage,
+            files: [pdfFile],
+          });
+          toast.success(`PDF Bill & Thanks message shared to WhatsApp!`, { id: toastId });
+          return;
+        } catch (shareErr) {
+          if (shareErr.name === 'AbortError') {
+            toast.dismiss(toastId);
+            return;
+          }
+          console.warn('Native share failed, using WhatsApp Web fallback:', shareErr);
+        }
+      }
+
+      // 4. Fallback for Desktop / WhatsApp Web:
+      // Download the PDF automatically so the user has the file right in their Downloads
+      doc.save(safeFilename);
+
+      // Open WhatsApp Web with recipient & message prefilled
+      const waUrl = cleanPhone && cleanPhone.length >= 10
+        ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(thanksMessage)}`
+        : `https://wa.me/?text=${encodeURIComponent(thanksMessage)}`;
+
+      window.open(waUrl, '_blank');
+      toast.success(`PDF downloaded & WhatsApp opened for ${ownerName}! Attach the downloaded PDF in chat.`, {
+        id: toastId,
+        duration: 5000,
+      });
+    } catch (err) {
+      console.error('Failed to share PDF via WhatsApp:', err);
+      toast.error(`Failed to share PDF: ${err.message || 'Error'}`, { id: toastId });
+    } finally {
+      setSharingPdfId(null);
     }
   };
 
@@ -1102,6 +1186,15 @@ export default function Plans() {
                   </button>
 
                   <button
+                    onClick={(e) => handleSharePdfToWhatsApp(owner, e)}
+                    disabled={sharingPdfId === owner.id}
+                    className="p-1.5 bg-bg-elevated hover:bg-emerald-600/20 hover:border-emerald-500/40 text-text-secondary hover:text-emerald-400 border border-border-strong rounded-lg transition-colors disabled:opacity-50"
+                    title="Share PDF Bill with Thanks Message to Client on WhatsApp"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
                     onClick={(e) => openEditOwner(e, owner)}
                     className="p-1.5 bg-bg-elevated hover:bg-bg-input border border-border-strong rounded-lg text-text-secondary hover:text-text-primary transition-colors"
                     title="Edit Owner Info"
@@ -1219,6 +1312,14 @@ export default function Plans() {
                             title="Download Branded PDF Bill"
                           >
                             <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => handleSharePdfToWhatsApp(owner, e)}
+                            disabled={sharingPdfId === owner.id}
+                            className="p-1.5 hover:bg-emerald-600/15 hover:text-emerald-400 rounded text-text-muted transition-colors disabled:opacity-50"
+                            title="Share PDF Bill with Thanks Message on WhatsApp"
+                          >
+                            <Share2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={(e) => openEditOwner(e, owner)}
@@ -1347,6 +1448,16 @@ export default function Plans() {
                       >
                         <Printer className="w-3.5 h-3.5" />
                         <span>{downloadingPdfId === activeOwner.id ? 'Generating PDF...' : 'Download PDF Bill'}</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => handleSharePdfToWhatsApp(activeOwner, e)}
+                        disabled={sharingPdfId === activeOwner.id}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-sm hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                        title="Share Branded PDF Bill & Thank-You Message to Client via WhatsApp"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                        <span>{sharingPdfId === activeOwner.id ? 'Preparing...' : 'Share Bill on WhatsApp'}</span>
                       </button>
 
                       <button
@@ -1635,6 +1746,17 @@ export default function Plans() {
                         >
                           <Printer className="w-3.5 h-3.5" />
                           <span>{downloadingPdfId === activeOwner.id ? 'Generating...' : 'Download PDF Bill'}</span>
+                        </button>
+
+                        {/* Share PDF Bill to WhatsApp with Thanks Message */}
+                        <button
+                          onClick={(e) => handleSharePdfToWhatsApp(activeOwner, e)}
+                          disabled={sharingPdfId === activeOwner.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/15 border border-emerald-500/40 hover:border-emerald-500 text-emerald-400 hover:bg-emerald-600/25 rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+                          title="Share official PDF Bill with Thank You message to client via WhatsApp"
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                          <span>{sharingPdfId === activeOwner.id ? 'Preparing...' : 'Share Bill on WhatsApp'}</span>
                         </button>
 
                         {/* Request Payment via WhatsApp / Message */}
