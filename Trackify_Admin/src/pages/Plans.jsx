@@ -772,10 +772,6 @@ export default function Plans() {
     );
   }
 
-  if (isLoading) {
-    return <LoadingSpinner label="Loading House Owners, Plans & Ledgers..." />;
-  }
-
   return (
     <div className="space-y-6">
       {/* ── TOP STATS OVERVIEW ────────────────────────────────────────── */}
@@ -910,7 +906,11 @@ export default function Plans() {
       </div>
 
       {/* ── OWNERS LIST (GRID OR TABLE) ──────────────────────────────── */}
-      {filteredOwners.length === 0 ? (
+      {isLoading ? (
+        <div className="py-20 flex flex-col items-center justify-center bg-bg-card border border-border rounded-xl">
+          <LoadingSpinner label="Loading House Owners, Plans & Ledgers..." />
+        </div>
+      ) : filteredOwners.length === 0 ? (
         <EmptyState
           icon={Home}
           title={search ? 'No matching house owners' : 'No house owners added yet'}

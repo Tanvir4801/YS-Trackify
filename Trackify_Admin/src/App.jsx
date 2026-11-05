@@ -116,20 +116,33 @@ export default function App() {
 
   useEffect(() => {
     setLoading(true);
+
+    // Watchdog fallback: release loading spinner if auth takes longer than 3.5 seconds
+    const watchdogTimer = setTimeout(() => {
+      setLoading(false);
+    }, 3500);
+
+    const withTimeout = (promise, ms = 3500) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Operation timed out')), ms)),
+      ]);
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
         clearUser();
+        clearTimeout(watchdogTimer);
         if (window.location.pathname !== '/login') navigate('/login', { replace: true });
         return;
       }
 
       try {
-        let userSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+        let userSnap = await withTimeout(getDoc(doc(db, 'users', firebaseUser.uid)));
         
         // Auto-link pre-created users (e.g. created from SA User Management UI)
         if (!userSnap.exists()) {
           const emailQuery = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
-          const emailSnap = await getDocs(emailQuery);
+          const emailSnap = await withTimeout(getDocs(emailQuery));
           
           if (!emailSnap.empty) {
             // Found a pre-created document, migrate it to the correct UID
@@ -149,7 +162,7 @@ export default function App() {
             }
             
             // Re-fetch the newly created snap
-            userSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+            userSnap = await withTimeout(getDoc(doc(db, 'users', firebaseUser.uid)));
           } else {
             toast.error('Your user profile is missing. Contact your admin.');
             await auth.signOut();
@@ -194,10 +207,6 @@ export default function App() {
           return;
         }
 
-        // P1-6 FIX: Preserve the REAL role in the store.
-        // effectiveRole is used ONLY for navigation routing.
-        // Supervisors remain 'supervisor' in the store — this is critical
-        // so that all isSupervisor checks throughout the app work correctly.
         const realRole = userData.role;           // 'contractor' | 'supervisor' | 'super_admin' | 'trackops'
         const effectiveRole = realRole === 'supervisor' ? 'contractor' : realRole; // used only for navigation
 
@@ -210,27 +219,35 @@ export default function App() {
         });
 
         if (realRole === 'super_admin' || realRole === 'trackops') {
-          const snap = await getDocs(collection(db, 'contractors'));
-          const list = snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((c) => c.isActive !== false)
-            .map((c) => ({ id: c.id, name: c.name || '(unnamed)' }))
-            .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+          try {
+            const snap = await withTimeout(getDocs(collection(db, 'contractors')));
+            const list = snap.docs
+              .map((d) => ({ id: d.id, ...d.data() }))
+              .filter((c) => c.isActive !== false)
+              .map((c) => ({ id: c.id, name: c.name || '(unnamed)' }))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
-          setContractorsList(list);
-          switchContractor(null, null);
+            setContractorsList(list);
+            switchContractor(null, null);
+          } catch (e) {
+            console.warn('Could not load contractors list:', e);
+          }
         } else if (userData.contractorId) {
-          const contractorSnap = await getDoc(doc(db, 'contractors', userData.contractorId));
-          if (contractorSnap.exists()) {
-            const cData = contractorSnap.data();
-            if (cData.isSuspended) {
-              toast.error(`Company Suspended: ${cData.suspensionReason || 'Please contact support'}`);
-              await auth.signOut();
-              clearUser();
-              navigate('/login', { replace: true });
-              return;
+          try {
+            const contractorSnap = await withTimeout(getDoc(doc(db, 'contractors', userData.contractorId)));
+            if (contractorSnap && contractorSnap.exists()) {
+              const cData = contractorSnap.data();
+              if (cData.isSuspended) {
+                toast.error(`Company Suspended: ${cData.suspensionReason || 'Please contact support'}`);
+                await auth.signOut();
+                clearUser();
+                navigate('/login', { replace: true });
+                return;
+              }
+              switchContractor(userData.contractorId, cData.name);
             }
-            switchContractor(userData.contractorId, cData.name);
+          } catch (e) {
+            console.warn('Could not load contractor profile:', e);
           }
         }
 
@@ -250,10 +267,15 @@ export default function App() {
         toast.error('Failed to load profile: ' + (err.message || 'Unknown error'));
         clearUser();
       } finally {
+        clearTimeout(watchdogTimer);
         setLoading(false);
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      clearTimeout(watchdogTimer);
+      unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

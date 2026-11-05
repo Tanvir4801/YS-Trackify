@@ -41,17 +41,33 @@ if (missing.length > 0) {
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-if (typeof window !== 'undefined') {
-  initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider('recaptcha-v3-site-key'),
-    isTokenAutoRefreshEnabled: true
-  });
+const recaptchaKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+if (typeof window !== 'undefined' && recaptchaKey && recaptchaKey !== 'recaptcha-v3-site-key') {
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(recaptchaKey),
+      isTokenAutoRefreshEnabled: true
+    });
+  } catch (appCheckErr) {
+    console.warn('AppCheck initialization skipped:', appCheckErr);
+  }
 }
 
 export const auth = getAuth(app);
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-});
+
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(app, {
+    localCache: import.meta.env.DEV
+      ? undefined
+      : persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  });
+} catch (err) {
+  console.warn('Persistent cache initialization error, fallback to default:', err);
+  firestoreDb = initializeFirestore(app, {});
+}
+export const db = firestoreDb;
+
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
