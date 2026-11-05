@@ -82,9 +82,17 @@ export default function BrandingSettings() {
       const storageRef = ref(storage, logoPath);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
+
+      // Convert to base64 DataURL for instant 100% reliable PDF bill rendering
+      const logoDataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
       
       await updateBranding({ 
         logoUrl: url,
+        logoDataUrl,
         logoStoragePath: logoPath,
       });
       
@@ -103,6 +111,7 @@ export default function BrandingSettings() {
     try {
       await updateBranding({ 
         logoUrl: null,
+        logoDataUrl: null,
         logoStoragePath: null,
       });
       toast.success('Logo removed');

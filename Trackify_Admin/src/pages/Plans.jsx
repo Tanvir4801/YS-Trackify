@@ -388,7 +388,7 @@ export default function Plans() {
     const toastId = toast.loading(`Generating official branded PDF bill for ${ownerToBill.ownerName}...`);
     try {
       await generateHousePlanInvoicePDF({
-        owner: ownerToBill,
+        owner: { ...ownerToBill, contractorId: ownerToBill.contractorId || scopeId },
         branding,
         saveImmediately: true,
       });

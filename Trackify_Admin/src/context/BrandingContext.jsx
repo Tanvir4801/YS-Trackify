@@ -6,18 +6,19 @@ import { useAuthStore } from '../store/authStore';
 const BrandingContext = createContext(null);
 
 export const DEFAULT_BRANDING = {
-  companyName:    'Trackify',
-  tagline:        'v2.0',
-  address:        '',
-  phone:          '',
-  email:          '',
+  companyName:    'YS Construction',
+  tagline:        'Architecture, Planner, Consultant, Interior Designer',
+  address:        'Gokuldham Complex, Opp. Doodh Dairy, ANGALDHARA, Ta. Mahuva, Dist. Surat',
+  phone:          '+91 80003 40720, +91 99044 45077',
+  email:          'ysconstruction24@gmail.com',
   gstNumber:      '',
   logoUrl:        null,
+  logoDataUrl:    null,
   logoStoragePath:null,
   themeColor:     '#F5A623',
   themeColorDark: '#D97706',
   themeColorLight:'#FEF3C7',
-  pdfHeaderNote:  'Thank you for your business',
+  pdfHeaderNote:  'Thank you for partnering with YS Construction',
   invoicePrefix:  'INV',
   isSetup:        false,
 };
@@ -50,7 +51,13 @@ export function BrandingProvider({ children }) {
           const mergedBranding = {
             ...DEFAULT_BRANDING,
             ...b,
-            companyName: b.companyName || data.name || DEFAULT_BRANDING.companyName,
+            companyName: (b.companyName && b.companyName.toLowerCase() !== 'trackify')
+              ? b.companyName
+              : ((data.name && data.name.toLowerCase() !== 'trackify') ? data.name : DEFAULT_BRANDING.companyName),
+            tagline: b.tagline || DEFAULT_BRANDING.tagline,
+            address: b.address || DEFAULT_BRANDING.address,
+            phone: b.phone || DEFAULT_BRANDING.phone,
+            email: b.email || DEFAULT_BRANDING.email,
           };
           setBranding(mergedBranding);
           applyTheme(mergedBranding.themeColor || '#F5A623');

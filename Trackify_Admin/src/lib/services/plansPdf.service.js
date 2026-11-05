@@ -1,5 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { DEFAULT_BRANDING } from '../../context/BrandingContext';
 import { DEFAULT_MASTER_PLANS } from './plans.service';
 import { formatDate } from '../utils';
@@ -37,10 +39,60 @@ function formatPdfCurrency(amount) {
 }
 
 /**
- * Helper to convert image URL to base64 DataURL via canvas with timeout protection
+ * Parses natural dimensions from a base64 DataURL
  */
-async function loadLogoDataUrl(url) {
+function parseDataUrlDimensions(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({
+        dataUrl,
+        width: img.naturalWidth || img.width || 100,
+        height: img.naturalHeight || img.height || 100,
+      });
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Robust logo loader with multi-layer fallback:
+ * 1. If base64 data URL provided directly, return immediately.
+ * 2. Fetch via fetch() -> blob -> FileReader (bypasses canvas taint on Firebase Storage).
+ * 3. Image element with crossOrigin Anonymous + canvas fallback.
+ */
+async function loadLogoDataUrl(url, dataUrlFallback) {
+  if (dataUrlFallback && typeof dataUrlFallback === 'string' && dataUrlFallback.startsWith('data:image/')) {
+    const parsed = await parseDataUrlDimensions(dataUrlFallback);
+    if (parsed) return parsed;
+  }
   if (!url) return null;
+  if (typeof url === 'string' && url.startsWith('data:image/')) {
+    return await parseDataUrlDimensions(url);
+  }
+
+  // Layer 1: Fetch as Blob (avoids canvas taint issues on cross-origin Firebase Storage)
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (res.ok) {
+      const blob = await res.blob();
+      const b64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      if (b64) {
+        const parsed = await parseDataUrlDimensions(b64);
+        if (parsed) return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Fetch blob for logo failed, falling back:', err);
+  }
+
+  // Layer 2: Image element with crossOrigin
   try {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
@@ -48,7 +100,6 @@ async function loadLogoDataUrl(url) {
     await new Promise((resolve, reject) => {
       img.onload = resolve;
       img.onerror = reject;
-      // 2.5 second timeout to never freeze PDF export
       setTimeout(() => reject(new Error('Logo image load timed out')), 2500);
     });
 
@@ -62,10 +113,69 @@ async function loadLogoDataUrl(url) {
       width: canvas.width,
       height: canvas.height,
     };
-  } catch (err) {
-    console.warn('Failed to load branding logo for PDF export:', err);
-    return null;
+  } catch (canvasErr) {
+    console.warn('Canvas toDataURL failed:', canvasErr);
   }
+
+  return null;
+}
+
+/**
+ * Draws the authentic Architectural Roof, Chimney, 4-Pane Window,
+ * and Curved Foundation Arc Logo directly from the YS Construction Business Card.
+ */
+function drawBusinessCardVectorLogo(doc, x, y, width, height, rgbTheme) {
+  // Rich dark bronze card background (#1A1715)
+  doc.setFillColor(26, 23, 21);
+  doc.setDrawColor(...rgbTheme);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(x, y, width, height, 2, 2, 'FD');
+
+  const centerX = x + width / 2;
+  const topY = y + 3.8;
+
+  // Gold stroke for architectural gable roof
+  doc.setDrawColor(...rgbTheme);
+  doc.setLineWidth(0.8);
+
+  // Left roof slope
+  doc.line(centerX, topY, x + 3.5, y + 13.5);
+  // Right roof slope
+  doc.line(centerX, topY, x + width - 3.5, y + 13.5);
+
+  // Chimney / Tower on right
+  doc.setFillColor(...rgbTheme);
+  doc.rect(centerX + 3.5, topY + 1.2, 2.2, 4.2, 'F');
+
+  // 4-Pane Square Window in Center
+  const winSize = 1.7;
+  const winGap = 0.5;
+  const winX = centerX - winSize - winGap / 2;
+  const winY = topY + 4.8;
+
+  doc.rect(winX, winY, winSize, winSize, 'F');
+  doc.rect(winX + winSize + winGap, winY, winSize, winSize, 'F');
+  doc.rect(winX, winY + winSize + winGap, winSize, winSize, 'F');
+  doc.rect(winX + winSize + winGap, winY + winSize + winGap, winSize, winSize, 'F');
+
+  // Curved Foundation Arc (from business card)
+  doc.setLineWidth(0.7);
+  const arcY = y + 16.5;
+  const arcLeft = x + 3;
+  const arcRight = x + width - 3;
+  const arcMid = centerX;
+  const arcPeak = y + 14.8;
+
+  doc.line(arcLeft, arcY, arcMid - 3.5, arcPeak + 0.5);
+  doc.line(arcMid - 3.5, arcPeak + 0.5, arcMid, arcPeak);
+  doc.line(arcMid, arcPeak, arcMid + 3.5, arcPeak + 0.5);
+  doc.line(arcMid + 3.5, arcPeak + 0.5, arcRight, arcY);
+
+  // Brand Name underneath
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(...rgbTheme);
+  doc.text('YS Construction', centerX, y + 21.2, { align: 'center' });
 }
 
 /**
@@ -84,6 +194,23 @@ export async function generateHousePlanInvoicePDF({
 }) {
   if (!owner) throw new Error('Owner data is required to generate PDF bill');
 
+  let effectiveBranding = { ...DEFAULT_BRANDING, ...(branding || {}) };
+
+  // If branding passed from context is missing uploaded logo, query contractor Firestore doc directly
+  if ((!effectiveBranding.logoUrl && !effectiveBranding.logoDataUrl) && owner.contractorId) {
+    try {
+      const contractorSnap = await getDoc(doc(db, 'contractors', owner.contractorId));
+      if (contractorSnap.exists() && contractorSnap.data()?.branding) {
+        effectiveBranding = {
+          ...effectiveBranding,
+          ...contractorSnap.data().branding,
+        };
+      }
+    } catch (e) {
+      console.warn('Could not fetch contractor branding directly:', e);
+    }
+  }
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -94,20 +221,20 @@ export async function generateHousePlanInvoicePDF({
   const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
   const margin = 14;
 
-  const themeHex = branding?.themeColor || '#F5A623';
+  const themeHex = effectiveBranding?.themeColor || '#F5A623';
   const rgbTheme = hexToRgb(themeHex);
 
-  // Fallback to "YS Construction" if default "Trackify" or blank
-  let rawCompanyName = branding?.companyName || '';
+  // Business Card Details Fallbacks
+  let rawCompanyName = effectiveBranding?.companyName || '';
   if (!rawCompanyName || rawCompanyName.toLowerCase() === 'trackify') {
     rawCompanyName = 'YS Construction';
   }
   const companyName = rawCompanyName.replace(/_/g, ' ').trim();
-  const tagline = branding?.tagline || 'Architecture & Structural Engineering Consultancy';
-  const companyAddress = branding?.address || 'Anaval, Gujarat, India';
-  const companyPhone = branding?.phone || '+91 7621984915';
-  const companyEmail = branding?.email || 'ysconstruction@gmail.com';
-  const gstNumber = branding?.gstNumber || '';
+  const tagline = effectiveBranding?.tagline || 'Architecture, Planner, Consultant, Interior Designer';
+  const companyAddress = effectiveBranding?.address || 'Gokuldham Complex, Opp. Doodh Dairy, ANGALDHARA, Ta. Mahuva, Dist. Surat';
+  const companyPhone = effectiveBranding?.phone || '+91 80003 40720, +91 99044 45077';
+  const companyEmail = effectiveBranding?.email || 'ysconstruction24@gmail.com';
+  const gstNumber = effectiveBranding?.gstNumber || '';
 
   const ownerName = owner.ownerName || 'Client';
   const planNumber = owner.planNumber || 'PLN-2026-001';
@@ -138,78 +265,111 @@ export async function generateHousePlanInvoicePDF({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 1. SLEEK EXECUTIVE HEADER (Modern Luxury White Theme with Brand Accent)
+  // 1. TOP EXECUTIVE PARTNER RIBBON (Directly from Business Card)
   // ─────────────────────────────────────────────────────────────────────────
-  // Top brand color accent strip (4mm)
-  doc.setFillColor(...rgbTheme);
-  doc.rect(0, 0, pageWidth, 4, 'F');
+  // Deep dark executive slate strip (y = 0 to 7mm)
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.rect(0, 0, pageWidth, 7, 'F');
 
-  // Header background card (pure clean white with subtle bottom border)
+  // Subtle bottom gold accent line (0.4mm)
+  doc.setFillColor(...rgbTheme);
+  doc.rect(0, 6.6, pageWidth, 0.4, 'F');
+
+  // Left Partner: Yogeshwar S. Patel
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...rgbTheme); // Gold
+  doc.text('Yogeshwar S. Patel', margin, 4.8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(203, 213, 225); // slate-300
+  doc.text(' • Mo. 80003 40720', margin + doc.getTextWidth('Yogeshwar S. Patel'), 4.8);
+
+  // Right Partner: Shirish D. Patel
+  const rightPartnerX = pageWidth - margin;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(203, 213, 225);
+  const phoneText = ' • Mo. 99044 45077';
+  const phoneW = doc.getTextWidth(phoneText);
+  doc.text(phoneText, rightPartnerX, 4.8, { align: 'right' });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...rgbTheme);
+  doc.text('Shirish D. Patel', rightPartnerX - phoneW, 4.8, { align: 'right' });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 2. MAIN BRAND HEADER BLOCK (Modern Architectural Luxury)
+  // ─────────────────────────────────────────────────────────────────────────
+  // White header canvas (y = 7mm to 41mm)
   doc.setFillColor(255, 255, 255);
-  doc.rect(0, 4, pageWidth, 32, 'F');
+  doc.rect(0, 7, pageWidth, 34, 'F');
   doc.setDrawColor(226, 232, 240); // slate-200
   doc.setLineWidth(0.3);
-  doc.line(margin, 36, pageWidth - margin, 36);
+  doc.line(margin, 41, pageWidth - margin, 41);
 
-  // Logo rendering
-  let textStartX = margin;
-  const logoInfo = await loadLogoDataUrl(branding?.logoUrl);
+  // Load logo from branding screen (logoDataUrl or logoUrl)
+  const logoInfo = await loadLogoDataUrl(effectiveBranding?.logoUrl, effectiveBranding?.logoDataUrl);
+  const logoBoxX = margin;
+  const logoBoxY = 10;
+  const logoBoxSize = 25;
 
   if (logoInfo) {
     try {
-      const maxBox = 22;
-      const ratio = Math.min(maxBox / logoInfo.width, maxBox / logoInfo.height);
+      const padding = 2;
+      const maxW = logoBoxSize - padding * 2;
+      const maxH = logoBoxSize - padding * 2;
+      const ratio = Math.min(maxW / logoInfo.width, maxH / logoInfo.height);
       const renderW = logoInfo.width * ratio;
       const renderH = logoInfo.height * ratio;
-      const renderY = 20 - renderH / 2;
+      const renderX = logoBoxX + (logoBoxSize - renderW) / 2;
+      const renderY = logoBoxY + (logoBoxSize - renderH) / 2;
 
-      // Modern rounded border box for logo
-      doc.setFillColor(248, 250, 252);
+      // Rounded container card
+      doc.setFillColor(255, 255, 255);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(margin, renderY - 1, renderW + 2, renderH + 2, 2, 2, 'FD');
-      doc.addImage(logoInfo.dataUrl, 'PNG', margin + 1, renderY, renderW, renderH);
-
-      textStartX = margin + renderW + 5;
+      doc.setLineWidth(0.3);
+      doc.roundedRect(logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, 2, 2, 'FD');
+      doc.addImage(logoInfo.dataUrl, 'PNG', renderX, renderY, renderW, renderH);
     } catch (e) {
-      console.warn('Logo draw fallback:', e);
+      console.warn('Logo draw fallback, rendering vector emblem:', e);
+      drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, rgbTheme);
     }
   } else {
-    // Stylized Monogram Badge if no image uploaded
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(...rgbTheme);
-    doc.setLineWidth(0.6);
-    doc.roundedRect(margin, 9, 22, 22, 3, 3, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(...rgbTheme);
-    const monogram = companyName
-      .split(' ')
-      .map((w) => w[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() || 'YS';
-    doc.text(monogram, margin + 5.5, 23.5);
-
-    textStartX = margin + 26;
+    // Exact architectural house & curved foundation arc logo from business card
+    drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, rgbTheme);
   }
 
-  // Company Name in Bold Slate
+  // Company Information
+  const brandTextX = margin + logoBoxSize + 4.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(companyName.toUpperCase(), textStartX, 17);
+  doc.text(companyName.toUpperCase(), brandTextX, 16.5);
 
-  // Tagline in Brand Accent Color
+  // Tagline / Nature of Business in Gold
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(8.2);
   doc.setTextColor(...rgbTheme);
-  doc.text(tagline.toUpperCase(), textStartX, 22.5);
+  doc.text(tagline.toUpperCase(), brandTextX, 21.5);
 
-  // Services Subtitle in Slate
+  // Services Subtitle
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7.2);
   doc.setTextColor(100, 116, 139); // slate-500
-  doc.text('2D Architectural Working • 3D Elevation • IS-456 Structural Drawings • Sanction Plans', textStartX, 27.5);
+  doc.text('2D Architectural Working • 3D Elevation • IS-456 Structural Drawings • Sanction Plans', brandTextX, 26);
+
+  // Address Line from Business Card
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(51, 65, 85); // slate-700
+  doc.text(companyAddress, brandTextX, 30.5);
+
+  // Email & Contact
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`E-mail: ${companyEmail}  •  Mo: 80003 40720, 99044 45077`, brandTextX, 35);
 
   // Right Header: Invoice Title & Meta
   const rightX = pageWidth - margin;
@@ -224,22 +384,22 @@ export async function generateHousePlanInvoicePDF({
   doc.text(`Bill Ref: ${billInvoiceNo}`, rightX, 20.5, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7.8);
   doc.setTextColor(100, 116, 139);
   doc.text(`Date: ${formatDate(new Date())}`, rightX, 25.5, { align: 'right' });
 
   // Status Pill
   doc.setFillColor(...badgeBgColor);
-  doc.roundedRect(rightX - 44, 28, 44, 5.5, 2, 2, 'F');
+  doc.roundedRect(rightX - 44, 28.5, 44, 5.5, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...badgeTextColor);
-  doc.text(paymentBadgeText, rightX - 22, 32, { align: 'center' });
+  doc.text(paymentBadgeText, rightX - 22, 32.5, { align: 'center' });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 2. MODERN CONTACT DETAILS & CLIENT INFORMATION CARDS
+  // 3. CONTACT DETAILS & CLIENT INFORMATION CARDS
   // ─────────────────────────────────────────────────────────────────────────
-  const infoTopY = 41;
+  const infoTopY = 44;
   const colWidth = (pageWidth - margin * 2 - 6) / 2;
   const infoBoxHeight = 31;
 
@@ -259,20 +419,21 @@ export async function generateHousePlanInvoicePDF({
   doc.text('ISSUED BY (PLANNING CONSULTANT):', margin + 6, infoTopY + 5.5);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
+  doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
-  doc.text(companyName, margin + 6, infoTopY + 11.5);
+  doc.text(companyName, margin + 6, infoTopY + 11);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.2);
+  doc.setTextColor(...rgbTheme);
+  doc.text('Principals: Yogeshwar S. Patel & Shirish D. Patel', margin + 6, infoTopY + 15.5);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7.2);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Office: ${companyAddress}`, margin + 6, infoTopY + 16.5);
-  doc.text(`Phone: ${companyPhone}  •  Email: ${companyEmail}`, margin + 6, infoTopY + 21);
-  if (gstNumber) {
-    doc.text(`GST / Registration: ${gstNumber}`, margin + 6, infoTopY + 25.5);
-  } else {
-    doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, margin + 6, infoTopY + 25.5);
-  }
+  doc.text('Office: Gokuldham Complex, Opp. Doodh Dairy,', margin + 6, infoTopY + 20);
+  doc.text('ANGALDHARA, Ta. Mahuva, Dist. Surat', margin + 6, infoTopY + 24);
+  doc.text(`Phone: 8000340720, 9904445077  •  Email: ${companyEmail}`, margin + 6, infoTopY + 28);
 
   // Right Box: Billed To (Client / Owner)
   const clientBoxX = margin + colWidth + 6;
@@ -301,11 +462,12 @@ export async function generateHousePlanInvoicePDF({
   doc.text(`Phone: ${owner.ownerPhone || 'N/A'}`, clientBoxX + 6, infoTopY + 16.5);
   doc.text(`Site Location: ${owner.city || owner.town || owner.ownerAddress || 'Anaval'}`, clientBoxX + 6, infoTopY + 21);
   doc.text(`Plan Serial No: ${planNumber}  •  3D Model Ref: ${serialNumber3D}`, clientBoxX + 6, infoTopY + 25.5);
+  doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, clientBoxX + 6, infoTopY + 29.5);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 3. PROJECT & ARCHITECTURE SPECIFICATIONS BAR
+  // 4. PROJECT & ARCHITECTURE SPECIFICATIONS BAR
   // ─────────────────────────────────────────────────────────────────────────
-  const specY = 75;
+  const specY = 78.5;
   doc.setFillColor(241, 245, 249);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.3);
@@ -348,9 +510,9 @@ export async function generateHousePlanInvoicePDF({
   doc.text(owner.engineerName || 'Er. YS_Construction', margin + specColWidth * 3 + 4, specY + 8.2);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 4. PAYMENTS & ADVANCE INSTALLMENTS LEDGER TABLE
+  // 5. PAYMENTS & ADVANCE INSTALLMENTS LEDGER TABLE
   // ─────────────────────────────────────────────────────────────────────────
-  const paymentSectionY = 90;
+  const paymentSectionY = 92;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
@@ -406,7 +568,7 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 5. FINANCIAL BILLING SUMMARY BOX
+  // 6. FINANCIAL BILLING SUMMARY BOX
   // ─────────────────────────────────────────────────────────────────────────
   const summaryStartY = doc.lastAutoTable.finalY + 3;
   const summaryBoxWidth = 84;
@@ -449,7 +611,7 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 6. SCOPE OF 21 ENGINEERING DRAWINGS CHECKLIST TABLE
+  // 7. SCOPE OF 21 ENGINEERING DRAWINGS CHECKLIST TABLE
   // ─────────────────────────────────────────────────────────────────────────
   const plansSectionY = doc.lastAutoTable.finalY + 4.5;
   doc.setFont('helvetica', 'bold');
@@ -516,7 +678,7 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 7. TERMS, CONDITIONS & AUTHORIZED SIGNATURE BLOCKS
+  // 8. TERMS, CONDITIONS & AUTHORIZED SIGNATURE BLOCKS
   // ─────────────────────────────────────────────────────────────────────────
   let signY = doc.lastAutoTable.finalY + 7;
 
@@ -554,19 +716,23 @@ export async function generateHousePlanInvoicePDF({
   doc.text(`(${ownerName})`, margin, sigLineY + 7);
 
   // Consultant Authorized Signature (Right)
-  const authSigX = pageWidth - margin - 55;
-  doc.line(authSigX, sigLineY, authSigX + 55, sigLineY);
+  const authSigX = pageWidth - margin - 58;
+  doc.line(authSigX, sigLineY, authSigX + 58, sigLineY);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(...rgbTheme);
   doc.text(`For ${companyName}`, authSigX, sigLineY + 3.8);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
+  doc.setFontSize(6.8);
   doc.setTextColor(71, 85, 105);
   doc.text('Authorized Signatory & Seal', authSigX, sigLineY + 7);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('(Yogeshwar S. Patel / Shirish D. Patel)', authSigX, sigLineY + 10.2);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 8. CLEAN FOOTER & MULTI-PAGE NUMBERING (NO WATERMARK)
+  // 9. CLEAN FOOTER & MULTI-PAGE NUMBERING (NO WATERMARK)
   // ─────────────────────────────────────────────────────────────────────────
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
@@ -574,13 +740,15 @@ export async function generateHousePlanInvoicePDF({
 
     // Top Header Mini-strip on continuation pages (Page 2+)
     if (i > 1) {
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 0, pageWidth, 5.5, 'F');
       doc.setFillColor(...rgbTheme);
-      doc.rect(0, 0, pageWidth, 5, 'F');
+      doc.rect(0, 5.2, pageWidth, 0.3, 'F');
       doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(255, 255, 255);
-      doc.text(`${companyName.toUpperCase()} — PLANNING INVOICE & DELIVERABLES (Ref: ${billInvoiceNo})`, margin, 3.5);
-      doc.text(`Client: ${ownerName}`, pageWidth - margin, 3.5, { align: 'right' });
+      doc.text(`${companyName.toUpperCase()} — PLANNING INVOICE & DELIVERABLES (Ref: ${billInvoiceNo})`, margin, 3.8);
+      doc.text(`Client: ${ownerName}`, pageWidth - margin, 3.8, { align: 'right' });
     }
 
     // Bottom footer line
@@ -592,7 +760,7 @@ export async function generateHousePlanInvoicePDF({
     doc.setTextColor(148, 163, 184); // slate-400
     doc.setFont('helvetica', 'normal');
     doc.text(
-      `${companyName} • Architectural & Structural Engineering • Thank you for your business!`,
+      `${companyName} • Architecture, Planner, Consultant, Interior Designer • Thank you for your business!`,
       margin,
       pageHeight - 5
     );
