@@ -37,6 +37,7 @@ import {
   ArrowUpRight,
   Printer,
   Calendar,
+  Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -600,6 +601,35 @@ export default function Plans() {
     }
   };
 
+  // Open Add Payment Modal with smart defaults
+  const handleOpenAddPayment = (presetType = 'part') => {
+    if (!activeOwner) return;
+    const currentCount = (activeOwner.payments || []).length;
+    let installmentName = `Installment ${currentCount + 1}`;
+    let type = presetType;
+    let amount = '';
+
+    if (currentCount === 0) {
+      installmentName = '1st Advance Booking';
+      type = 'advance';
+      const halfAmt = Math.round((Number(activeOwner.houseAmount) || 0) / 2);
+      amount = halfAmt > 0 ? String(halfAmt) : '';
+    } else {
+      amount = activeOwner.pendingBalance > 0 ? String(activeOwner.pendingBalance) : '';
+    }
+
+    setPaymentForm({
+      installmentName,
+      type,
+      amount,
+      date: new Date().toISOString().split('T')[0],
+      mode: 'UPI',
+      referenceNo: '',
+      notes: '',
+    });
+    setAddPaymentModalOpen(true);
+  };
+
   // Quick 50% Half Payment Preset
   const handlePresetHalfPayment = () => {
     if (!activeOwner) return;
@@ -614,6 +644,31 @@ export default function Plans() {
       notes: '50% Half payment installment for engineering & 3D plan drawings',
     });
     setAddPaymentModalOpen(true);
+  };
+
+  // Request Payment from Client (WhatsApp reminder with bill details)
+  const handleRequestPayment = () => {
+    if (!activeOwner) return;
+    const ownerName = activeOwner.ownerName || 'Client';
+    const planNum = activeOwner.planNumber || '';
+    const totalFee = formatCurrency(activeOwner.houseAmount);
+    const paid = formatCurrency(activeOwner.totalPaid);
+    const pending = formatCurrency(activeOwner.pendingBalance);
+    const coName = branding?.companyName || 'YS Construction';
+
+    const message = `Namaste ${ownerName} ji,\n\nThis is a payment request from *${coName}* regarding your House Planning project (*${planNum}*).\n\n• *Total Plan Fee:* ${totalFee}\n• *Amount Received:* ${paid}\n• *Pending Balance:* ${pending}\n\nKindly process the pending installment payment at your earliest convenience.\n\nThank you,\n*${coName}*`;
+
+    const rawPhone = (activeOwner.ownerPhone || '').replace(/[^0-9]/g, '');
+    const cleanPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
+
+    if (cleanPhone && cleanPhone.length >= 10) {
+      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+      toast.success(`Opening WhatsApp payment request for ${ownerName}`);
+    } else {
+      navigator.clipboard.writeText(message);
+      toast.success(`Payment request message copied to clipboard for ${ownerName}!`);
+    }
   };
 
   // ── MASTER CATALOG MANAGER ACTIONS ──────────────────────────────────
@@ -1219,7 +1274,7 @@ export default function Plans() {
         createPortal(
           <AnimatePresence>
             {activeOwner && (
-              <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-5 overflow-hidden">
+              <div className="fixed inset-0 z-[50000] flex items-center justify-center p-3 sm:p-5 overflow-hidden">
                 {/* 100% Full-Size Backdrop Blur covering the entire browser window */}
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -1604,6 +1659,16 @@ export default function Plans() {
                           <span>{downloadingPdfId === activeOwner.id ? 'Generating...' : 'Download PDF Bill'}</span>
                         </button>
 
+                        {/* Request Payment via WhatsApp / Message */}
+                        <button
+                          onClick={handleRequestPayment}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/15 border border-emerald-500/30 hover:border-emerald-500 text-emerald-400 hover:bg-emerald-600/25 rounded-lg text-xs font-semibold shadow-sm transition-all"
+                          title="Send or copy payment request reminder to client via WhatsApp"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Request Payment</span>
+                        </button>
+
                         {/* Quick Preset 50% Half Payment Button */}
                         <button
                           onClick={handlePresetHalfPayment}
@@ -1613,23 +1678,14 @@ export default function Plans() {
                           + Record 50% Half Payment ({formatCurrency(Math.round((Number(activeOwner.houseAmount) || 0) / 2))})
                         </button>
 
+                        {/* Add Payment Installment Button */}
                         <button
-                          onClick={() => {
-                            setPaymentForm({
-                              installmentName: 'Part 2 Payment',
-                              type: 'part',
-                              amount: '',
-                              date: new Date().toISOString().split('T')[0],
-                              mode: 'UPI',
-                              referenceNo: '',
-                              notes: '',
-                            });
-                            setAddPaymentModalOpen(true);
-                          }}
+                          onClick={() => handleOpenAddPayment('part')}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gold text-bg-primary rounded-lg text-xs font-semibold shadow-sm hover:scale-105 active:scale-95 transition-all"
+                          title="Add a custom or milestone installment payment"
                         >
                           <Plus className="w-4 h-4" />
-                          <span>+ Add Payment Installment</span>
+                          <span>Add Payment Installment</span>
                         </button>
                       </div>
                     </div>
@@ -1645,10 +1701,11 @@ export default function Plans() {
                           Record advance bookings, half payments (50%), or milestone-based installments for this house owner.
                         </p>
                         <button
-                          onClick={() => setAddPaymentModalOpen(true)}
-                          className="px-4 py-2 bg-gold text-bg-primary text-xs font-bold rounded-lg shadow-sm"
+                          onClick={() => handleOpenAddPayment('advance')}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-gold text-bg-primary text-xs font-bold rounded-lg shadow-sm hover:scale-105 active:scale-95 transition-all"
                         >
-                          + Record First Payment
+                          <Plus className="w-4 h-4" />
+                          <span>Record First Payment</span>
                         </button>
                       </div>
                     ) : (
@@ -2049,18 +2106,6 @@ export default function Plans() {
         className="max-w-2xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-4 text-xs">
-          <p className="text-text-muted">
-            Configure the 21 standard plans used by your engineering team. When managing an owner's project (e.g. Tanvir), you can pick from these templates to add plans one by one.
-          </p>
-
-          {/* Clean Name Indicator */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-gold/10 border border-gold/30 rounded-lg text-gold text-xs">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-gold" />
-            <span>
-              <strong>21 Standard Engineering Plans:</strong> Revisions (06, 07, 10) are excluded. Client names are stripped out so only the main important plan names after the hyphen are shown.
-            </span>
-          </div>
-
           {/* Add New Plan Template to Catalog */}
           <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center bg-bg-elevated/50 p-3 rounded-xl border border-border-strong">
             <input

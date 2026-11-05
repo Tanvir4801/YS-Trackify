@@ -12,6 +12,7 @@ const Modal = ({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   className,
+  zIndex = 'z-[100000]',
 }) => {
   const [mounted, setMounted] = useState(false);
 
@@ -25,7 +26,7 @@ const Modal = ({
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+        <div className={clsx('fixed inset-0 flex items-center justify-center p-4', zIndex)}>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
