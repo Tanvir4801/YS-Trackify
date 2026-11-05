@@ -183,28 +183,6 @@ export default function Plans() {
     return owners.find((o) => o.id === activeOwnerId) || null;
   }, [owners, activeOwnerId]);
 
-  // Auto-upgrade active owner's checklist to all 21 engineering drawings if legacy mock plans are detected
-  useEffect(() => {
-    if (!activeOwner?.id) return;
-    const currentPlans = activeOwner.plansList || [];
-    const hasLegacyPlans = currentPlans.some(
-      (p) =>
-        p.name?.includes('02-1') ||
-        p.name?.includes('03-2') ||
-        p.name?.includes('Footing & Foundation') ||
-        p.name?.includes('Plinth Beam Layout') ||
-        p.name?.includes('Typical Floor') ||
-        p.name === '1)' ||
-        p.name === '2)'
-    );
-
-    if (hasLegacyPlans) {
-      resetOwnerPlansToExact21(activeOwner.id).catch((err) => {
-        console.error('Auto-upgrade to 21 plans failed:', err);
-      });
-    }
-  }, [activeOwner?.id, activeOwner?.plansList]);
-
   // Overall Statistics
   const overallStats = useMemo(() => {
     let totalSqFt = 0;

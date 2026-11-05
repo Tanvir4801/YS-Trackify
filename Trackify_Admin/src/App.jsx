@@ -249,6 +249,8 @@ export default function App() {
         console.error('Auth bootstrap failed', err);
         toast.error('Failed to load profile: ' + (err.message || 'Unknown error'));
         clearUser();
+      } finally {
+        setLoading(false);
       }
     });
     return () => unsubscribe();

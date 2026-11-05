@@ -133,21 +133,6 @@ export function subscribeHousePlans(contractorId, callback, onError) {
           name: extractMainPlanName(p.name) || p.name,
         }));
 
-        // Auto-upgrade owners with legacy/temporary mock plans to the standard 21 engineering plans
-        const hasLegacyPlans = rawPlans.some(
-          (p) =>
-            p.name?.includes('02-1') ||
-            p.name?.includes('03-2') ||
-            p.name?.includes('Footing & Foundation') ||
-            p.name?.includes('Plinth Beam Layout') ||
-            p.name?.includes('Typical Floor') ||
-            p.name === '1)' ||
-            p.name === '2)'
-        );
-        if (hasLegacyPlans) {
-          resetOwnerPlansToExact21(docSnap.id).catch(console.error);
-        }
-
         // Compute total paid and pending balance
         const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
         const houseAmount = Number(data.houseAmount) || 0;
@@ -610,29 +595,9 @@ export function subscribeMasterPlanCatalog(contractorId, callback) {
   return onSnapshot(
     catalogDocRef,
     (snap) => {
-      if (snap.exists() && Array.isArray(snap.data()?.catalog)) {
-        const stored = snap.data().catalog;
-        // Strictly check if stored catalog has the exact 21 plans without old obsolete items
-        const needsUpdate = stored.some(
-          (item) =>
-            item.id?.startsWith('default_') ||
-            item.name?.includes('Typical Floor') ||
-            item.name?.includes('Plinth Beam Layout') ||
-            item.name?.includes(' - ') ||
-            !item.name?.startsWith('01-') ||
-            !item.num
-        );
-
-        if (!needsUpdate && stored.length === 21) {
-          callback(stored);
-        } else {
-          // Auto-migrate obsolete catalog to the exact 21 plans in Firestore
-          saveMasterPlanCatalog(contractorId, DEFAULT_MASTER_PLANS).catch(console.error);
-          callback(DEFAULT_MASTER_PLANS);
-        }
+      if (snap.exists() && Array.isArray(snap.data()?.catalog) && snap.data().catalog.length > 0) {
+        callback(snap.data().catalog);
       } else {
-        // Fallback to default 21 master plans
-        saveMasterPlanCatalog(contractorId, DEFAULT_MASTER_PLANS).catch(console.error);
         callback(DEFAULT_MASTER_PLANS);
       }
     },

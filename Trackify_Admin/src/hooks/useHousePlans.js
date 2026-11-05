@@ -34,7 +34,15 @@ export function useHousePlans() {
       }
     );
 
-    return () => unsub();
+    // Failsafe timeout to prevent indefinite loading spinner
+    const fallbackTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 3500);
+
+    return () => {
+      unsub();
+      clearTimeout(fallbackTimer);
+    };
   }, [scopeId]);
 
   return { data, isLoading, error };
@@ -57,7 +65,14 @@ export function useMasterPlanCatalog() {
       setLoading(false);
     });
 
-    return () => unsub();
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+    }, 3500);
+
+    return () => {
+      unsub();
+      clearTimeout(fallbackTimer);
+    };
   }, [scopeId]);
 
   return { catalog, loading };

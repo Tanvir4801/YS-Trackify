@@ -41,22 +41,36 @@ export function BrandingProvider({ children }) {
     }
 
     const ref = doc(db, 'contractors', contractorId);
-    const unsub = onSnapshot(ref, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        const b = data.branding || {};
-        const mergedBranding = {
-          ...DEFAULT_BRANDING,
-          ...b,
-          companyName: b.companyName || data.name || DEFAULT_BRANDING.companyName,
-        };
-        setBranding(mergedBranding);
-        applyTheme(mergedBranding.themeColor || '#F5A623');
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const b = data.branding || {};
+          const mergedBranding = {
+            ...DEFAULT_BRANDING,
+            ...b,
+            companyName: b.companyName || data.name || DEFAULT_BRANDING.companyName,
+          };
+          setBranding(mergedBranding);
+          applyTheme(mergedBranding.themeColor || '#F5A623');
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Could not load branding, using defaults:', err);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
 
-    return () => unsub();
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+
+    return () => {
+      unsub();
+      clearTimeout(fallbackTimer);
+    };
   }, [contractorId]);
 
   const applyTheme = (hex) => {
