@@ -28,6 +28,7 @@ import '../calculator/calculator_screen.dart';
 import '../cost_management/site_cost_dashboard_screen.dart';
 import '../daily_closing/daily_closing_screen.dart';
 import '../notice_board_screen.dart';
+import '../plans/house_plans_list_screen.dart';
 import '../scanner/session_scanner_screen.dart';
 
 import 'widgets/action_tile.dart';
@@ -740,25 +741,49 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ModuleCard(
-              icon: Icons.location_on_rounded,
-              label: 'Sites',
-              subtitle: 'Manage attendance',
-              color: Theme.of(context).brightness == Brightness.dark 
-                  ? const Color(0xFFF4F7FB) : const Color(0xFF4A6583),
-              bgColor: AppColors.surfaceSecondaryColor(context),
-              iconBgColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF13243A) : null,
-              onTap: () {
-                HapticUtils.light();
-                final shellState =
-                    context.findAncestorStateOfType<AppShellState>();
-                if (shellState != null) {
-                  shellState.switchToTab(1); // 1 = Attendance
-                }
-              },
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: ModuleCard(
+                  icon: Icons.architecture_rounded,
+                  label: 'House Plans',
+                  subtitle: 'Drawings & visits',
+                  color: AppColors.primaryColor(context),
+                  bgColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF1E1A11)
+                      : const Color(0xFFFFF9EB),
+                  onTap: () {
+                    HapticUtils.light();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const HousePlansListScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ModuleCard(
+                  icon: Icons.location_on_rounded,
+                  label: 'Sites',
+                  subtitle: 'Manage attendance',
+                  color: Theme.of(context).brightness == Brightness.dark 
+                      ? const Color(0xFFF4F7FB) : const Color(0xFF4A6583),
+                  bgColor: AppColors.surfaceSecondaryColor(context),
+                  iconBgColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF13243A) : null,
+                  onTap: () {
+                    HapticUtils.light();
+                    final shellState =
+                        context.findAncestorStateOfType<AppShellState>();
+                    if (shellState != null) {
+                      shellState.switchToTab(1); // 1 = Attendance
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ],
       ),

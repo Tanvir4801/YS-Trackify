@@ -32,6 +32,7 @@ import 'providers/closing_report_provider.dart';
 import 'providers/super_admin_provider.dart';
 import 'providers/toolkit_provider.dart';
 import 'providers/branding_provider.dart';
+import 'providers/house_plans_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/app_shell.dart';
 import 'screens/auth/login_screen.dart';
@@ -222,6 +223,9 @@ Future<void> main() async {
         ),
         legacy_provider.ChangeNotifierProvider<ThemeProvider>(
           create: (_) => ThemeProvider(),
+        ),
+        legacy_provider.ChangeNotifierProvider<HousePlansProvider>(
+          create: (_) => HousePlansProvider(),
         ),
       ],
       child: const ProviderScope(child: TrackifyApp()),

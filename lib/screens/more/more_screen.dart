@@ -9,6 +9,7 @@ import '../../providers/sites_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/session_service.dart';
+import '../plans/house_plans_list_screen.dart';
 import '../notice_board_screen.dart';
 import '../settings/settings_screen.dart';
 import '../settings/help_support_screen.dart';
@@ -60,6 +61,11 @@ class _MoreScreenState extends State<MoreScreen> {
               
               _buildSectionHeader(context, 'APP'),
               _buildMenuCard(context, [
+                _MenuItem(
+                  icon: Icons.architecture_rounded,
+                  label: 'House Plans & Visits',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HousePlansListScreen())),
+                ),
                 _MenuItem(
                   icon: Icons.campaign_rounded,
                   label: 'Notices',
