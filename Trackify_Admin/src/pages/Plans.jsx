@@ -281,7 +281,8 @@ export default function Plans() {
     const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
     const totalBillable = baseFee + totalVisitsAmount;
     const payments = Array.isArray(activeOwner.payments) ? activeOwner.payments : [];
-    const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const paymentsSum = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(activeOwner.totalPaid) || 0);
     const pendingBalance = Math.max(0, totalBillable - totalPaid);
 
     return {
@@ -848,12 +849,25 @@ export default function Plans() {
       const houseAmount = Number(activeOwner.houseAmount) || 0;
       const totalVisitsAmount = effectiveVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
       const totalBillableAmount = houseAmount + totalVisitsAmount;
-      const totalPaid = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const paymentsSum = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(activeOwner.totalPaid) || 0);
       const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+      const finalizedPayments = effectivePayments.length > 0 ? effectivePayments : (
+        totalPaid > 0 ? [{
+          id: `pay_record_${activeOwner.id}`,
+          installmentName: totalPaid >= houseAmount ? 'Full Plan Fee (100% Cleared)' : 'Advance Booking Payment',
+          type: totalPaid >= houseAmount ? 'final' : 'advance',
+          amount: totalPaid,
+          date: new Date().toISOString().split('T')[0],
+          mode: 'UPI',
+          notes: 'Recorded plan payment',
+          recordedAt: new Date().toISOString(),
+        }] : []
+      );
 
       await updateHousePlan(activeOwner.id, {
         plansList: effectivePlans,
-        payments: effectivePayments,
+        payments: finalizedPayments,
         siteVisits: effectiveVisits,
         houseAmount,
         totalVisitsAmount,
@@ -1387,7 +1401,7 @@ export default function Plans() {
             const plans = owner.plansList || [];
             const completedCount = plans.filter((p) => p.status === 'completed').length;
             const progressPct = plans.length > 0 ? Math.round((completedCount / plans.length) * 100) : 0;
-            const paymentBadge = getPaymentStatusBadge(owner.houseAmount, owner.totalPaid);
+            const paymentBadge = getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid);
 
             return (
               <motion.div
@@ -1620,7 +1634,7 @@ export default function Plans() {
                 {filteredOwners.map((owner) => {
                   const plans = owner.plansList || [];
                   const completedCount = plans.filter((p) => p.status === 'completed').length;
-                  const paymentBadge = getPaymentStatusBadge(owner.houseAmount, owner.totalPaid);
+                  const paymentBadge = getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid);
 
                   return (
                     <tr

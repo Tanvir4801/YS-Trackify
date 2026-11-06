@@ -135,12 +135,29 @@ export function subscribeHousePlans(contractorId, callback, onError) {
           name: extractMainPlanName(p.name) || p.name,
         }));
 
-        // Compute total paid, site visits, and pending balance
-        const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        // Compute total paid, site visits, and pending balance (resilient to empty payments array)
+        const paymentsSum = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(data.totalPaid) || 0);
         const houseAmount = Number(data.houseAmount) || 0;
         const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
         const totalBillableAmount = houseAmount + totalVisitsAmount;
         const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+        // Auto-synthesize a payment item if totalPaid > 0 but payments array is empty
+        const effectivePayments = payments.length > 0
+          ? payments
+          : (totalPaid > 0
+              ? [{
+                  id: `pay_record_${docSnap.id}`,
+                  installmentName: totalPaid >= houseAmount ? 'Full Plan Fee (100% Cleared)' : 'Advance Booking Payment',
+                  type: totalPaid >= houseAmount ? 'final' : 'advance',
+                  amount: totalPaid,
+                  date: safeDate(data.updatedAt)?.toISOString().split('T')[0] || safeDate(data.createdAt)?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+                  mode: 'UPI',
+                  notes: 'Recorded plan payment',
+                  recordedAt: new Date().toISOString(),
+                }]
+              : []);
 
         // Compute completed plans count
         const completedPlansCount = plansList.filter((p) => p.status === 'completed').length;
@@ -148,7 +165,7 @@ export function subscribeHousePlans(contractorId, callback, onError) {
         plans.push({
           id: docSnap.id,
           ...data,
-          payments,
+          payments: effectivePayments,
           siteVisits,
           plansList,
           houseAmount,
@@ -193,16 +210,31 @@ export async function getHousePlan(planId) {
     ...p,
     name: extractMainPlanName(p.name) || p.name,
   }));
-  const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const paymentsSum = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(data.totalPaid) || 0);
   const houseAmount = Number(data.houseAmount) || 0;
   const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
   const totalBillableAmount = houseAmount + totalVisitsAmount;
   const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+  const effectivePayments = payments.length > 0
+    ? payments
+    : (totalPaid > 0
+        ? [{
+            id: `pay_record_${snap.id}`,
+            installmentName: totalPaid >= houseAmount ? 'Full Plan Fee (100% Cleared)' : 'Advance Booking Payment',
+            type: totalPaid >= houseAmount ? 'final' : 'advance',
+            amount: totalPaid,
+            date: safeDate(data.updatedAt)?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+            mode: 'UPI',
+            notes: 'Recorded plan payment',
+            recordedAt: new Date().toISOString(),
+          }]
+        : []);
 
   return {
     id: snap.id,
     ...data,
-    payments,
+    payments: effectivePayments,
     siteVisits,
     plansList,
     houseAmount,
@@ -326,12 +358,23 @@ export async function updateHousePlan(planId, updates) {
 
     const totalVisitsAmount = effectiveVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
     const totalBillableAmount = effectiveAmount + totalVisitsAmount;
-    const totalPaid = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const paymentsSum = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const totalPaid = paymentsSum > 0 ? paymentsSum : (cleanUpdates.totalPaid !== undefined ? Number(cleanUpdates.totalPaid) : (Number(currentData.totalPaid) || 0));
 
     cleanUpdates.totalVisitsAmount = totalVisitsAmount;
     cleanUpdates.totalBillableAmount = totalBillableAmount;
     cleanUpdates.totalPaid = totalPaid;
     cleanUpdates.pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+    if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
+      cleanUpdates.paymentStatus = 'completed';
+    } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
+      cleanUpdates.paymentStatus = 'half_paid';
+    } else if (totalPaid > 0) {
+      cleanUpdates.paymentStatus = 'advance_received';
+    } else {
+      cleanUpdates.paymentStatus = 'pending';
+    }
   }
 
   const payload = {
@@ -665,8 +708,24 @@ export async function addSiteVisitToOwner(ownerId, visitItem) {
   const totalVisitsAmount = updatedVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
   const houseAmount = Number(data.houseAmount) || 0;
   const totalBillableAmount = houseAmount + totalVisitsAmount;
-  const totalPaid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const paymentsSum = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(data.totalPaid) || 0);
   const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+  const effectivePayments = payments.length > 0
+    ? payments
+    : (totalPaid > 0
+        ? [{
+            id: `pay_record_${ownerId}`,
+            installmentName: totalPaid >= houseAmount ? 'Full Plan Fee (100% Cleared)' : 'Advance Booking Payment',
+            type: totalPaid >= houseAmount ? 'final' : 'advance',
+            amount: totalPaid,
+            date: safeDate(data.updatedAt)?.toISOString().split('T')[0] || safeDate(data.createdAt)?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+            mode: 'UPI',
+            notes: 'Recorded plan payment',
+            recordedAt: new Date().toISOString(),
+          }]
+        : []);
 
   let paymentStatus = 'pending';
   if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
@@ -679,6 +738,8 @@ export async function addSiteVisitToOwner(ownerId, visitItem) {
 
   await updateDoc(doc(db, 'house_plans', ownerId), {
     siteVisits: updatedVisits,
+    payments: effectivePayments,
+    totalPaid,
     totalVisitsAmount,
     totalBillableAmount,
     pendingBalance,
@@ -714,8 +775,24 @@ export async function updateSiteVisitInOwner(ownerId, visitId, updates) {
   const totalVisitsAmount = updatedVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
   const houseAmount = Number(data.houseAmount) || 0;
   const totalBillableAmount = houseAmount + totalVisitsAmount;
-  const totalPaid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const paymentsSum = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(data.totalPaid) || 0);
   const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+  const effectivePayments = payments.length > 0
+    ? payments
+    : (totalPaid > 0
+        ? [{
+            id: `pay_record_${ownerId}`,
+            installmentName: totalPaid >= houseAmount ? 'Full Plan Fee (100% Cleared)' : 'Advance Booking Payment',
+            type: totalPaid >= houseAmount ? 'final' : 'advance',
+            amount: totalPaid,
+            date: safeDate(data.updatedAt)?.toISOString().split('T')[0] || safeDate(data.createdAt)?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+            mode: 'UPI',
+            notes: 'Recorded plan payment',
+            recordedAt: new Date().toISOString(),
+          }]
+        : []);
 
   let paymentStatus = 'pending';
   if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
@@ -728,6 +805,8 @@ export async function updateSiteVisitInOwner(ownerId, visitId, updates) {
 
   await updateDoc(doc(db, 'house_plans', ownerId), {
     siteVisits: updatedVisits,
+    payments: effectivePayments,
+    totalPaid,
     totalVisitsAmount,
     totalBillableAmount,
     pendingBalance,
@@ -751,8 +830,24 @@ export async function deleteSiteVisitFromOwner(ownerId, visitId) {
   const totalVisitsAmount = updatedVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
   const houseAmount = Number(data.houseAmount) || 0;
   const totalBillableAmount = houseAmount + totalVisitsAmount;
-  const totalPaid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const paymentsSum = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(data.totalPaid) || 0);
   const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+  const effectivePayments = payments.length > 0
+    ? payments
+    : (totalPaid > 0
+        ? [{
+            id: `pay_record_${ownerId}`,
+            installmentName: totalPaid >= houseAmount ? 'Full Plan Fee (100% Cleared)' : 'Advance Booking Payment',
+            type: totalPaid >= houseAmount ? 'final' : 'advance',
+            amount: totalPaid,
+            date: safeDate(data.updatedAt)?.toISOString().split('T')[0] || safeDate(data.createdAt)?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+            mode: 'UPI',
+            notes: 'Recorded plan payment',
+            recordedAt: new Date().toISOString(),
+          }]
+        : []);
 
   let paymentStatus = 'pending';
   if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
@@ -765,6 +860,8 @@ export async function deleteSiteVisitFromOwner(ownerId, visitId) {
 
   await updateDoc(doc(db, 'house_plans', ownerId), {
     siteVisits: updatedVisits,
+    payments: effectivePayments,
+    totalPaid,
     totalVisitsAmount,
     totalBillableAmount,
     pendingBalance,
