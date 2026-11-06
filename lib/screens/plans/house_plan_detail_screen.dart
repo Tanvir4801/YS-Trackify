@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,7 @@ import '../../models/house_plan_model.dart';
 import '../../providers/branding_provider.dart';
 import '../../providers/house_plans_provider.dart';
 import '../../services/house_plan_pdf_service.dart';
+import '../../widgets/animations/bouncy_tap.dart';
 import 'widgets/site_visit_bottom_sheet.dart';
 
 class HousePlanDetailScreen extends StatefulWidget {
@@ -305,115 +307,144 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     final warning = AppColors.warningColor(context);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 9),
       decoration: BoxDecoration(
-        color: isCompleted
-            ? (isDark ? emerald.withValues(alpha: 0.12) : const Color(0xFFF0FDF4))
-            : (isDark ? const Color(0xFF132238) : Colors.white),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isCompleted ? emerald.withValues(alpha: 0.4) : border,
-        ),
-      ),
-      child: Row(
-        children: [
-          // Number badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: isCompleted ? emerald.withValues(alpha: 0.2) : (isDark ? const Color(0xFF0F1A2A) : const Color(0xFFF1F5F9)),
-              borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          if (isCompleted)
+            BoxShadow(
+              color: emerald.withValues(alpha: isDark ? 0.08 : 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
             ),
-            child: Text(
-              drawing.num,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: isCompleted ? emerald : textMuted,
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isCompleted
+                    ? [
+                        emerald.withValues(alpha: isDark ? 0.16 : 0.10),
+                        emerald.withValues(alpha: isDark ? 0.08 : 0.04),
+                      ]
+                    : [
+                        isDark ? const Color(0xFF16253D).withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.85),
+                        isDark ? const Color(0xFF0F1A2A).withValues(alpha: 0.75) : const Color(0xFFF8FAFC).withValues(alpha: 0.80),
+                      ],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isCompleted
+                    ? emerald.withValues(alpha: 0.45)
+                    : (isDark ? const Color(0xFF91AAC8).withValues(alpha: 0.16) : Colors.white.withValues(alpha: 0.8)),
+                width: 1,
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-
-          // Title & category
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  drawing.name,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: textPrimary,
+                // Number badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
+                  decoration: BoxDecoration(
+                    color: isCompleted ? emerald.withValues(alpha: 0.22) : (isDark ? const Color(0xFF0F1A2A) : const Color(0xFFF1F5F9)),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Text(
+                    drawing.num,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isCompleted ? emerald : textMuted,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Text(
-                      drawing.category,
-                      style: TextStyle(fontSize: 10, color: textMuted),
-                    ),
-                    if (drawing.completedDate != null) ...[
-                      Text(' • ', style: TextStyle(fontSize: 10, color: textMuted)),
+                const SizedBox(width: 12),
+
+                // Title & category
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'Done ${drawing.completedDate}',
-                        style: TextStyle(fontSize: 10, color: emerald, fontWeight: FontWeight.w500),
+                        drawing.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            drawing.category,
+                            style: TextStyle(fontSize: 10, color: textMuted),
+                          ),
+                          if (drawing.completedDate != null) ...[
+                            Text(' • ', style: TextStyle(fontSize: 10, color: textMuted)),
+                            Text(
+                              'Done ${drawing.completedDate}',
+                              style: TextStyle(fontSize: 10, color: emerald, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
-                  ],
+                  ),
+                ),
+
+                // 1-Tap Toggle Action Button (Bouncy Animated Glass Button)
+                BouncyTap(
+                  onTap: () async {
+                    HapticUtils.select();
+                    final newStatus = isCompleted ? 'in_progress' : 'completed';
+                    await provider.toggleDrawingStatus(
+                      ownerId: owner.id,
+                      planId: drawing.id,
+                      newStatus: newStatus,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isCompleted
+                          ? emerald.withValues(alpha: 0.22)
+                          : warning.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isCompleted ? emerald.withValues(alpha: 0.55) : warning.withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                          size: 14,
+                          color: isCompleted ? emerald : warning,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isCompleted ? 'Done' : 'Mark Done',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: isCompleted ? emerald : warning,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-
-          // 1-Tap Toggle Action Button
-          InkWell(
-            onTap: () async {
-              HapticUtils.select();
-              final newStatus = isCompleted ? 'in_progress' : 'completed';
-              await provider.toggleDrawingStatus(
-                ownerId: owner.id,
-                planId: drawing.id,
-                newStatus: newStatus,
-              );
-            },
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: isCompleted
-                    ? emerald.withValues(alpha: 0.2)
-                    : warning.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isCompleted ? emerald.withValues(alpha: 0.5) : warning.withValues(alpha: 0.4),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                    size: 14,
-                    color: isCompleted ? emerald : warning,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    isCompleted ? 'Done' : 'Mark Done',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: isCompleted ? emerald : warning,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

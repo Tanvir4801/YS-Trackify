@@ -1675,10 +1675,21 @@ export default function Plans() {
                   setActiveOwnerId(owner.id);
                   setOwnerTab('plans');
                 }}
-                className="group relative bg-gradient-to-b from-bg-card via-bg-card to-bg-elevated/40 border border-border/80 hover:border-gold/60 rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.03)] hover:shadow-[0_16px_42px_rgba(245,166,35,0.12)] transition-all duration-300 cursor-pointer flex flex-col justify-between overflow-hidden"
+                className="group relative backdrop-blur-xl bg-white/70 dark:bg-zinc-900/60 border border-white/50 dark:border-white/10 hover:border-amber-500/50 rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_48px_rgba(245,166,35,0.18)] hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col justify-between overflow-hidden"
               >
+                {/* Dynamic Ambient Glass Glow Orb */}
+                <div
+                  className={`absolute -right-16 -top-16 w-52 h-52 rounded-full blur-3xl pointer-events-none transition-all duration-500 opacity-20 group-hover:opacity-40 ${
+                    fin.isPlanFeeCleared && fin.isVisitsCleared
+                      ? 'bg-emerald-500/80'
+                      : fin.visitsCount > 0 && fin.visitsPending > 0
+                        ? 'bg-amber-500/80'
+                        : 'bg-sky-500/80'
+                  }`}
+                />
+
                 {/* Luminous Top Gold Hover Accent */}
-                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-transparent via-amber-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
                 <div>
                   {/* Top Bar: Clean Plan No Badge & Distinct Plan Fee + Visit Badges */}
@@ -1738,8 +1749,8 @@ export default function Plans() {
                     </div>
                   </div>
 
-                  {/* Engineering Drawing Scope Progress Box */}
-                  <div className="bg-gradient-to-br from-bg-elevated/70 via-bg-input/40 to-bg-card border border-border/70 rounded-xl p-3.5 mb-3.5 shadow-sm">
+                  {/* Engineering Drawing Scope Progress Box (Glass) */}
+                  <div className="backdrop-blur-md bg-white/50 dark:bg-zinc-800/40 border border-white/60 dark:border-white/10 rounded-xl p-3.5 mb-3.5 shadow-xs">
                     <div className="flex items-center justify-between text-xs mb-2">
                       <span className="font-bold text-text-secondary flex items-center gap-1.5 text-xs">
                         <Layers className="w-3.5 h-3.5 text-amber-500" />
@@ -1784,8 +1795,8 @@ export default function Plans() {
                     </div>
                   </div>
 
-                  {/* Financials Strip with Clean Separation of Plan Fee & Visit Fee */}
-                  <div className="bg-gradient-to-r from-bg-input/80 via-bg-elevated/40 to-bg-input/80 border border-border/70 rounded-xl p-3 text-xs mb-3 shadow-inner space-y-2">
+                  {/* Financials Strip with Clean Separation of Plan Fee & Visit Fee (Glass) */}
+                  <div className="backdrop-blur-md bg-white/50 dark:bg-zinc-800/40 border border-white/60 dark:border-white/10 rounded-xl p-3 text-xs mb-3 shadow-inner space-y-2">
                     {/* Row 1: House Plan Fee & Status */}
                     <div className="flex items-center justify-between gap-2">
                       <div>
