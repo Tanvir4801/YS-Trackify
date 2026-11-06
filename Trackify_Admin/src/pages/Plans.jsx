@@ -983,6 +983,8 @@ export default function Plans() {
         }] : []
       );
 
+      const savedOwnerName = activeOwner.ownerName;
+
       await updateHousePlan(activeOwner.id, {
         plansList: effectivePlans,
         payments: finalizedPayments,
@@ -995,11 +997,9 @@ export default function Plans() {
         contractorId: activeOwner.contractorId || scopeId,
       });
 
-      // Show prominent in-screen foreground banner only (no duplicate black toast popup)
-      setSaveSuccessNotice(true);
-      setTimeout(() => {
-        setSaveSuccessNotice(false);
-      }, 3500);
+      toast.success(`Workspace for ${savedOwnerName} saved successfully!`);
+      // Exit screen / close the workspace box as requested
+      setActiveOwnerId(null);
     } catch (err) {
       console.error('Failed to save workspace:', err);
       toast.error(`Failed to save workspace: ${err.message || 'Error'}`);
