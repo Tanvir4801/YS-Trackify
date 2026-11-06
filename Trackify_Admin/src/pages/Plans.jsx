@@ -105,6 +105,139 @@ const PLAN_STATUS_CONFIG = {
   },
 };
 
+// ── ACCURATE OWNER FINANCIAL BREAKDOWN (SEPARATING PLAN FEE VS SITE VISITS) ──
+export function getOwnerFinancialBreakdown(owner) {
+  if (!owner) {
+    return {
+      baseFee: 0,
+      siteVisits: [],
+      visitsCount: 0,
+      totalVisitsAmount: 0,
+      totalBillable: 0,
+      totalPaid: 0,
+      planFeePaid: 0,
+      planFeePending: 0,
+      isPlanFeeCleared: false,
+      visitsPaid: 0,
+      visitsPending: 0,
+      isVisitsCleared: true,
+      netPending: 0,
+      isFullyCleared: false,
+    };
+  }
+
+  const baseFee = Number(owner.houseAmount) || 0;
+  const siteVisits = Array.isArray(owner.siteVisits) ? owner.siteVisits : [];
+  const visitsCount = siteVisits.length;
+  const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+  const totalBillable = baseFee + totalVisitsAmount;
+
+  const payments = Array.isArray(owner.payments) ? owner.payments : [];
+  const paymentsSum = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalPaid = paymentsSum > 0 ? paymentsSum : (Number(owner.totalPaid) || 0);
+
+  // Allocate payments: first covers the agreed base house plan fee
+  const planFeePaid = Math.min(totalPaid, baseFee);
+  const planFeePending = Math.max(0, baseFee - planFeePaid);
+  const isPlanFeeCleared = baseFee > 0 && planFeePending === 0;
+
+  // Remaining payments after base plan fee cover site / house visits
+  const visitsPaid = Math.max(0, totalPaid - baseFee);
+  const visitsPending = Math.max(0, totalVisitsAmount - visitsPaid);
+  const isVisitsCleared = visitsCount > 0 ? visitsPending === 0 : true;
+
+  const netPending = Math.max(0, totalBillable - totalPaid);
+  const isFullyCleared = totalBillable > 0 && netPending === 0;
+
+  return {
+    baseFee,
+    siteVisits,
+    visitsCount,
+    totalVisitsAmount,
+    totalBillable,
+    totalPaid,
+    planFeePaid,
+    planFeePending,
+    isPlanFeeCleared,
+    visitsPaid,
+    visitsPending,
+    isVisitsCleared,
+    netPending,
+    isFullyCleared,
+  };
+}
+
+// Generates accurate, high-visibility badges clearly distinguishing Plan Fee & Visit Fee
+export function getOwnerPaymentBadges(owner) {
+  const fin = getOwnerFinancialBreakdown(owner);
+
+  if (fin.totalBillable <= 0) {
+    return [
+      {
+        id: 'no_fee',
+        label: 'No Fee Set',
+        bg: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+        dot: 'bg-zinc-400',
+      },
+    ];
+  }
+
+  const badges = [];
+
+  // 1. Plan Fee Badge (reflects strictly the ₹25k plan fee, never wrongly degraded by visit fee)
+  if (fin.isPlanFeeCleared) {
+    badges.push({
+      id: 'plan_cleared',
+      label: 'PLAN FEE CLEARED (100%)',
+      bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+      dot: 'bg-emerald-500',
+    });
+  } else if (fin.baseFee > 0 && fin.planFeePaid >= fin.baseFee * 0.5) {
+    const pct = Math.round((fin.planFeePaid / fin.baseFee) * 100);
+    badges.push({
+      id: 'plan_half',
+      label: `HALF PAID (${pct}%)`,
+      bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
+      dot: 'bg-amber-500',
+    });
+  } else if (fin.planFeePaid > 0) {
+    badges.push({
+      id: 'plan_advance',
+      label: `ADVANCE: ${formatCurrency(fin.planFeePaid)}`,
+      bg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30',
+      dot: 'bg-sky-500',
+    });
+  } else {
+    badges.push({
+      id: 'plan_pending',
+      label: 'PLAN FEE PENDING',
+      bg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30',
+      dot: 'bg-rose-500',
+    });
+  }
+
+  // 2. Separate Site Visit Status Badge (shows whether visit fee is cleared or pending)
+  if (fin.visitsCount > 0) {
+    if (fin.isVisitsCleared) {
+      badges.push({
+        id: 'visit_cleared',
+        label: `VISIT PAID (${formatCurrency(fin.totalVisitsAmount)})`,
+        bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+        dot: 'bg-emerald-500',
+      });
+    } else {
+      badges.push({
+        id: 'visit_pending',
+        label: `VISIT DUE: ${formatCurrency(fin.visitsPending)}`,
+        bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
+        dot: 'bg-amber-500',
+      });
+    }
+  }
+
+  return badges;
+}
+
 // Payment status badge for plan fees
 function getPaymentStatusBadge(totalAmount, totalPaid) {
   if (!totalAmount || totalAmount <= 0) {
@@ -1519,7 +1652,8 @@ export default function Plans() {
             const plans = owner.plansList || [];
             const completedCount = plans.filter((p) => p.status === 'completed').length;
             const progressPct = plans.length > 0 ? Math.round((completedCount / plans.length) * 100) : 0;
-            const paymentBadge = getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid);
+            const fin = getOwnerFinancialBreakdown(owner);
+            const paymentBadges = getOwnerPaymentBadges(owner);
             const sortedCardPlans = [...plans].sort((a, b) => {
               const aDone = a.status === 'completed' ? 1 : 0;
               const bDone = b.status === 'completed' ? 1 : 0;
@@ -1547,21 +1681,29 @@ export default function Plans() {
                 <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
                 <div>
-                  {/* Top Bar: Clean Plan No Badge (3D Serial Removed) & Payment Status */}
+                  {/* Top Bar: Clean Plan No Badge & Distinct Plan Fee + Visit Badges */}
                   <div className="flex items-center justify-between gap-2 mb-4">
                     <span
                       onClick={(e) => copyToClipboard(e, owner.planNumber, 'Plan No')}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-mono text-xs font-bold rounded-lg shadow-sm transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-mono text-xs font-bold rounded-lg shadow-sm transition-colors shrink-0"
                       title="Click to copy Plan No"
                     >
                       <Compass className="w-3.5 h-3.5 text-gold" />
                       <span>{owner.planNumber || 'PLN'}</span>
                     </span>
 
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider border shadow-sm ${paymentBadge.bg}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${paymentBadge.dot || 'bg-current'} animate-pulse`} />
-                      <span>{paymentBadge.label}</span>
-                    </span>
+                    {/* Distinct Badges for Plan Fee & Visit Fee */}
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 max-w-[70%]">
+                      {paymentBadges.map((badge) => (
+                        <span
+                          key={badge.id}
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider border shadow-xs ${badge.bg}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${badge.dot || 'bg-current'} animate-pulse shrink-0`} />
+                          <span className="truncate">{badge.label}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Owner Header Info */}
@@ -1642,38 +1784,96 @@ export default function Plans() {
                     </div>
                   </div>
 
-                  {/* Financials Strip */}
-                  <div className="grid grid-cols-2 gap-3 bg-gradient-to-r from-bg-input/80 via-bg-elevated/40 to-bg-input/80 border border-border/70 rounded-xl p-3 text-xs mb-3 shadow-inner">
-                    <div>
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-0.5">
-                        Agreed Plan Fee
-                      </span>
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className="font-extrabold text-sm text-text-primary">
-                          {formatCurrency(owner.houseAmount)}
+                  {/* Financials Strip with Clean Separation of Plan Fee & Visit Fee */}
+                  <div className="bg-gradient-to-r from-bg-input/80 via-bg-elevated/40 to-bg-input/80 border border-border/70 rounded-xl p-3 text-xs mb-3 shadow-inner space-y-2">
+                    {/* Row 1: House Plan Fee & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
+                          House Plan Fee
                         </span>
-                        {owner.totalVisitsAmount > 0 && (
-                          <span className="text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20" title={`Includes ${(owner.siteVisits || []).length} site inspection visits`}>
-                            +{formatCurrency(owner.totalVisitsAmount)} visits
+                        <span className="font-extrabold text-sm text-text-primary">
+                          {formatCurrency(fin.baseFee)}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
+                          Plan Fee Status
+                        </span>
+                        {fin.isPlanFeeCleared ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" /> Cleared (100%)
+                          </span>
+                        ) : fin.planFeePaid > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                            Paid {formatCurrency(fin.planFeePaid)} • Due {formatCurrency(fin.planFeePending)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded-md">
+                            Pending {formatCurrency(fin.baseFee)}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <div>
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-0.5">
-                        Remaining Balance
-                      </span>
-                      {Number(owner.pendingBalance) <= 0 && Number(owner.totalBillableAmount || owner.houseAmount) > 0 ? (
-                        <span className="font-extrabold text-sm text-emerald-500 flex items-center gap-1">
-                          <span>₹0</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 rounded text-emerald-500">PAID</span>
+                    {/* Row 2: Site Visits (Only shown if visits conducted) */}
+                    {fin.visitsCount > 0 && (
+                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/60">
+                        <div className="flex items-center gap-1.5">
+                          <Car className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <div>
+                            <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
+                              Site Visits ({fin.visitsCount})
+                            </span>
+                            <span className="font-extrabold text-xs text-amber-500">
+                              +{formatCurrency(fin.totalVisitsAmount)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
+                            Visit Status
+                          </span>
+                          {fin.isVisitsCleared ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" /> Cleared
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                              Pending: {formatCurrency(fin.visitsPending)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Row 3: Total Paid & Net Pending Balance */}
+                    <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/60">
+                      <div>
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
+                          Total Received
                         </span>
-                      ) : (
-                        <span className="font-extrabold text-sm text-amber-500">
-                          {formatCurrency(owner.pendingBalance)}
+                        <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(fin.totalPaid)}
                         </span>
-                      )}
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block">
+                          {fin.visitsCount > 0 && fin.isPlanFeeCleared && fin.visitsPending > 0
+                            ? 'Pending Visit Due'
+                            : 'Remaining Balance'}
+                        </span>
+                        {fin.netPending <= 0 && fin.totalBillable > 0 ? (
+                          <span className="font-extrabold text-xs text-emerald-500 flex items-center justify-end gap-1">
+                            <span>₹0</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-500/15 border border-emerald-500/30 rounded text-emerald-500">PAID</span>
+                          </span>
+                        ) : (
+                          <span className="font-extrabold text-sm text-amber-500">
+                            {formatCurrency(fin.netPending)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1761,7 +1961,8 @@ export default function Plans() {
                 {filteredOwners.map((owner) => {
                   const plans = owner.plansList || [];
                   const completedCount = plans.filter((p) => p.status === 'completed').length;
-                  const paymentBadge = getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid);
+                  const fin = getOwnerFinancialBreakdown(owner);
+                  const tableBadges = getOwnerPaymentBadges(owner);
 
                   return (
                     <tr
@@ -1796,26 +1997,45 @@ export default function Plans() {
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-bold text-text-primary">
-                        <div>{formatCurrency(owner.totalBillableAmount || owner.houseAmount)}</div>
-                        {owner.totalVisitsAmount > 0 && (
+                        <div>{formatCurrency(fin.totalBillable)}</div>
+                        {fin.visitsCount > 0 ? (
                           <div className="text-[10px] text-amber-500 font-normal">
-                            Base: {formatCurrency(owner.houseAmount)} + Visits: {formatCurrency(owner.totalVisitsAmount)}
+                            Plan: {formatCurrency(fin.baseFee)} + {fin.visitsCount} Visit{fin.visitsCount === 1 ? '' : 's'} ({formatCurrency(fin.totalVisitsAmount)})
                           </div>
+                        ) : (
+                          <div className="text-[10px] text-text-muted font-normal">Plan Fee</div>
                         )}
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-semibold text-success">
-                        {formatCurrency(owner.totalPaid)}
+                        <div>{formatCurrency(fin.totalPaid)}</div>
+                        {fin.isPlanFeeCleared && fin.visitsPending > 0 && (
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                            Plan Fee Cleared
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-semibold text-warning">
-                        {formatCurrency(owner.pendingBalance)}
+                        <div>{formatCurrency(fin.netPending)}</div>
+                        {fin.isPlanFeeCleared && fin.visitsPending > 0 && (
+                          <div className="text-[10px] text-amber-500 font-bold">
+                            Only Visit Fee Due
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid).bg}`}>
-                          {getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid).label}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          {tableBadges.map((b) => (
+                            <span
+                              key={b.id}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${b.bg}`}
+                            >
+                              {b.label}
+                            </span>
+                          ))}
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
