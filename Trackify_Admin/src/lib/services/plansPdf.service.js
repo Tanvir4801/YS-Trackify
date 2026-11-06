@@ -283,11 +283,16 @@ export async function generateHousePlanInvoicePDF({
   const billInvoiceNo = `INV-${planNumber.replace(/^PLN-/i, '')}`;
   const totalPlanFee = Number(owner.houseAmount) || 0;
   const payments = Array.isArray(owner.payments) ? owner.payments : [];
+  const siteVisits = Array.isArray(owner.siteVisits) ? owner.siteVisits : [];
+
+  // Compute site visits charges and total billable amount
+  const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+  const totalBillableAmount = totalPlanFee + totalVisitsAmount;
 
   // Always compute total paid directly from payments ledger to ensure 100% calculation accuracy
   const calculatedTotalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const totalPaid = payments.length > 0 ? calculatedTotalPaid : (Number(owner.totalPaid) || 0);
-  const pendingBalance = Math.max(0, totalPlanFee - totalPaid);
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
 
   // Use owner's plansList if populated; otherwise fallback to the exact 21 default engineering plans
   const rawPlans = Array.isArray(owner.plansList) && owner.plansList.length > 0 ? owner.plansList : DEFAULT_MASTER_PLANS;
@@ -296,10 +301,10 @@ export async function generateHousePlanInvoicePDF({
   let paymentBadgeText = 'PENDING';
   let badgeBgColor = [220, 38, 38]; // Red
   let badgeTextColor = [255, 255, 255];
-  if (totalPaid >= totalPlanFee && totalPlanFee > 0) {
+  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
     paymentBadgeText = 'PAID IN FULL';
     badgeBgColor = [16, 185, 129]; // Emerald Green
-  } else if (totalPaid >= totalPlanFee * 0.5 && totalPlanFee > 0) {
+  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
     paymentBadgeText = '50%+ ADVANCE CLEARED';
     badgeBgColor = [245, 166, 35]; // Gold/Amber
   } else if (totalPaid > 0) {
@@ -643,44 +648,133 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // 5B. SITE INSPECTION & SUPERVISION VISITS LEDGER TABLE (IF ANY RECORDED)
+  // ─────────────────────────────────────────────────────────────────────────
+  let nextSectionNum = 2;
+
+  if (siteVisits.length > 0) {
+    const visitsSectionY = doc.lastAutoTable.finalY + 4;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`2. SITE INSPECTION & SUPERVISION VISITS (${siteVisits.length} VISITS)`, margin, visitsSectionY);
+
+    const visitHeaders = ['#', 'Visit Date', 'Inspection Purpose / Scope of Work Inspected', 'Supervising Engineer', 'Visit Charge'];
+    const visitRows = siteVisits.map((v, idx) => [
+      `${idx + 1}.`,
+      v.date ? formatDate(v.date) : '-',
+      v.purpose || 'Site Inspection & Supervision',
+      v.visitedBy || owner.engineerName || 'Supervising Engineer',
+      formatPdfCurrency(v.amount),
+    ]);
+
+    autoTable(doc, {
+      startY: visitsSectionY + 2.5,
+      head: [visitHeaders],
+      body: visitRows,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [217, 119, 6], // Amber-600 Gold for site visits
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+        cellPadding: 2.2,
+      },
+      styles: {
+        fontSize: 7.6,
+        cellPadding: 2,
+        textColor: '#1E293B',
+        lineColor: '#E2E8F0',
+        lineWidth: 0.2,
+      },
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center', fontStyle: 'bold', textColor: '#D97706' },
+        1: { cellWidth: 26, halign: 'center' },
+        2: { cellWidth: 80, fontStyle: 'bold' },
+        3: { cellWidth: 38, textColor: '#64748B' },
+        4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
+      },
+      alternateRowStyles: {
+        fillColor: '#FFFBEB', // subtle warm amber alternate
+      },
+      margin: { left: margin, right: margin, top: 16, bottom: 16 },
+    });
+
+    nextSectionNum = 3;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // 6. FINANCIAL BILLING SUMMARY BOX
   // ─────────────────────────────────────────────────────────────────────────
   const summaryStartY = doc.lastAutoTable.finalY + 3;
-  const summaryBoxWidth = 84;
+  const summaryBoxWidth = siteVisits.length > 0 ? 94 : 84;
   const summaryBoxX = pageWidth - margin - summaryBoxWidth;
 
-  const summaryData = [
-    ['Total Agreed Plan Fee:', formatPdfCurrency(totalPlanFee)],
-    ['Total Amount Received:', formatPdfCurrency(totalPaid)],
-    ['Net Remaining Balance:', formatPdfCurrency(pendingBalance)],
-  ];
+  let summaryData;
+  if (siteVisits.length > 0) {
+    summaryData = [
+      ['Base Plan Drawing Fee:', formatPdfCurrency(totalPlanFee)],
+      [`Site Visits Charges (${siteVisits.length} visits):`, formatPdfCurrency(totalVisitsAmount)],
+      ['Gross Total Billable Amount:', formatPdfCurrency(totalBillableAmount)],
+      ['Total Amount Received:', formatPdfCurrency(totalPaid)],
+      ['Net Remaining Balance Due:', formatPdfCurrency(pendingBalance)],
+    ];
+  } else {
+    summaryData = [
+      ['Total Agreed Plan Fee:', formatPdfCurrency(totalPlanFee)],
+      ['Total Amount Received:', formatPdfCurrency(totalPaid)],
+      ['Net Remaining Balance:', formatPdfCurrency(pendingBalance)],
+    ];
+  }
+
+  const labelColWidth = siteVisits.length > 0 ? 60 : 52;
+  const valColWidth = siteVisits.length > 0 ? 34 : 32;
 
   autoTable(doc, {
     startY: summaryStartY,
     body: summaryData,
     theme: 'grid',
     styles: {
-      fontSize: 8.2,
+      fontSize: 8,
       cellPadding: 2,
       lineColor: '#E2E8F0',
       lineWidth: 0.2,
     },
     columnStyles: {
-      0: { fontStyle: 'bold', textColor: '#475569', halign: 'right', cellWidth: 52, fillColor: '#F8FAFC' },
-      1: { fontStyle: 'bold', textColor: '#0F172A', halign: 'right', cellWidth: 32 },
+      0: { fontStyle: 'bold', textColor: '#475569', halign: 'right', cellWidth: labelColWidth, fillColor: '#F8FAFC' },
+      1: { fontStyle: 'bold', textColor: '#0F172A', halign: 'right', cellWidth: valColWidth },
     },
     margin: { left: summaryBoxX, right: margin, top: 16, bottom: 16 },
     tableWidth: summaryBoxWidth,
     didParseCell: function (data) {
-      // Highlight Total Paid row
-      if (data.row.index === 1 && data.column.index === 1) {
-        data.cell.styles.textColor = '#059669'; // Green
-      }
-      // Highlight Pending Balance row
-      if (data.row.index === 2) {
-        data.cell.styles.fillColor = pendingBalance > 0 ? '#FEF3C7' : '#D1FAE5';
-        data.cell.styles.textColor = pendingBalance > 0 ? '#B45309' : '#059669';
-        data.cell.styles.fontStyle = 'bold';
+      if (siteVisits.length > 0) {
+        // Gross Total row
+        if (data.row.index === 2) {
+          data.cell.styles.fillColor = '#F1F5F9';
+          data.cell.styles.textColor = '#0F172A';
+          data.cell.styles.fontStyle = 'bold';
+        }
+        // Total Paid row
+        if (data.row.index === 3 && data.column.index === 1) {
+          data.cell.styles.textColor = '#059669'; // Green
+        }
+        // Net Balance row
+        if (data.row.index === 4) {
+          data.cell.styles.fillColor = pendingBalance > 0 ? '#FEF3C7' : '#D1FAE5';
+          data.cell.styles.textColor = pendingBalance > 0 ? '#B45309' : '#059669';
+          data.cell.styles.fontStyle = 'bold';
+        }
+      } else {
+        // Highlight Total Paid row
+        if (data.row.index === 1 && data.column.index === 1) {
+          data.cell.styles.textColor = '#059669'; // Green
+        }
+        // Highlight Pending Balance row
+        if (data.row.index === 2) {
+          data.cell.styles.fillColor = pendingBalance > 0 ? '#FEF3C7' : '#D1FAE5';
+          data.cell.styles.textColor = pendingBalance > 0 ? '#B45309' : '#059669';
+          data.cell.styles.fontStyle = 'bold';
+        }
       }
     },
   });
@@ -693,8 +787,8 @@ export async function generateHousePlanInvoicePDF({
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
   const scopeTitle = rawPlans.length === 21
-    ? '2. SCOPE OF 21 ENGINEERING DRAWINGS & DELIVERABLES'
-    : `2. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES (${rawPlans.length} DELIVERABLES)`;
+    ? `${nextSectionNum}. SCOPE OF 21 ENGINEERING DRAWINGS & DELIVERABLES`
+    : `${nextSectionNum}. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES (${rawPlans.length} DELIVERABLES)`;
   doc.text(scopeTitle, margin, plansSectionY);
 
   const planHeaders = ['#', 'Engineering Plan / Drawing Deliverable', 'Discipline', 'Status / Release'];

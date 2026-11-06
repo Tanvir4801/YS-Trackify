@@ -126,6 +126,7 @@ export function subscribeHousePlans(contractorId, callback, onError) {
 
         const data = docSnap.data();
         const payments = Array.isArray(data.payments) ? data.payments : [];
+        const siteVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
         const rawPlans = Array.isArray(data.plansList) ? data.plansList : [];
 
         // Auto-clean plan names to remove any client names (e.g. "01-TANVIR-FINAL PLAN" -> "01-FINAL PLAN")
@@ -134,10 +135,12 @@ export function subscribeHousePlans(contractorId, callback, onError) {
           name: extractMainPlanName(p.name) || p.name,
         }));
 
-        // Compute total paid and pending balance
+        // Compute total paid, site visits, and pending balance
         const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
         const houseAmount = Number(data.houseAmount) || 0;
-        const pendingBalance = Math.max(0, houseAmount - totalPaid);
+        const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+        const totalBillableAmount = houseAmount + totalVisitsAmount;
+        const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
 
         // Compute completed plans count
         const completedPlansCount = plansList.filter((p) => p.status === 'completed').length;
@@ -146,8 +149,12 @@ export function subscribeHousePlans(contractorId, callback, onError) {
           id: docSnap.id,
           ...data,
           payments,
+          siteVisits,
           plansList,
+          houseAmount,
           totalPaid,
+          totalVisitsAmount,
+          totalBillableAmount,
           pendingBalance,
           completedPlansCount,
           createdAt: safeDate(data.createdAt),
@@ -180,6 +187,7 @@ export async function getHousePlan(planId) {
   if (!snap.exists()) return null;
   const data = snap.data();
   const payments = Array.isArray(data.payments) ? data.payments : [];
+  const siteVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
   const rawPlans = Array.isArray(data.plansList) ? data.plansList : [];
   const plansList = rawPlans.map((p) => ({
     ...p,
@@ -187,14 +195,20 @@ export async function getHousePlan(planId) {
   }));
   const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const houseAmount = Number(data.houseAmount) || 0;
-  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+  const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
 
   return {
     id: snap.id,
     ...data,
     payments,
+    siteVisits,
     plansList,
+    houseAmount,
     totalPaid,
+    totalVisitsAmount,
+    totalBillableAmount,
     pendingBalance,
     completedPlansCount: plansList.filter((p) => p.status === 'completed').length,
     createdAt: safeDate(data.createdAt),
@@ -212,8 +226,11 @@ export async function addHousePlan(planData) {
 
   const initialPlans = Array.isArray(planData.plansList) ? planData.plansList : [];
   const initialPayments = Array.isArray(planData.payments) ? planData.payments : [];
+  const initialVisits = Array.isArray(planData.siteVisits) ? planData.siteVisits : [];
 
   const houseAmount = Number(planData.houseAmount) || 0;
+  const totalVisitsAmount = initialVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
   const totalPaid = initialPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
   const payload = {
@@ -236,8 +253,10 @@ export async function addHousePlan(planData) {
     plotAreaSqFt: Number(planData.plotAreaSqFt) || 0,
     houseAmount,
     ratePerSqFt: Number(planData.ratePerSqFt) || 0,
+    totalVisitsAmount,
+    totalBillableAmount,
     totalPaid,
-    pendingBalance: Math.max(0, houseAmount - totalPaid),
+    pendingBalance: Math.max(0, totalBillableAmount - totalPaid),
 
     // Structural & Architectural Specs
     floors: planData.floors || 'G+1',
@@ -256,6 +275,9 @@ export async function addHousePlan(planData) {
 
     // Self-contained Payments for this owner
     payments: initialPayments,
+
+    // Site / House Visits Ledger for this owner
+    siteVisits: initialVisits,
 
     // Optional 3D Model / Drawing link or file URL
     fileUrl: planData.fileUrl?.trim() || '',
@@ -294,15 +316,22 @@ export async function updateHousePlan(planId, updates) {
     cleanUpdates.ratePerSqFt = Number(cleanUpdates.ratePerSqFt) || 0;
   }
 
-  // Recalculate financial balance if houseAmount or payments are being updated
-  if (cleanUpdates.houseAmount !== undefined || cleanUpdates.payments !== undefined) {
+  // Recalculate financial balance if houseAmount, siteVisits, or payments are being updated
+  if (cleanUpdates.houseAmount !== undefined || cleanUpdates.payments !== undefined || cleanUpdates.siteVisits !== undefined) {
     const currentSnap = await getDoc(doc(db, 'house_plans', planId));
     const currentData = currentSnap.data() || {};
     const effectiveAmount = cleanUpdates.houseAmount !== undefined ? cleanUpdates.houseAmount : Number(currentData.houseAmount || 0);
+    const effectiveVisits = cleanUpdates.siteVisits !== undefined ? cleanUpdates.siteVisits : (currentData.siteVisits || []);
     const effectivePayments = cleanUpdates.payments !== undefined ? cleanUpdates.payments : (currentData.payments || []);
+
+    const totalVisitsAmount = effectiveVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+    const totalBillableAmount = effectiveAmount + totalVisitsAmount;
     const totalPaid = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+    cleanUpdates.totalVisitsAmount = totalVisitsAmount;
+    cleanUpdates.totalBillableAmount = totalBillableAmount;
     cleanUpdates.totalPaid = totalPaid;
-    cleanUpdates.pendingBalance = Math.max(0, effectiveAmount - totalPaid);
+    cleanUpdates.pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
   }
 
   const payload = {
@@ -463,6 +492,7 @@ export async function addPaymentToOwner(ownerId, paymentItem) {
 
   const data = snap.data();
   const currentPayments = Array.isArray(data.payments) ? data.payments : [];
+  const siteVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
 
   const newPayment = {
     id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -479,13 +509,15 @@ export async function addPaymentToOwner(ownerId, paymentItem) {
   const updatedPayments = [...currentPayments, newPayment];
   const totalPaid = updatedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const houseAmount = Number(data.houseAmount) || 0;
-  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+  const totalVisitsAmount = siteVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
 
   // Derive payment status
   let paymentStatus = 'pending';
-  if (totalPaid >= houseAmount && houseAmount > 0) {
+  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
     paymentStatus = 'completed';
-  } else if (totalPaid >= houseAmount * 0.5 && houseAmount > 0) {
+  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
     paymentStatus = 'half_paid';
   } else if (totalPaid > 0) {
     paymentStatus = 'advance_received';
@@ -494,6 +526,8 @@ export async function addPaymentToOwner(ownerId, paymentItem) {
   await updateDoc(doc(db, 'house_plans', ownerId), {
     payments: updatedPayments,
     totalPaid,
+    totalVisitsAmount,
+    totalBillableAmount,
     pendingBalance,
     paymentStatus,
     updatedAt: serverTimestamp(),
@@ -511,6 +545,7 @@ export async function updatePaymentInOwner(ownerId, paymentId, updates) {
 
   const data = snap.data();
   const currentPayments = Array.isArray(data.payments) ? data.payments : [];
+  const siteVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
 
   const updatedPayments = currentPayments.map((p) => {
     if (p.id === paymentId) {
@@ -525,12 +560,14 @@ export async function updatePaymentInOwner(ownerId, paymentId, updates) {
 
   const totalPaid = updatedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const houseAmount = Number(data.houseAmount) || 0;
-  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+  const totalVisitsAmount = siteVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
 
   let paymentStatus = 'pending';
-  if (totalPaid >= houseAmount && houseAmount > 0) {
+  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
     paymentStatus = 'completed';
-  } else if (totalPaid >= houseAmount * 0.5 && houseAmount > 0) {
+  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
     paymentStatus = 'half_paid';
   } else if (totalPaid > 0) {
     paymentStatus = 'advance_received';
@@ -539,6 +576,8 @@ export async function updatePaymentInOwner(ownerId, paymentId, updates) {
   await updateDoc(doc(db, 'house_plans', ownerId), {
     payments: updatedPayments,
     totalPaid,
+    totalVisitsAmount,
+    totalBillableAmount,
     pendingBalance,
     paymentStatus,
     updatedAt: serverTimestamp(),
@@ -554,16 +593,19 @@ export async function deletePaymentFromOwner(ownerId, paymentId) {
 
   const data = snap.data();
   const currentPayments = Array.isArray(data.payments) ? data.payments : [];
+  const siteVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
   const updatedPayments = currentPayments.filter((p) => p.id !== paymentId);
 
   const totalPaid = updatedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const houseAmount = Number(data.houseAmount) || 0;
-  const pendingBalance = Math.max(0, houseAmount - totalPaid);
+  const totalVisitsAmount = siteVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
 
   let paymentStatus = 'pending';
-  if (totalPaid >= houseAmount && houseAmount > 0) {
+  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
     paymentStatus = 'completed';
-  } else if (totalPaid >= houseAmount * 0.5 && houseAmount > 0) {
+  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
     paymentStatus = 'half_paid';
   } else if (totalPaid > 0) {
     paymentStatus = 'advance_received';
@@ -572,6 +614,159 @@ export async function deletePaymentFromOwner(ownerId, paymentId) {
   await updateDoc(doc(db, 'house_plans', ownerId), {
     payments: updatedPayments,
     totalPaid,
+    totalVisitsAmount,
+    totalBillableAmount,
+    pendingBalance,
+    paymentStatus,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ==========================================
+// OWNER-SPECIFIC SITE / HOUSE VISITS LEDGER (ER SITE VISITS)
+// ==========================================
+
+/**
+ * Common standard presets for site visits by the engineer
+ */
+export const DEFAULT_SITE_VISIT_PRESETS = [
+  { label: 'Site Boundary & Center Line Marking', charge: 1500, desc: 'Initial site visit for boundary verification & column marking' },
+  { label: 'Footing & Excavation Inspection', charge: 1500, desc: 'Foundation pit depth, soil check & footing rebar placement' },
+  { label: 'Plinth Beam Level Verification', charge: 1500, desc: 'Plinth level beam rebar checking, cover blocks & shuttering' },
+  { label: 'Ground Floor Slab Casting Supervision', charge: 1500, desc: 'GF roof slab steel distribution, electrical pipes & concrete pouring' },
+  { label: 'First Floor Slab Casting Supervision', charge: 1500, desc: 'FF roof slab reinforcement check & live casting supervision' },
+  { label: 'Lintel & Masonry Brickwork Verification', charge: 1500, desc: 'Door-window opening levels, lintel bands & brick masonry quality' },
+  { label: 'Plumbing & Drainage Line Verification', charge: 1500, desc: 'Underground sanitary slope, drain pipe routing & septic tank check' },
+  { label: 'Custom Engineer Site Visit', charge: 1500, desc: 'On-demand site consultation & architectural inspection' },
+];
+
+/**
+ * Add a site inspection / supervision visit to this specific owner
+ */
+export async function addSiteVisitToOwner(ownerId, visitItem) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+
+  const newVisit = {
+    id: `visit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    date: visitItem.date || new Date().toISOString().split('T')[0],
+    purpose: visitItem.purpose?.trim() || 'Site Inspection',
+    amount: Number(visitItem.amount !== undefined ? visitItem.amount : 1500) || 0,
+    visitedBy: visitItem.visitedBy?.trim() || data.engineerName || 'Er. Engineer',
+    notes: visitItem.notes?.trim() || '',
+    createdAt: new Date().toISOString(),
+  };
+
+  const updatedVisits = [...currentVisits, newVisit];
+  const totalVisitsAmount = updatedVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+  const houseAmount = Number(data.houseAmount) || 0;
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
+  const totalPaid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+  let paymentStatus = 'pending';
+  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
+    paymentStatus = 'completed';
+  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
+    paymentStatus = 'half_paid';
+  } else if (totalPaid > 0) {
+    paymentStatus = 'advance_received';
+  }
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    siteVisits: updatedVisits,
+    totalVisitsAmount,
+    totalBillableAmount,
+    pendingBalance,
+    paymentStatus,
+    updatedAt: serverTimestamp(),
+  });
+
+  return newVisit;
+}
+
+/**
+ * Update an existing site visit inside this specific owner
+ */
+export async function updateSiteVisitInOwner(ownerId, visitId, updates) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+
+  const updatedVisits = currentVisits.map((v) => {
+    if (v.id === visitId) {
+      return {
+        ...v,
+        ...updates,
+        amount: updates.amount !== undefined ? Number(updates.amount) : v.amount,
+      };
+    }
+    return v;
+  });
+
+  const totalVisitsAmount = updatedVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+  const houseAmount = Number(data.houseAmount) || 0;
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
+  const totalPaid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+  let paymentStatus = 'pending';
+  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
+    paymentStatus = 'completed';
+  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
+    paymentStatus = 'half_paid';
+  } else if (totalPaid > 0) {
+    paymentStatus = 'advance_received';
+  }
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    siteVisits: updatedVisits,
+    totalVisitsAmount,
+    totalBillableAmount,
+    pendingBalance,
+    paymentStatus,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Delete a site visit from this specific owner
+ */
+export async function deleteSiteVisitFromOwner(ownerId, visitId) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+  const updatedVisits = currentVisits.filter((v) => v.id !== visitId);
+
+  const totalVisitsAmount = updatedVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+  const houseAmount = Number(data.houseAmount) || 0;
+  const totalBillableAmount = houseAmount + totalVisitsAmount;
+  const totalPaid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
+
+  let paymentStatus = 'pending';
+  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
+    paymentStatus = 'completed';
+  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
+    paymentStatus = 'half_paid';
+  } else if (totalPaid > 0) {
+    paymentStatus = 'advance_received';
+  }
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    siteVisits: updatedVisits,
+    totalVisitsAmount,
+    totalBillableAmount,
     pendingBalance,
     paymentStatus,
     updatedAt: serverTimestamp(),

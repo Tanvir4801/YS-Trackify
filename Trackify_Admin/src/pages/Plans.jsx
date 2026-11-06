@@ -39,6 +39,7 @@ import {
   Calendar,
   Send,
   Share2,
+  Car,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -61,6 +62,10 @@ import {
   addPaymentToOwner,
   updatePaymentInOwner,
   deletePaymentFromOwner,
+  addSiteVisitToOwner,
+  updateSiteVisitInOwner,
+  deleteSiteVisitFromOwner,
+  DEFAULT_SITE_VISIT_PRESETS,
   saveMasterPlanCatalog,
   DEFAULT_MASTER_PLANS,
   extractMainPlanName,
@@ -240,11 +245,55 @@ export default function Plans() {
     notes: '',
   });
 
+  // Site / House Visits Modal
+  const [visitModalOpen, setVisitModalOpen] = useState(false);
+  const [editingVisitId, setEditingVisitId] = useState(null);
+  const [visitForm, setVisitForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    purpose: 'Site Boundary & Center Line Marking',
+    amount: '1500',
+    visitedBy: '',
+    notes: '',
+  });
+
   // Active Owner Data
   const activeOwner = useMemo(() => {
     if (!activeOwnerId) return null;
     return owners.find((o) => o.id === activeOwnerId) || null;
   }, [owners, activeOwnerId]);
+
+  // Robust finances computation for active owner
+  const activeOwnerFinances = useMemo(() => {
+    if (!activeOwner) {
+      return {
+        baseFee: 0,
+        siteVisits: [],
+        visitsCount: 0,
+        totalVisitsAmount: 0,
+        totalBillable: 0,
+        totalPaid: 0,
+        pendingBalance: 0,
+      };
+    }
+    const baseFee = Number(activeOwner.houseAmount) || 0;
+    const siteVisits = Array.isArray(activeOwner.siteVisits) ? activeOwner.siteVisits : [];
+    const visitsCount = siteVisits.length;
+    const totalVisitsAmount = siteVisits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+    const totalBillable = baseFee + totalVisitsAmount;
+    const payments = Array.isArray(activeOwner.payments) ? activeOwner.payments : [];
+    const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const pendingBalance = Math.max(0, totalBillable - totalPaid);
+
+    return {
+      baseFee,
+      siteVisits,
+      visitsCount,
+      totalVisitsAmount,
+      totalBillable,
+      totalPaid,
+      pendingBalance,
+    };
+  }, [activeOwner]);
 
   // Overall Statistics
   const overallStats = useMemo(() => {
@@ -256,7 +305,9 @@ export default function Plans() {
 
     owners.forEach((o) => {
       totalSqFt += Number(o.totalSqFt || 0);
-      totalValuation += Number(o.houseAmount || 0);
+      const visits = Array.isArray(o.siteVisits) ? o.siteVisits : [];
+      const visitsAmt = visits.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+      totalValuation += (Number(o.houseAmount) || 0) + visitsAmt;
       totalPaid += Number(o.totalPaid || 0);
 
       const pList = o.plansList || [];
@@ -554,15 +605,23 @@ export default function Plans() {
       const safeFilename = `YS_Construction_Bill_${cleanOwnerFileName}_${planNumber}.pdf`;
 
       // 3. Prepare professional Thank You message with complete project and billing details
-      const totalFee = formatCurrency(ownerToBill.houseAmount);
+      const baseFee = formatCurrency(ownerToBill.houseAmount);
+      const visits = Array.isArray(ownerToBill.siteVisits) ? ownerToBill.siteVisits : [];
+      const totalVisitsAmt = visits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+      const totalBillable = (Number(ownerToBill.houseAmount) || 0) + totalVisitsAmt;
       const paid = formatCurrency(ownerToBill.totalPaid);
-      const pending = formatCurrency(ownerToBill.pendingBalance);
+      const pending = formatCurrency(Math.max(0, totalBillable - (Number(ownerToBill.totalPaid) || 0)));
       const coName = branding?.companyName || 'YS Construction';
       const siteLoc = [ownerToBill.ownerAddress, ownerToBill.city || ownerToBill.town].filter(Boolean).join(', ') || ownerToBill.city || '-';
       const builtUpArea = ownerToBill.totalSqFt ? `${Number(ownerToBill.totalSqFt).toLocaleString('en-IN')} sq.ft` : '-';
       const plansCount = (ownerToBill.plansList || []).length || 21;
 
-      const thanksMessage = `Namaste *${ownerName}* ji, 🙏\n\nThank you for choosing *${coName}* for your house planning and architectural engineering drawings! We truly appreciate your trust and partnership.\n\n📋 *PROJECT DETAILS:*\n• *Plan Ref:* ${planNumber}\n• *Site Location:* ${siteLoc}\n• *Built-up Area:* ${builtUpArea}\n• *Scope of Drawings:* ${plansCount} Deliverables\n\n💰 *PAYMENT STATUS:*\n• *Total Plan Fee:* ${totalFee}\n• *Advance Cleared:* ${paid}\n• *Net Remaining Balance:* ${pending}\n\n📄 *Please find your official Planning Invoice & Deliverables Bill (PDF) attached.* Thank you for your business!\n\nWarm regards,\n*${coName}*\n_Architecture • Planner • Consultant • Interior Designer_\n📞 Mo: 80003 40720, 99044 45077\n📍 Gokuldham Complex, Angaldhara, Surat`;
+      let paymentSectionText = `• *Total Plan Fee:* ${baseFee}\n• *Advance Cleared:* ${paid}\n• *Net Remaining Balance:* ${pending}`;
+      if (visits.length > 0) {
+        paymentSectionText = `• *Base Drawing Fee:* ${baseFee}\n• *Site Inspection Visits (${visits.length}):* ${formatCurrency(totalVisitsAmt)}\n• *Gross Total Billable:* ${formatCurrency(totalBillable)}\n• *Amount Received:* ${paid}\n• *Net Balance Due:* ${pending}`;
+      }
+
+      const thanksMessage = `Namaste *${ownerName}* ji, 🙏\n\nThank you for choosing *${coName}* for your house planning and architectural engineering drawings! We truly appreciate your trust and partnership.\n\n📋 *PROJECT DETAILS:*\n• *Plan Ref:* ${planNumber}\n• *Site Location:* ${siteLoc}\n• *Built-up Area:* ${builtUpArea}\n• *Scope of Drawings:* ${plansCount} Deliverables\n\n💰 *PAYMENT STATUS:*\n${paymentSectionText}\n\n📄 *Please find your official Planning Invoice & Deliverables Bill (PDF) attached.* Thank you for your business!\n\nWarm regards,\n*${coName}*\n_Architecture • Planner • Consultant • Interior Designer_\n📞 Mo: 80003 40720, 99044 45077\n📍 Gokuldham Complex, Angaldhara, Surat`;
 
       const cleanPhone = normalizeWhatsAppNumber(ownerToBill.ownerPhone);
       const clean10 = extract10DigitPhone(ownerToBill.ownerPhone);
@@ -785,13 +844,20 @@ export default function Plans() {
     try {
       const effectivePlans = activeOwner.plansList || [];
       const effectivePayments = activeOwner.payments || [];
-      const totalPaid = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const effectiveVisits = activeOwner.siteVisits || [];
       const houseAmount = Number(activeOwner.houseAmount) || 0;
-      const pendingBalance = Math.max(0, houseAmount - totalPaid);
+      const totalVisitsAmount = effectiveVisits.reduce((s, v) => s + (Number(v.amount) || 0), 0);
+      const totalBillableAmount = houseAmount + totalVisitsAmount;
+      const totalPaid = effectivePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const pendingBalance = Math.max(0, totalBillableAmount - totalPaid);
 
       await updateHousePlan(activeOwner.id, {
         plansList: effectivePlans,
         payments: effectivePayments,
+        siteVisits: effectiveVisits,
+        houseAmount,
+        totalVisitsAmount,
+        totalBillableAmount,
         totalPaid,
         pendingBalance,
         contractorId: activeOwner.contractorId || scopeId,
@@ -807,6 +873,91 @@ export default function Plans() {
       toast.error(`Failed to save workspace: ${err.message || 'Error'}`);
     } finally {
       setSavingWorkspace(false);
+    }
+  };
+
+  // ── SITE / HOUSE VISITS WORKFLOW ACTIONS (ER BRO SITE VISITS) ──────────
+
+  // Open modal to record a new site visit
+  const handleOpenAddVisit = (preset = null) => {
+    if (!activeOwner) return;
+    setEditingVisitId(null);
+    setVisitForm({
+      date: new Date().toISOString().split('T')[0],
+      purpose: preset?.label || 'Site Inspection & Supervision',
+      amount: String(preset?.charge !== undefined ? preset.charge : 1500),
+      visitedBy: activeOwner.engineerName || (userName ? `Er. ${userName.replace(/^Er\.\s*/i, '')}` : 'Er. Engineer'),
+      notes: preset?.desc || '',
+    });
+    setVisitModalOpen(true);
+  };
+
+  // Open modal to edit an existing site visit
+  const handleOpenEditVisit = (visit) => {
+    if (!activeOwner || !visit) return;
+    setEditingVisitId(visit.id);
+    setVisitForm({
+      date: visit.date || new Date().toISOString().split('T')[0],
+      purpose: visit.purpose || '',
+      amount: String(visit.amount !== undefined ? visit.amount : 1500),
+      visitedBy: visit.visitedBy || activeOwner.engineerName || '',
+      notes: visit.notes || '',
+    });
+    setVisitModalOpen(true);
+  };
+
+  // Save site visit (Create or Update)
+  const handleSaveVisit = async () => {
+    if (!activeOwner) return;
+    const cleanPurpose = visitForm.purpose?.trim();
+    if (!cleanPurpose) {
+      return toast.error('Please enter the purpose or work inspected during this visit');
+    }
+
+    const cleanAmount = Number(visitForm.amount);
+    if (isNaN(cleanAmount) || cleanAmount < 0) {
+      return toast.error('Please enter a valid visit charge amount');
+    }
+
+    try {
+      if (editingVisitId) {
+        await updateSiteVisitInOwner(activeOwner.id, editingVisitId, {
+          date: visitForm.date,
+          purpose: cleanPurpose,
+          amount: cleanAmount,
+          visitedBy: visitForm.visitedBy?.trim() || activeOwner.engineerName || 'Supervising Engineer',
+          notes: visitForm.notes?.trim() || '',
+        });
+        toast.success(`Site visit updated for ${activeOwner.ownerName}!`);
+      } else {
+        await addSiteVisitToOwner(activeOwner.id, {
+          date: visitForm.date,
+          purpose: cleanPurpose,
+          amount: cleanAmount,
+          visitedBy: visitForm.visitedBy?.trim() || activeOwner.engineerName || 'Supervising Engineer',
+          notes: visitForm.notes?.trim() || '',
+        });
+        toast.success(`Recorded site visit (${formatCurrency(cleanAmount)}) for ${activeOwner.ownerName}!`);
+      }
+      setVisitModalOpen(false);
+      setEditingVisitId(null);
+    } catch (err) {
+      console.error('Failed to save site visit:', err);
+      toast.error(`Failed to save site visit: ${err.message || 'Error'}`);
+    }
+  };
+
+  // Delete site visit
+  const handleDeleteVisit = async (visitId, purpose, amount) => {
+    if (!activeOwner) return;
+    if (!window.confirm(`Delete site visit "${purpose}" of ${formatCurrency(amount)}?\n\nThe total billable amount and pending balance will be automatically recalculated.`)) return;
+
+    try {
+      await deleteSiteVisitFromOwner(activeOwner.id, visitId);
+      toast.success('Site visit removed and balance updated');
+    } catch (err) {
+      console.error('Failed to delete site visit:', err);
+      toast.error('Failed to delete site visit');
     }
   };
 
@@ -856,12 +1007,12 @@ export default function Plans() {
     if (!activeOwner) return;
     const currentPayments = activeOwner.payments || [];
     const currentCount = currentPayments.length;
-    const pending = Number(activeOwner.pendingBalance) || 0;
-    const totalFee = Number(activeOwner.houseAmount) || 0;
+    const pending = activeOwnerFinances.pendingBalance;
+    const totalFee = activeOwnerFinances.totalBillable;
     const halfAmt = Math.round(totalFee / 2);
 
     let type = 'half_payment';
-    let installmentName = 'Half Payment (50% Plan Fee)';
+    let installmentName = 'Half Payment (50% Billable)';
     let amount = halfAmt > 0 ? String(halfAmt) : '';
 
     if (presetType === 'advance') {
@@ -889,9 +1040,9 @@ export default function Plans() {
   // Quick 50% Half Payment Preset
   const handlePresetHalfPayment = () => {
     if (!activeOwner) return;
-    const halfAmt = Math.round((Number(activeOwner.houseAmount) || 0) / 2);
+    const halfAmt = Math.round((Number(activeOwnerFinances.totalBillable) || 0) / 2);
     setPaymentForm({
-      installmentName: 'Half Payment (50% Plan Fee)',
+      installmentName: 'Half Payment (50% Billable)',
       type: 'half_payment',
       amount: String(halfAmt),
       date: new Date().toISOString().split('T')[0],
@@ -907,12 +1058,17 @@ export default function Plans() {
     if (!activeOwner) return;
     const ownerName = activeOwner.ownerName || 'Client';
     const planNum = activeOwner.planNumber || '';
-    const totalFee = formatCurrency(activeOwner.houseAmount);
-    const paid = formatCurrency(activeOwner.totalPaid);
-    const pending = formatCurrency(activeOwner.pendingBalance);
+    const baseFee = formatCurrency(activeOwnerFinances.baseFee);
+    const paid = formatCurrency(activeOwnerFinances.totalPaid);
+    const pending = formatCurrency(activeOwnerFinances.pendingBalance);
     const coName = branding?.companyName || 'YS Construction';
 
-    const message = `Namaste ${ownerName} ji,\n\nThis is a payment request from *${coName}* regarding your House Planning project (*${planNum}*).\n\n• *Total Plan Fee:* ${totalFee}\n• *Amount Received:* ${paid}\n• *Pending Balance:* ${pending}\n\nKindly process the pending installment payment at your earliest convenience.\n\nThank you,\n*${coName}*`;
+    let billingBreakdown = `• *Total Plan Fee:* ${baseFee}\n• *Amount Received:* ${paid}\n• *Pending Balance:* ${pending}`;
+    if (activeOwnerFinances.visitsCount > 0) {
+      billingBreakdown = `• *Base Drawing Fee:* ${baseFee}\n• *Site Inspection Visits (${activeOwnerFinances.visitsCount}):* ${formatCurrency(activeOwnerFinances.totalVisitsAmount)}\n• *Gross Total Billable:* ${formatCurrency(activeOwnerFinances.totalBillable)}\n• *Amount Received:* ${paid}\n• *Net Remaining Due:* ${pending}`;
+    }
+
+    const message = `Namaste ${ownerName} ji,\n\nThis is a payment request from *${coName}* regarding your House Planning project (*${planNum}*).\n\n${billingBreakdown}\n\nKindly process the pending installment payment at your earliest convenience.\n\nThank you,\n*${coName}*`;
 
     const cleanPhone = normalizeWhatsAppNumber(activeOwner.ownerPhone);
 
@@ -1351,16 +1507,23 @@ export default function Plans() {
                       <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-0.5">
                         Agreed Plan Fee
                       </span>
-                      <span className="font-extrabold text-sm text-text-primary">
-                        {formatCurrency(owner.houseAmount)}
-                      </span>
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        <span className="font-extrabold text-sm text-text-primary">
+                          {formatCurrency(owner.houseAmount)}
+                        </span>
+                        {owner.totalVisitsAmount > 0 && (
+                          <span className="text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20" title={`Includes ${(owner.siteVisits || []).length} site inspection visits`}>
+                            +{formatCurrency(owner.totalVisitsAmount)} visits
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div>
                       <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-0.5">
                         Remaining Balance
                       </span>
-                      {Number(owner.pendingBalance) <= 0 && Number(owner.houseAmount) > 0 ? (
+                      {Number(owner.pendingBalance) <= 0 && Number(owner.totalBillableAmount || owner.houseAmount) > 0 ? (
                         <span className="font-extrabold text-sm text-emerald-500 flex items-center gap-1">
                           <span>₹0</span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 rounded text-emerald-500">PAID</span>
@@ -1492,7 +1655,12 @@ export default function Plans() {
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-bold text-text-primary">
-                        {formatCurrency(owner.houseAmount)}
+                        <div>{formatCurrency(owner.totalBillableAmount || owner.houseAmount)}</div>
+                        {owner.totalVisitsAmount > 0 && (
+                          <div className="text-[10px] text-amber-500 font-normal">
+                            Base: {formatCurrency(owner.houseAmount)} + Visits: {formatCurrency(owner.totalVisitsAmount)}
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-semibold text-success">
@@ -1504,8 +1672,8 @@ export default function Plans() {
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${paymentBadge.bg}`}>
-                          {paymentBadge.label}
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid).bg}`}>
+                          {getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid).label}
                         </span>
                       </td>
 
@@ -1666,17 +1834,31 @@ export default function Plans() {
                       <div className="flex items-center gap-2 bg-bg-input/60 border border-border-strong rounded-xl p-1.5 px-3">
                         <div className="text-right">
                           <span className="text-[10px] text-text-muted uppercase font-semibold block leading-tight">Plan Fee</span>
-                          <span className="text-xs font-bold text-text-primary">{formatCurrency(activeOwner.houseAmount)}</span>
+                          <span className="text-xs font-bold text-text-primary">{formatCurrency(activeOwnerFinances.baseFee)}</span>
                         </div>
+                        {activeOwnerFinances.visitsCount > 0 && (
+                          <>
+                            <div className="h-6 w-[1px] bg-border-strong mx-1" />
+                            <div className="text-right">
+                              <span className="text-[10px] text-amber-500 uppercase font-semibold block leading-tight">Visits ({activeOwnerFinances.visitsCount})</span>
+                              <span className="text-xs font-bold text-amber-500">+{formatCurrency(activeOwnerFinances.totalVisitsAmount)}</span>
+                            </div>
+                            <div className="h-6 w-[1px] bg-border-strong mx-1" />
+                            <div className="text-right">
+                              <span className="text-[10px] text-text-primary uppercase font-bold block leading-tight">Total Bill</span>
+                              <span className="text-xs font-extrabold text-text-primary">{formatCurrency(activeOwnerFinances.totalBillable)}</span>
+                            </div>
+                          </>
+                        )}
                         <div className="h-6 w-[1px] bg-border-strong mx-1" />
                         <div className="text-right">
                           <span className="text-[10px] text-text-muted uppercase font-semibold block leading-tight">Paid</span>
-                          <span className="text-xs font-bold text-success">{formatCurrency(activeOwner.totalPaid)}</span>
+                          <span className="text-xs font-bold text-success">{formatCurrency(activeOwnerFinances.totalPaid)}</span>
                         </div>
                         <div className="h-6 w-[1px] bg-border-strong mx-1" />
                         <div className="text-right">
                           <span className="text-[10px] text-warning uppercase font-bold block leading-tight">Pending</span>
-                          <span className="text-xs font-extrabold text-warning">{formatCurrency(activeOwner.pendingBalance)}</span>
+                          <span className="text-xs font-extrabold text-warning">{formatCurrency(activeOwnerFinances.pendingBalance)}</span>
                         </div>
                       </div>
 
@@ -1720,10 +1902,10 @@ export default function Plans() {
                   </div>
 
             {/* Sub-Navigation Tabs */}
-            <div className="flex items-center border-b border-border bg-bg-card px-6 gap-2 shrink-0">
+            <div className="flex items-center border-b border-border bg-bg-card px-6 gap-2 shrink-0 overflow-x-auto">
                 <button
                   onClick={() => setOwnerTab('plans')}
-                  className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all ${
+                  className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-all ${
                     ownerTab === 'plans'
                       ? 'border-gold text-gold bg-bg-elevated/40'
                       : 'border-transparent text-text-muted hover:text-text-secondary'
@@ -1734,8 +1916,25 @@ export default function Plans() {
                 </button>
 
                 <button
+                  onClick={() => setOwnerTab('visits')}
+                  className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-all ${
+                    ownerTab === 'visits'
+                      ? 'border-gold text-gold bg-bg-elevated/40'
+                      : 'border-transparent text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  <Car className="w-4 h-4" />
+                  <span>Site / House Visits ({activeOwnerFinances.visitsCount})</span>
+                  {activeOwnerFinances.visitsCount > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 bg-amber-500/15 border border-amber-500/30 text-amber-500 rounded-md">
+                      +{formatCurrency(activeOwnerFinances.totalVisitsAmount)}
+                    </span>
+                  )}
+                </button>
+
+                <button
                   onClick={() => setOwnerTab('payments')}
-                  className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all ${
+                  className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-all ${
                     ownerTab === 'payments'
                       ? 'border-gold text-gold bg-bg-elevated/40'
                       : 'border-transparent text-text-muted hover:text-text-secondary'
@@ -1747,7 +1946,7 @@ export default function Plans() {
 
                 <button
                   onClick={() => setOwnerTab('info')}
-                  className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all ${
+                  className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-all ${
                     ownerTab === 'info'
                       ? 'border-gold text-gold bg-bg-elevated/40'
                       : 'border-transparent text-text-muted hover:text-text-secondary'
@@ -1926,46 +2125,270 @@ export default function Plans() {
                   </div>
                 )}
 
-                {/* ════ TAB 2: PAYMENTS & BALANCES (SELF-CONTAINED FOR THIS OWNER) ════ */}
+                {/* ════ TAB 2: SITE / HOUSE VISITS (ER BRO SITE VISITS) ════ */}
+                {ownerTab === 'visits' && (
+                  <div className="space-y-5">
+                    {/* Visits Summary Banner */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="bg-bg-elevated/70 border border-border-strong rounded-xl p-4">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+                          Visits Conducted
+                        </span>
+                        <div className="text-2xl font-bold text-text-primary">
+                          {activeOwnerFinances.visitsCount}
+                        </div>
+                        <p className="text-[11px] text-text-muted mt-1">
+                          Site inspection & supervision visits
+                        </p>
+                      </div>
+
+                      <div className="bg-bg-elevated/70 border border-amber-500/30 rounded-xl p-4">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500 block mb-1">
+                          Total Visits Billed
+                        </span>
+                        <div className="text-2xl font-bold text-amber-500">
+                          {formatCurrency(activeOwnerFinances.totalVisitsAmount)}
+                        </div>
+                        <p className="text-[11px] text-text-muted mt-1">
+                          Added to Gross Billable Amount
+                        </p>
+                      </div>
+
+                      <div className="bg-bg-elevated/70 border border-border-strong rounded-xl p-4">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+                          Standard Visit Rate
+                        </span>
+                        <div className="text-2xl font-bold text-text-primary">
+                          ₹1,500 <span className="text-xs font-normal text-text-muted">/ visit</span>
+                        </div>
+                        <p className="text-[11px] text-text-muted mt-1">
+                          Custom price per visit supported
+                        </p>
+                      </div>
+
+                      <div className="bg-bg-elevated/70 border border-border-strong rounded-xl p-4">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted block mb-1">
+                          Supervising Engineer
+                        </span>
+                        <div className="text-lg font-bold text-gold truncate">
+                          {activeOwner.engineerName || 'Er. Supervising Engineer'}
+                        </div>
+                        <p className="text-[11px] text-text-muted mt-1 truncate">
+                          In-charge for structural checks
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Quick Preset Action Bar for Site Visits */}
+                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-bg-elevated/40 border border-border-strong rounded-xl p-3.5">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="text-text-muted mr-1 font-semibold">1-Click Presets:</span>
+                        {DEFAULT_SITE_VISIT_PRESETS.slice(0, 4).map((preset, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleOpenAddVisit(preset)}
+                            className="px-2.5 py-1 bg-bg-input hover:bg-amber-500/15 border border-border-strong hover:border-amber-500/40 text-text-secondary hover:text-amber-500 rounded-lg text-xs font-medium transition-all"
+                            title={`Add "${preset.label}" (${formatCurrency(preset.charge)})`}
+                          >
+                            + {preset.label.split('&')[0].trim()} ({formatCurrency(preset.charge)})
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenAddVisit()}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-gold hover:bg-gold/90 text-bg-primary rounded-xl text-xs font-bold shadow-sm hover:scale-105 active:scale-95 transition-all"
+                          title="Record a new site visit with custom price, date, and remarks"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Record Site Visit</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Visits Table */}
+                    {activeOwnerFinances.visitsCount === 0 ? (
+                      <div className="text-center py-12 border border-dashed border-border-strong rounded-xl p-8 bg-bg-input/20">
+                        <Car className="w-12 h-12 text-amber-500 mx-auto mb-3 opacity-60" />
+                        <h4 className="text-base font-bold text-text-primary mb-1">
+                          No site inspection visits recorded yet for {activeOwner.ownerName}
+                        </h4>
+                        <p className="text-xs text-text-muted max-w-md mx-auto mb-5 leading-relaxed">
+                          While the house plan fee is fixed, engineer visits to the site (excavation, plinth beams, slab casting, etc.) are chargeable (e.g. ₹1,500/visit or custom price). All recorded visits automatically appear in the official bill PDF.
+                        </p>
+                        <div className="flex flex-wrap justify-center gap-2.5">
+                          <button
+                            onClick={() => handleOpenAddVisit()}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-gold text-bg-primary text-xs font-bold rounded-xl shadow-sm hover:scale-105 active:scale-95 transition-all"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Record First Site Visit</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenAddVisit(DEFAULT_SITE_VISIT_PRESETS[1])}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-bg-input border border-border-strong hover:border-gold text-text-secondary hover:text-gold text-xs font-semibold rounded-xl transition-all"
+                          >
+                            + Footing & Excavation Inspection (₹1,500)
+                          </button>
+                          <button
+                            onClick={() => handleOpenAddVisit(DEFAULT_SITE_VISIT_PRESETS[3])}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-bg-input border border-border-strong hover:border-gold text-text-secondary hover:text-gold text-xs font-semibold rounded-xl transition-all"
+                          >
+                            + Slab Casting Supervision (₹1,500)
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-bg-elevated/40 border border-border-strong rounded-xl overflow-hidden shadow-sm">
+                        <table className="w-full text-left text-xs text-text-secondary">
+                          <thead className="bg-bg-input/80 text-[11px] uppercase tracking-wider text-text-muted border-b border-border">
+                            <tr>
+                              <th className="py-3 px-4 w-12 text-center">#</th>
+                              <th className="py-3 px-4">Visit Date</th>
+                              <th className="py-3 px-4">Inspection Purpose & Scope of Work</th>
+                              <th className="py-3 px-4">Supervising Engineer</th>
+                              <th className="py-3 px-4 text-right">Visit Charge</th>
+                              <th className="py-3 px-4 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {activeOwnerFinances.siteVisits.map((visit, index) => (
+                              <tr key={visit.id || index} className="hover:bg-bg-input/40 transition-colors">
+                                <td className="py-3.5 px-4 text-center font-bold text-amber-500">
+                                  {index + 1}
+                                </td>
+                                <td className="py-3.5 px-4 font-mono font-medium text-text-primary whitespace-nowrap">
+                                  <div className="flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5 text-text-muted" />
+                                    <span>{visit.date || '-'}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <div className="font-semibold text-text-primary text-xs">
+                                    {visit.purpose}
+                                  </div>
+                                  {visit.notes && (
+                                    <div className="text-[11px] text-text-muted mt-0.5 leading-snug">
+                                      {visit.notes}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                                    <HardHat className="w-3 h-3" />
+                                    <span>{visit.visitedBy || activeOwner.engineerName || 'Supervising Engineer'}</span>
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-right font-bold text-amber-500 text-sm whitespace-nowrap">
+                                  {formatCurrency(visit.amount)}
+                                </td>
+                                <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      onClick={() => handleOpenEditVisit(visit)}
+                                      className="p-1.5 hover:bg-gold/15 text-text-muted hover:text-gold rounded-lg transition-colors"
+                                      title="Edit visit date, remarks, or charge"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteVisit(visit.id, visit.purpose, visit.amount)}
+                                      className="p-1.5 hover:bg-danger/20 text-text-muted hover:text-danger rounded-lg transition-colors"
+                                      title="Delete site visit"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Information Footer */}
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-text-secondary flex items-start gap-2.5">
+                      <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="leading-relaxed text-[11px]">
+                        <span className="font-bold text-text-primary">Integrated Financials: </span>
+                        All site visit charges are automatically summed with the base drawing fee into the <b>Gross Billable Amount ({formatCurrency(activeOwnerFinances.totalBillable)})</b>. They are prominently displayed in the official bill PDF under <b>Section 2 (Site Inspection Visits Ledger)</b> and in the payment reminder statement.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ════ TAB 3: PAYMENTS & BALANCES (SELF-CONTAINED FOR THIS OWNER) ════ */}
                 {ownerTab === 'payments' && (
                   <div className="space-y-5">
                     {/* Financial Summary Cards for this Owner */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                       <div className="bg-bg-elevated/70 border border-border-strong rounded-xl p-4">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted block mb-1">
-                          Total Plan / Drawings Fees
+                          Base Plan Fee
                         </span>
-                        <div className="text-2xl font-bold text-text-primary">
-                          {formatCurrency(activeOwner.houseAmount)}
+                        <div className="text-xl sm:text-2xl font-bold text-text-primary">
+                          {formatCurrency(activeOwnerFinances.baseFee)}
+                        </div>
+                        <p className="text-[11px] text-text-muted mt-1 truncate">
+                          Agreed 2D/3D drawing fee
+                        </p>
+                      </div>
+
+                      <div className="bg-bg-elevated/70 border border-amber-500/30 rounded-xl p-4 relative group">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500 block">
+                            Site Visits Charges
+                          </span>
+                          <button
+                            onClick={() => handleOpenAddVisit()}
+                            className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-500 rounded-md transition-colors"
+                            title="Add a chargeable site inspection visit"
+                          >
+                            + Add Visit
+                          </button>
+                        </div>
+                        <div className="text-xl sm:text-2xl font-bold text-amber-500">
+                          {formatCurrency(activeOwnerFinances.totalVisitsAmount)}
                         </div>
                         <p className="text-[11px] text-text-muted mt-1">
-                          Agreed 2D/3D planning & engineering fees
+                          {activeOwnerFinances.visitsCount} inspection {activeOwnerFinances.visitsCount === 1 ? 'visit' : 'visits'} recorded
                         </p>
                       </div>
 
                       <div className="bg-bg-elevated/70 border border-success/30 rounded-xl p-4">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-success block mb-1">
-                          Plan Fees Received
+                          Total Received
                         </span>
-                        <div className="text-2xl font-bold text-success">
-                          {formatCurrency(activeOwner.totalPaid)}
+                        <div className="text-xl sm:text-2xl font-bold text-success">
+                          {formatCurrency(activeOwnerFinances.totalPaid)}
                         </div>
                         <p className="text-[11px] text-text-muted mt-1">
-                          {activeOwner.houseAmount > 0
-                            ? `${Math.round(((activeOwner.totalPaid || 0) / activeOwner.houseAmount) * 100)}% of plan fees paid`
+                          {activeOwnerFinances.totalBillable > 0
+                            ? `${Math.round(((activeOwnerFinances.totalPaid || 0) / activeOwnerFinances.totalBillable) * 100)}% of total bill paid`
                             : 'No fee set'}
                         </p>
                       </div>
 
                       <div className="bg-bg-elevated/70 border border-warning/30 rounded-xl p-4">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-warning block mb-1">
-                          Remaining Pending Balance
-                        </span>
-                        <div className="text-2xl font-bold text-warning">
-                          {formatCurrency(activeOwner.pendingBalance)}
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-warning block">
+                            Remaining Balance
+                          </span>
+                          {activeOwnerFinances.totalVisitsAmount > 0 && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 bg-warning/10 border border-warning/20 rounded text-warning">
+                              Total: {formatCurrency(activeOwnerFinances.totalBillable)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xl sm:text-2xl font-bold text-warning">
+                          {formatCurrency(activeOwnerFinances.pendingBalance)}
                         </div>
                         <p className="text-[11px] text-text-muted mt-1">
-                          Outstanding plan fee for {activeOwner.ownerName}
+                          {activeOwnerFinances.pendingBalance <= 0 && activeOwnerFinances.totalBillable > 0
+                            ? 'All drawing & visit fees cleared'
+                            : `Outstanding for ${activeOwner.ownerName}`}
                         </p>
                       </div>
                     </div>
@@ -2865,14 +3288,21 @@ export default function Plans() {
               <div>
                 <span className="text-[10px] text-text-muted uppercase">Pending Balance</span>
                 <div className="text-base font-bold text-warning">
-                  {formatCurrency(activeOwner.pendingBalance)}
+                  {formatCurrency(activeOwnerFinances.pendingBalance)}
                 </div>
               </div>
               <div className="text-right">
-                <span className="text-[10px] text-text-muted uppercase">Total Plan Fee</span>
+                <span className="text-[10px] text-text-muted uppercase">
+                  {activeOwnerFinances.visitsCount > 0 ? 'Total Billable (Base + Visits)' : 'Total Plan Fee'}
+                </span>
                 <div className="text-sm font-semibold text-text-primary">
-                  {formatCurrency(activeOwner.houseAmount)}
+                  {formatCurrency(activeOwnerFinances.totalBillable)}
                 </div>
+                {activeOwnerFinances.visitsCount > 0 && (
+                  <span className="text-[10px] text-amber-500 font-medium block">
+                    Base: {formatCurrency(activeOwnerFinances.baseFee)} + Visits ({activeOwnerFinances.visitsCount}): {formatCurrency(activeOwnerFinances.totalVisitsAmount)}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -2887,11 +3317,11 @@ export default function Plans() {
                 <button
                   type="button"
                   onClick={() => {
-                    const half = Math.round((Number(activeOwner.houseAmount) || 0) / 2);
+                    const half = Math.round((Number(activeOwnerFinances.totalBillable) || 0) / 2);
                     setPaymentForm({
                       ...paymentForm,
                       type: 'half_payment',
-                      installmentName: 'Half Payment (50% Plan Fee)',
+                      installmentName: 'Half Payment (50% Billable)',
                       amount: String(half),
                     });
                   }}
@@ -2901,13 +3331,13 @@ export default function Plans() {
                       : 'bg-bg-input border-border-strong hover:border-gold text-text-secondary hover:text-gold'
                   }`}
                 >
-                  ⚡ 50% Half ({formatCurrency(Math.round((Number(activeOwner.houseAmount) || 0) / 2))})
+                  ⚡ 50% Half ({formatCurrency(Math.round((Number(activeOwnerFinances.totalBillable) || 0) / 2))})
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    const pending = Number(activeOwner.pendingBalance) || 0;
+                    const pending = Number(activeOwnerFinances.pendingBalance) || 0;
                     setPaymentForm({
                       ...paymentForm,
                       type: 'final',
@@ -2921,7 +3351,7 @@ export default function Plans() {
                       : 'bg-bg-input border-border-strong hover:border-emerald-500 text-text-secondary hover:text-emerald-400'
                   }`}
                 >
-                  ✓ Full Remaining ({formatCurrency(activeOwner.pendingBalance)})
+                  ✓ Full Remaining ({formatCurrency(activeOwnerFinances.pendingBalance)})
                 </button>
 
                 <button
@@ -2978,12 +3408,12 @@ export default function Plans() {
                   let amount = paymentForm.amount;
                   if (type === 'half_payment') {
                     installmentName = 'Half Payment (50%)';
-                    if (activeOwner) amount = String(Math.round((activeOwner.houseAmount || 0) / 2));
+                    if (activeOwner) amount = String(Math.round((activeOwnerFinances.totalBillable || 0) / 2));
                   } else if (type === 'advance') {
                     installmentName = 'Advance Booking Payment';
                   } else if (type === 'final') {
                     installmentName = 'Final Settlement';
-                    if (activeOwner) amount = String(activeOwner.pendingBalance || 0);
+                    if (activeOwner) amount = String(activeOwnerFinances.pendingBalance || 0);
                   }
                   setPaymentForm({ ...paymentForm, type, installmentName, amount });
                 }}
@@ -3015,7 +3445,7 @@ export default function Plans() {
                 type="number"
                 value={paymentForm.amount}
                 onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                placeholder="e.g. 2500000"
+                placeholder="e.g. 25000"
                 className="mt-1 font-bold text-success text-sm"
               />
             </div>
@@ -3063,6 +3493,143 @@ export default function Plans() {
                 className="mt-1"
               />
             </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* ── RECORD / EDIT SITE INSPECTION VISIT MODAL ────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={visitModalOpen}
+        onClose={() => {
+          setVisitModalOpen(false);
+          setEditingVisitId(null);
+        }}
+        title={
+          editingVisitId
+            ? `Edit Site Visit for ${activeOwner?.ownerName || 'Client'}`
+            : `Record Chargeable Site Visit for ${activeOwner?.ownerName || 'Client'}`
+        }
+        confirmText={editingVisitId ? 'Update Visit' : 'Save Visit Charge'}
+        onConfirm={handleSaveVisit}
+        zIndex={100000}
+        className="max-w-lg"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Preset quick pills */}
+          {!editingVisitId && (
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">
+                Quick Inspection Presets:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {DEFAULT_SITE_VISIT_PRESETS.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setVisitForm({
+                        ...visitForm,
+                        purpose: preset.label,
+                        amount: String(preset.charge),
+                        notes: preset.desc || '',
+                      });
+                    }}
+                    className={`px-2.5 py-1 rounded-lg border text-xs transition-all ${
+                      visitForm.purpose === preset.label
+                        ? 'bg-amber-500 text-bg-primary border-amber-500 font-bold shadow-sm'
+                        : 'bg-bg-input border-border-strong hover:border-amber-500/50 text-text-secondary hover:text-amber-500'
+                    }`}
+                  >
+                    {preset.label.split('&')[0].trim()} ({formatCurrency(preset.charge)})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">
+                Visit Date <span className="text-danger">*</span>
+              </Label>
+              <Input
+                type="date"
+                value={visitForm.date}
+                onChange={(e) => setVisitForm({ ...visitForm, date: e.target.value })}
+                className="mt-1 font-mono"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs">
+                Visit Charge (₹) <span className="text-danger">*</span>
+              </Label>
+              <Input
+                type="number"
+                value={visitForm.amount}
+                onChange={(e) => setVisitForm({ ...visitForm, amount: e.target.value })}
+                placeholder="1500"
+                className="mt-1 font-bold text-amber-500 text-sm"
+              />
+            </div>
+
+            {/* Quick amount suggestion chips */}
+            <div className="sm:col-span-2 flex items-center gap-2">
+              <span className="text-[10px] text-text-muted">Quick Rate:</span>
+              {[1000, 1500, 2000, 2500].map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => setVisitForm({ ...visitForm, amount: String(amt) })}
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-all ${
+                    Number(visitForm.amount) === amt
+                      ? 'bg-amber-500/20 text-amber-500 border-amber-500/40'
+                      : 'bg-bg-input text-text-muted border-border hover:border-text-muted'
+                  }`}
+                >
+                  ₹{amt.toLocaleString('en-IN')}
+                </button>
+              ))}
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label className="text-xs">
+                Inspection Purpose / Scope of Work <span className="text-danger">*</span>
+              </Label>
+              <Input
+                value={visitForm.purpose}
+                onChange={(e) => setVisitForm({ ...visitForm, purpose: e.target.value })}
+                placeholder="e.g. Slab Casting Inspection & Steel Check"
+                className="mt-1 font-medium"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label className="text-xs">Supervising Engineer / Visited By</Label>
+              <Input
+                value={visitForm.visitedBy}
+                onChange={(e) => setVisitForm({ ...visitForm, visitedBy: e.target.value })}
+                placeholder={activeOwner?.engineerName || 'Er. Engineer Name'}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label className="text-xs">Engineer Observations / Remarks (Optional)</Label>
+              <textarea
+                value={visitForm.notes}
+                onChange={(e) => setVisitForm({ ...visitForm, notes: e.target.value })}
+                placeholder="e.g. Beam depths checked as per typical drawing. Concrete slump verified satisfactory."
+                rows={2}
+                className="mt-1 w-full px-3 py-2 bg-bg-input border border-border-strong rounded-lg text-xs text-text-primary focus:outline-none focus:border-amber-500 resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="p-3 bg-bg-input/60 border border-border-strong rounded-xl text-[11px] text-text-muted leading-relaxed">
+            💡 This visit charge will be automatically added to <b>{activeOwner?.ownerName || 'Client'}'s</b> gross billable ledger and reflected in the downloadable bill PDF.
           </div>
         </div>
       </Modal>
