@@ -40,6 +40,9 @@ import {
   Send,
   Share2,
   Car,
+  ListPlus,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -54,6 +57,7 @@ import {
   updateHousePlan,
   deleteHousePlan,
   addPlanToOwner,
+  addMultiplePlansToOwner,
   updatePlanInOwner,
   togglePlanStatus,
   deletePlanFromOwner,
@@ -81,12 +85,24 @@ import Modal from '../components/ui/Modal';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 
-// Plan status colors
+// High-contrast, theme-aware plan status colors for crystal-clear visibility
 const PLAN_STATUS_CONFIG = {
-  not_started: { label: 'Not Started', bg: 'bg-zinc-800 text-zinc-400 border-zinc-700' },
-  pending: { label: 'Pending', bg: 'bg-warning/10 text-warning border-warning/30' },
-  in_progress: { label: 'In Progress', bg: 'bg-info/10 text-info border-info/30' },
-  completed: { label: 'Completed', bg: 'bg-success/10 text-success border-success/30' },
+  not_started: {
+    label: 'Not Started',
+    bg: 'bg-zinc-100 text-zinc-800 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 font-bold',
+  },
+  pending: {
+    label: 'Pending',
+    bg: 'bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-700 font-bold',
+  },
+  in_progress: {
+    label: 'In Progress',
+    bg: 'bg-sky-50 text-sky-900 border-sky-300 dark:bg-sky-950 dark:text-sky-200 dark:border-sky-700 font-bold',
+  },
+  completed: {
+    label: 'Completed',
+    bg: 'bg-emerald-50 text-emerald-900 border-emerald-400 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-700 font-bold',
+  },
 };
 
 // Payment status badge for plan fees
@@ -233,6 +249,12 @@ export default function Plans() {
   const [planNotes, setPlanNotes] = useState('');
   const [planFileUrl, setPlanFileUrl] = useState('');
 
+  // Selective Catalog Picker Modal (Pick 1, 2, or specific drawings from catalog)
+  const [selectiveCatalogModalOpen, setSelectiveCatalogModalOpen] = useState(false);
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState(new Set());
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [addingPlans, setAddingPlans] = useState(false);
+
   // Add Payment to Owner Modal
   const [addPaymentModalOpen, setAddPaymentModalOpen] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
@@ -261,6 +283,68 @@ export default function Plans() {
     if (!activeOwnerId) return null;
     return owners.find((o) => o.id === activeOwnerId) || null;
   }, [owners, activeOwnerId]);
+
+  // ── SORTED PLANS LIST: COMPLETED PLANS ALWAYS ON TOP (ABOVE) ──
+  const sortedPlansList = useMemo(() => {
+    const list = activeOwner?.plansList || [];
+    return [...list].sort((a, b) => {
+      const aDone = a.status === 'completed' ? 1 : 0;
+      const bDone = b.status === 'completed' ? 1 : 0;
+      // 1. Completed drawings placed on top
+      if (aDone !== bDone) return bDone - aDone;
+      // 2. Numerical drawing order (01, 02, ... 22)
+      const aNum = parseInt(a.num || a.name?.match(/^(\d+)/)?.[1] || '999', 10);
+      const bNum = parseInt(b.num || b.name?.match(/^(\d+)/)?.[1] || '999', 10);
+      if (aNum !== bNum) return aNum - bNum;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [activeOwner?.plansList]);
+
+  const completedPlans = useMemo(() => {
+    return sortedPlansList.filter((p) => p.status === 'completed');
+  }, [sortedPlansList]);
+
+  const pendingPlans = useMemo(() => {
+    return sortedPlansList.filter((p) => p.status !== 'completed');
+  }, [sortedPlansList]);
+
+  // ── MISSING CATALOG PLANS FOR ACTIVE OWNER (TO SELECTIVELY ADD 1 OR 2) ──
+  const missingCatalogPlans = useMemo(() => {
+    if (!activeOwner) return [];
+    const currentList = activeOwner.plansList || [];
+
+    const existingNums = new Set(
+      currentList
+        .map((p) => (p.num || p.name?.match(/^(\d+)/)?.[1] || '').trim())
+        .filter(Boolean)
+    );
+
+    const existingPureNames = new Set(
+      currentList
+        .map((p) => extractPureMainName(p.name).toLowerCase().trim())
+        .filter(Boolean)
+    );
+
+    return masterCatalog.filter((item) => {
+      const itemNum = (item.num || item.name?.match(/^(\d+)/)?.[1] || '').trim();
+      const itemPure = (item.mainName || extractPureMainName(item.name)).toLowerCase().trim();
+      if (itemNum && existingNums.has(itemNum)) return false;
+      if (itemPure && existingPureNames.has(itemPure)) return false;
+      return true;
+    });
+  }, [activeOwner, masterCatalog]);
+
+  const filteredMissingCatalogPlans = useMemo(() => {
+    if (!catalogSearch.trim()) return missingCatalogPlans;
+    const q = catalogSearch.toLowerCase().trim();
+    return missingCatalogPlans.filter((p) => {
+      const nameMatch = (p.name || '').toLowerCase().includes(q);
+      const numMatch = (p.num || '').toLowerCase().includes(q);
+      const catMatch = (p.category || '').toLowerCase().includes(q);
+      const descMatch = (p.desc || '').toLowerCase().includes(q);
+      return nameMatch || numMatch || catMatch || descMatch;
+    });
+  }, [missingCatalogPlans, catalogSearch]);
 
   // Robust finances computation for active owner
   const activeOwnerFinances = useMemo(() => {
@@ -785,16 +869,16 @@ export default function Plans() {
   };
 
 
-  // Replace / Sync with Exact 21 Plans (removes old and removes owner name from list)
+  // Replace / Sync with Exact Standard Plans (removes old and removes owner name from list)
   const handleSyncExact21Plans = async () => {
     if (!activeOwner) return;
-    if (!window.confirm(`Update ${activeOwner.ownerName}'s plans to the EXACT 21 engineering drawings (01-FINAL PLAN to 21-Loan Estimate)?\n\nOld/duplicate plans will be cleaned up, and any completed plans will remain marked done.`)) return;
+    if (!window.confirm(`Update ${activeOwner.ownerName}'s plans to the standard ${DEFAULT_MASTER_PLANS.length} engineering drawings (01-FINAL PLAN to 22-Door Details)?\n\nOld/duplicate plans will be cleaned up, and any completed plans will remain marked done.`)) return;
 
-    const t = toast.loading('Syncing to exact 21 engineering plans...');
+    const t = toast.loading(`Syncing to standard ${DEFAULT_MASTER_PLANS.length} engineering plans...`);
     try {
       await resetOwnerPlansToExact21(activeOwner.id);
       toast.dismiss(t);
-      toast.success(`Updated ${activeOwner.ownerName} to the exact 21 plans!`);
+      toast.success(`Updated ${activeOwner.ownerName} to the standard ${DEFAULT_MASTER_PLANS.length} plans!`);
     } catch (err) {
       console.error(err);
       toast.dismiss(t);
@@ -805,33 +889,67 @@ export default function Plans() {
   // Backward-compatible alias
   const handleSyncExact16Plans = handleSyncExact21Plans;
 
-  // Batch Add all 21 Engineer plans
-  const handleAddAll21Plans = async () => {
-    if (!activeOwner) return;
-    const currentNames = (activeOwner.plansList || []).map((p) => p.name.toLowerCase());
-    const toAdd = masterCatalog.filter((p) => !currentNames.includes(p.name.toLowerCase()));
+  // ── SELECTIVE CATALOG ADDING HANDLERS (PICK 1, 2, OR SPECIFIC PLANS) ──
+  const toggleSelectCatalogPlan = (id) => {
+    setSelectedCatalogIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
-    if (toAdd.length === 0) {
-      return toast('All catalog plans are already added to this owner', { icon: 'ℹ️' });
+  const handleSelectAllMissing = () => {
+    if (selectedCatalogIds.size === filteredMissingCatalogPlans.length) {
+      setSelectedCatalogIds(new Set());
+    } else {
+      setSelectedCatalogIds(new Set(filteredMissingCatalogPlans.map((p) => p.id)));
+    }
+  };
+
+  const handleAddSelectedCatalogPlans = async (specificIds = null) => {
+    if (!activeOwner) return;
+    const idsToAdd = specificIds || Array.from(selectedCatalogIds);
+    if (idsToAdd.length === 0) {
+      return toast.error('Please select at least 1 plan to add');
     }
 
-    const t = toast.loading(`Adding ${toAdd.length} plans to ${activeOwner.ownerName}...`);
+    const plansToAdd = masterCatalog.filter((p) => idsToAdd.includes(p.id));
+    if (plansToAdd.length === 0) return;
+
+    setAddingPlans(true);
+    const t = toast.loading(`Adding ${plansToAdd.length} plan(s) to ${activeOwner.ownerName}...`);
     try {
-      for (const item of toAdd) {
-        await addPlanToOwner(activeOwner.id, {
-          num: item.num,
-          name: item.name,
-          category: item.category || 'Architectural',
-          status: 'not_started',
-        });
-      }
+      await addMultiplePlansToOwner(activeOwner.id, plansToAdd);
       toast.dismiss(t);
-      toast.success(`Successfully added all ${toAdd.length} plans to ${activeOwner.ownerName}`);
+      toast.success(`Successfully added ${plansToAdd.length} plan(s) to ${activeOwner.ownerName}`);
+      setSelectedCatalogIds(new Set());
+      setSelectiveCatalogModalOpen(false);
     } catch (err) {
       console.error(err);
       toast.dismiss(t);
-      toast.error('Failed to add plans');
+      toast.error('Failed to add selected plans');
+    } finally {
+      setAddingPlans(false);
     }
+  };
+
+  const handleAddSingleCatalogPlan = async (catalogPlan) => {
+    if (!catalogPlan) return;
+    await handleAddSelectedCatalogPlans([catalogPlan.id]);
+  };
+
+  // Batch Add all missing Engineer catalog plans
+  const handleAddAll21Plans = async () => {
+    if (!activeOwner) return;
+    if (missingCatalogPlans.length === 0) {
+      return toast('All standard catalog plans are already added to this owner', { icon: 'ℹ️' });
+    }
+
+    await handleAddSelectedCatalogPlans(missingCatalogPlans.map((p) => p.id));
   };
 
   const handleAddAll16Plans = handleAddAll21Plans;
@@ -1402,6 +1520,15 @@ export default function Plans() {
             const completedCount = plans.filter((p) => p.status === 'completed').length;
             const progressPct = plans.length > 0 ? Math.round((completedCount / plans.length) * 100) : 0;
             const paymentBadge = getPaymentStatusBadge(owner.totalBillableAmount || owner.houseAmount, owner.totalPaid);
+            const sortedCardPlans = [...plans].sort((a, b) => {
+              const aDone = a.status === 'completed' ? 1 : 0;
+              const bDone = b.status === 'completed' ? 1 : 0;
+              if (aDone !== bDone) return bDone - aDone;
+              const aNum = parseInt(a.num || a.name?.match(/^(\d+)/)?.[1] || '999', 10);
+              const bNum = parseInt(b.num || b.name?.match(/^(\d+)/)?.[1] || '999', 10);
+              if (aNum !== bNum) return aNum - bNum;
+              return (a.name || '').localeCompare(b.name || '');
+            });
 
             return (
               <motion.div
@@ -1489,7 +1616,7 @@ export default function Plans() {
                     </div>
 
                     <div className="flex flex-wrap gap-1.5">
-                      {plans.slice(0, 4).map((p) => (
+                      {sortedCardPlans.slice(0, 4).map((p) => (
                         <span
                           key={p.id}
                           className={`text-[10px] px-2 py-0.5 rounded-md font-medium border flex items-center gap-1 transition-colors ${
@@ -1982,30 +2109,58 @@ export default function Plans() {
                         <div className="text-xs">
                           <span className="text-text-muted">Plans Attached: </span>
                           <span className="font-bold text-text-primary text-sm">
-                            {(activeOwner.plansList || []).filter((p) => p.status === 'completed').length} / {(activeOwner.plansList || []).length} Completed
+                            {completedPlans.length} / {(activeOwner.plansList || []).length} Completed
                           </span>
                         </div>
+                        {missingCatalogPlans.length > 0 && (
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center gap-1">
+                            <span>{missingCatalogPlans.length} catalog plan{missingCatalogPlans.length === 1 ? '' : 's'} available to add</span>
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Sync / Replace with Standard Master Plans Button */}
                         <button
                           onClick={handleSyncExact21Plans}
-                          className="px-3 py-1.5 bg-gold text-bg-primary rounded-lg text-xs font-bold hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
-                          title={`Sync to the standard engineering drawings (including 22-Door Details), removing old/duplicate plans`}
+                          className="px-3 py-1.5 bg-bg-input border border-border-strong hover:border-gold rounded-lg text-xs font-semibold text-text-secondary hover:text-gold transition-all flex items-center gap-1.5"
+                          title={`Sync to standard ${DEFAULT_MASTER_PLANS.length} engineering drawings, removing old/duplicate plans`}
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
+                          <RotateCcw className="w-3.5 h-3.5 text-gold" />
                           <span>Sync Standard Plans ({DEFAULT_MASTER_PLANS.length})</span>
                         </button>
 
+                        {/* Primary Selective Catalog Action: Pick only 1, 2, or specific drawings */}
                         <button
-                          onClick={handleAddAll21Plans}
-                          className="px-3 py-1.5 bg-bg-input border border-border-strong hover:border-gold rounded-lg text-xs font-medium text-text-secondary hover:text-gold transition-colors"
-                          title="Add missing plans from the master catalog"
+                          onClick={() => {
+                            setSelectedCatalogIds(new Set());
+                            setCatalogSearch('');
+                            setSelectiveCatalogModalOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 bg-gold hover:bg-gold/90 text-bg-primary rounded-lg text-xs font-bold shadow-sm hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+                          title="Pick and add only 1 or 2 specific drawings from catalog"
                         >
-                          + Add All Catalog Plans
+                          <ListPlus className="w-4 h-4 stroke-[2.5]" />
+                          <span>+ Add from Catalog</span>
+                          {missingCatalogPlans.length > 0 && (
+                            <span className="px-1.5 py-0.2 bg-black/20 text-bg-primary font-mono text-[10px] rounded-full">
+                              {missingCatalogPlans.length}
+                            </span>
+                          )}
                         </button>
 
+                        {/* Quick Add All (Only visible if there are missing catalog plans) */}
+                        {missingCatalogPlans.length > 0 && (
+                          <button
+                            onClick={handleAddAll21Plans}
+                            className="px-3 py-1.5 bg-bg-input border border-border-strong hover:border-gold rounded-lg text-xs font-medium text-text-secondary hover:text-gold transition-colors hidden sm:flex items-center gap-1"
+                            title={`Add all ${missingCatalogPlans.length} missing catalog drawings at once`}
+                          >
+                            <span>+ Add All ({missingCatalogPlans.length})</span>
+                          </button>
+                        )}
+
+                        {/* Custom Plan Button */}
                         <button
                           onClick={() => {
                             setSelectedCatalogPlanId('');
@@ -2013,9 +2168,10 @@ export default function Plans() {
                             setAddPlanModalOpen(true);
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border-strong hover:border-gold text-text-secondary hover:text-gold rounded-lg text-xs font-medium transition-all"
+                          title="Add a custom drawing name not in catalog"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Add Custom Plan</span>
+                          <span>+ Add Custom Plan</span>
                         </button>
                       </div>
                     </div>
@@ -2028,7 +2184,7 @@ export default function Plans() {
                           No plans added for {activeOwner.ownerName} yet
                         </h4>
                         <p className="text-xs text-text-muted max-w-md mx-auto mb-4">
-                          Load the exact 21 engineering plans (01-FINAL PLAN, 02-CENTER LINE, 03-FOUNDATION PLAN DETAILS... up to 21-Loan Estimate).
+                          Load standard drawings or pick specific drawings from the catalog for this owner.
                         </p>
                         <div className="flex flex-wrap justify-center gap-3">
                           <button
@@ -2036,104 +2192,239 @@ export default function Plans() {
                             className="px-4 py-2 bg-gold text-bg-primary text-xs font-bold rounded-lg shadow-sm hover:scale-105 flex items-center gap-1.5"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
-                            <span>Load All Exact 21 Plans</span>
+                            <span>Load All Standard ({DEFAULT_MASTER_PLANS.length}) Plans</span>
                           </button>
                           <button
-                            onClick={handleAddAll21Plans}
-                            className="px-4 py-2 bg-bg-input border border-border-strong text-text-secondary text-xs font-medium rounded-lg hover:border-gold"
+                            onClick={() => {
+                              setSelectedCatalogIds(new Set());
+                              setCatalogSearch('');
+                              setSelectiveCatalogModalOpen(true);
+                            }}
+                            className="px-4 py-2 bg-bg-input border border-border-strong text-text-secondary text-xs font-medium rounded-lg hover:border-gold flex items-center gap-1.5"
                           >
-                            + Add All 21 Plans
+                            <ListPlus className="w-3.5 h-3.5 text-gold" />
+                            <span>Pick Specific Plans from Catalog</span>
                           </button>
                           <button
                             onClick={() => setAddPlanModalOpen(true)}
                             className="px-4 py-2 bg-bg-input border border-border-strong text-text-secondary text-xs font-medium rounded-lg hover:border-gold"
                           >
-                            Choose from Catalog
+                            + Add Custom Plan
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-2.5">
-                        {activeOwner.plansList.map((plan, index) => {
-                          const statusStyle = PLAN_STATUS_CONFIG[plan.status] || PLAN_STATUS_CONFIG.not_started;
-                          const isDone = plan.status === 'completed';
-                          const planBadgeNum = plan.num || plan.name?.match(/^(\d+)/)?.[1] || String(index + 1).padStart(2, '0');
-                          const exactPlanName = `${planBadgeNum}-${extractPureMainName(plan.name)}`;
-
-                          return (
-                            <div
-                              key={plan.id}
-                              className={`p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 ${
-                                isDone
-                                  ? 'bg-success/5 border-success/30'
-                                  : 'bg-bg-elevated/40 border-border-strong hover:border-gold/40'
-                              }`}
-                            >
-                              <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <h4 className={`text-sm font-bold ${isDone ? 'text-success' : 'text-text-primary'}`}>
-                                      {exactPlanName}
-                                    </h4>
-                                    <span className="text-[10px] px-2 py-0.5 rounded bg-bg-input border border-border-strong text-text-muted">
-                                      {plan.category || 'Architectural'}
-                                    </span>
-                                  </div>
-
-                                  {plan.notes && (
-                                    <p className="text-xs text-text-muted mt-0.5 truncate">
-                                      {plan.notes}
-                                    </p>
-                                  )}
-                                  {plan.completedDate && (
-                                    <p className="text-[11px] text-success mt-0.5 flex items-center gap-1 font-mono">
-                                      <CheckCircle2 className="w-3 h-3" /> Completed on {plan.completedDate}
-                                    </p>
-                                  )}
+                      <div className="space-y-5">
+                        {/* ── TOP SECTION: COMPLETED DRAWINGS (ALWAYS AT TOP) ── */}
+                        {completedPlans.length > 0 && (
+                          <div className="space-y-2.5">
+                            <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl mb-3 shadow-xs">
+                              <div className="flex items-center gap-2.5">
+                                <div className="p-1.5 rounded-lg bg-emerald-600 text-white shadow-xs">
+                                  <CheckCircle2 className="w-4 h-4 stroke-[3]" />
                                 </div>
+                                <span className="text-sm font-extrabold text-text-primary tracking-tight">
+                                  Completed Drawings ({completedPlans.length})
+                                </span>
+                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
+                                  Ready & Delivered
+                                </span>
                               </div>
-
-                              {/* Status Dropdown & Toggle Button */}
-                              <div className="flex items-center gap-2 self-end sm:self-center">
-                                {/* Status Selector */}
-                                <select
-                                  value={plan.status}
-                                  onChange={(e) => handleChangePlanStatus(plan.id, e.target.value)}
-                                  className={`px-2.5 py-1 rounded text-xs font-semibold uppercase tracking-wider border focus:outline-none ${statusStyle.bg}`}
-                                >
-                                  {Object.entries(PLAN_STATUS_CONFIG).map(([k, v]) => (
-                                    <option key={k} value={k}>
-                                      {v.label}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                {/* Quick Mark Done Button */}
-                                <button
-                                  onClick={() => handleTogglePlanStatus(plan.id, plan.status)}
-                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                                    isDone
-                                      ? 'bg-success/20 text-success border border-success/40 hover:bg-warning/20 hover:text-warning hover:border-warning/40'
-                                      : 'bg-gold text-bg-primary hover:scale-105 active:scale-95 shadow-sm'
-                                  }`}
-                                  title={isDone ? 'Mark as Pending' : 'Mark as Done / Complete'}
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>{isDone ? 'Completed' : 'Mark Done'}</span>
-                                </button>
-
-                                {/* Delete Plan from Owner */}
-                                <button
-                                  onClick={() => handleDeletePlanFromActiveOwner(plan.id, plan.name)}
-                                  className="p-1.5 hover:bg-danger/20 hover:text-danger rounded-lg text-text-muted border border-transparent hover:border-danger/30 transition-colors"
-                                  title="Delete Plan from this owner"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hidden sm:inline">
+                                ✓ Placed at top
+                              </span>
                             </div>
-                          );
-                        })}
+
+                            <div className="space-y-2">
+                              {completedPlans.map((plan) => {
+                                const statusStyle = PLAN_STATUS_CONFIG[plan.status] || PLAN_STATUS_CONFIG.completed;
+                                const planBadgeNum = plan.num || plan.name?.match(/^(\d+)/)?.[1] || '';
+                                const pureName = extractPureMainName(plan.name);
+
+                                return (
+                                  <div
+                                    key={plan.id}
+                                    className="p-3.5 sm:p-4 rounded-xl border-2 border-emerald-500/40 hover:border-emerald-500 bg-bg-card hover:bg-emerald-500/[0.03] shadow-sm transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5"
+                                  >
+                                    <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                                      {/* Plan Number Badge */}
+                                      {planBadgeNum && (
+                                        <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shrink-0 shadow-2xs">
+                                          {planBadgeNum}
+                                        </span>
+                                      )}
+
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <h4 className="text-sm sm:text-base font-extrabold text-text-primary">
+                                            {pureName}
+                                          </h4>
+                                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-bg-input border border-border-strong text-text-secondary">
+                                            {plan.category || 'Architectural'}
+                                          </span>
+                                        </div>
+
+                                        {plan.notes && (
+                                          <p className="text-xs text-text-muted mt-1 truncate">
+                                            {plan.notes}
+                                          </p>
+                                        )}
+                                        {plan.completedDate && (
+                                          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mt-1 flex items-center gap-1.5 font-mono">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
+                                            <span>Completed on {plan.completedDate}</span>
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Status Dropdown & Toggle Button */}
+                                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                      <select
+                                        value={plan.status}
+                                        onChange={(e) => handleChangePlanStatus(plan.id, e.target.value)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border focus:outline-none shadow-xs ${statusStyle.bg}`}
+                                      >
+                                        {Object.entries(PLAN_STATUS_CONFIG).map(([k, v]) => (
+                                          <option key={k} value={k}>
+                                            {v.label}
+                                          </option>
+                                        ))}
+                                      </select>
+
+                                      {/* Solid Emerald Button for 100% crystal-clear visibility */}
+                                      <button
+                                        onClick={() => handleTogglePlanStatus(plan.id, plan.status)}
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:scale-105 active:scale-95"
+                                        title="Click to revert to In Progress"
+                                      >
+                                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                        <span>Completed</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleDeletePlanFromActiveOwner(plan.id, plan.name)}
+                                        className="p-2 hover:bg-danger/15 hover:text-danger rounded-lg text-text-muted border border-transparent hover:border-danger/30 transition-colors"
+                                        title="Delete Plan from this owner"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── BOTTOM SECTION: IN PROGRESS & PENDING DRAWINGS ── */}
+                        {pendingPlans.length > 0 && (
+                          <div className="space-y-2.5">
+                            <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl mb-3 mt-4 shadow-xs">
+                              <div className="flex items-center gap-2.5">
+                                <div className="p-1.5 rounded-lg bg-amber-500 text-white shadow-xs">
+                                  <Clock className="w-4 h-4 stroke-[3]" />
+                                </div>
+                                <span className="text-sm font-extrabold text-text-primary tracking-tight">
+                                  In Progress & Pending Drawings ({pendingPlans.length})
+                                </span>
+                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500 text-white shadow-xs">
+                                  Work Underway
+                                </span>
+                              </div>
+                              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 hidden sm:inline">
+                                Click &ldquo;Mark Done&rdquo; to move to top
+                              </span>
+                            </div>
+
+                            <div className="space-y-2">
+                              {pendingPlans.map((plan) => {
+                                const statusStyle = PLAN_STATUS_CONFIG[plan.status] || PLAN_STATUS_CONFIG.not_started;
+                                const planBadgeNum = plan.num || plan.name?.match(/^(\d+)/)?.[1] || '';
+                                const pureName = extractPureMainName(plan.name);
+
+                                return (
+                                  <div
+                                    key={plan.id}
+                                    className="p-3.5 sm:p-4 rounded-xl border border-border-strong hover:border-amber-400/80 bg-bg-card hover:bg-bg-elevated/40 shadow-xs transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5"
+                                  >
+                                    <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                                      {/* Plan Number Badge */}
+                                      {planBadgeNum && (
+                                        <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shrink-0 shadow-2xs">
+                                          {planBadgeNum}
+                                        </span>
+                                      )}
+
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <h4 className="text-sm sm:text-base font-extrabold text-text-primary">
+                                            {pureName}
+                                          </h4>
+                                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-bg-input border border-border-strong text-text-secondary">
+                                            {plan.category || 'Architectural'}
+                                          </span>
+                                        </div>
+
+                                        {plan.notes && (
+                                          <p className="text-xs text-text-muted mt-1 truncate">
+                                            {plan.notes}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Status Dropdown & Toggle Button */}
+                                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                      <select
+                                        value={plan.status}
+                                        onChange={(e) => handleChangePlanStatus(plan.id, e.target.value)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border focus:outline-none shadow-xs ${statusStyle.bg}`}
+                                      >
+                                        {Object.entries(PLAN_STATUS_CONFIG).map(([k, v]) => (
+                                          <option key={k} value={k}>
+                                            {v.label}
+                                          </option>
+                                        ))}
+                                      </select>
+
+                                      {/* Solid Gold/Amber Mark Done button */}
+                                      <button
+                                        onClick={() => handleTogglePlanStatus(plan.id, plan.status)}
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all bg-gold hover:bg-gold/90 text-bg-primary shadow-sm hover:scale-105 active:scale-95"
+                                        title="Mark as Done / Complete (Moves to top)"
+                                      >
+                                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                        <span>Mark Done</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleDeletePlanFromActiveOwner(plan.id, plan.name)}
+                                        className="p-2 hover:bg-danger/15 hover:text-danger rounded-lg text-text-muted border border-transparent hover:border-danger/30 transition-colors"
+                                        title="Delete Plan from this owner"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* All Completed Celebration Banner */}
+                        {completedPlans.length > 0 && pendingPlans.length === 0 && (
+                          <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center">
+                            <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+                            <span className="text-xs font-bold text-emerald-500 block">
+                              All {completedPlans.length} Engineering Drawings Are Completed!
+                            </span>
+                            <span className="text-[11px] text-text-muted">
+                              All deliverables are completed for this client.
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3191,6 +3482,220 @@ export default function Plans() {
       </Modal>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* ── SELECTIVE CATALOG PICKER MODAL (PICK 1, 2, OR SPECIFIC PLANS) ── */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={selectiveCatalogModalOpen}
+        onClose={() => setSelectiveCatalogModalOpen(false)}
+        title={`Add Plans from Catalog to ${activeOwner?.ownerName || 'Client'}`}
+        className="max-w-2xl"
+        zIndex={100000}
+        footer={
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
+            <div className="text-xs text-text-muted">
+              {selectedCatalogIds.size > 0 ? (
+                <span className="font-semibold text-text-primary">
+                  {selectedCatalogIds.size} of {missingCatalogPlans.length} drawings selected
+                </span>
+              ) : (
+                <span>Check drawings to add, or click &ldquo;+ Add&rdquo; on any row</span>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSelectiveCatalogModalOpen(false)}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => handleAddSelectedCatalogPlans()}
+                disabled={selectedCatalogIds.size === 0 || addingPlans}
+                className="bg-gold hover:bg-gold/90 text-bg-primary font-bold text-xs flex items-center gap-1.5 disabled:opacity-40"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>
+                  {selectedCatalogIds.size > 0
+                    ? `Add Selected Plans (${selectedCatalogIds.size})`
+                    : 'Add Selected Plans'}
+                </span>
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-3.5 text-xs">
+          {missingCatalogPlans.length === 0 ? (
+            <div className="text-center py-8 px-4 bg-bg-input/20 border border-dashed border-border-strong rounded-xl">
+              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+              <h4 className="text-sm font-bold text-text-primary">All Catalog Plans Are Attached!</h4>
+              <p className="text-xs text-text-muted mt-1 max-w-sm mx-auto">
+                {activeOwner?.ownerName} already has all {masterCatalog.length} standard drawings from the master catalog.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectiveCatalogModalOpen(false);
+                  setAddPlanModalOpen(true);
+                }}
+                className="mt-4 px-3.5 py-1.5 bg-gold text-bg-primary text-xs font-bold rounded-lg shadow-sm hover:scale-105 transition-all"
+              >
+                + Add Custom Named Drawing
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Instructions Banner */}
+              <div className="p-3 bg-bg-elevated/60 border border-border-strong rounded-xl flex items-center justify-between gap-3">
+                <div className="text-xs text-text-secondary">
+                  <span className="font-bold text-text-primary">
+                    {missingCatalogPlans.length} catalog template{missingCatalogPlans.length === 1 ? '' : 's'} available
+                  </span>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Select only the 1, 2, or specific drawings you want to attach.
+                  </p>
+                </div>
+                {missingCatalogPlans.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleAddSelectedCatalogPlans(missingCatalogPlans.map((p) => p.id))}
+                    className="px-2.5 py-1 bg-bg-input hover:bg-gold/15 border border-border-strong hover:border-gold text-text-secondary hover:text-gold rounded-lg text-xs font-medium whitespace-nowrap transition-colors"
+                  >
+                    + Add All ({missingCatalogPlans.length})
+                  </button>
+                )}
+              </div>
+
+              {/* Search & Selection Controls */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                  <input
+                    type="text"
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    placeholder="Search drawings (e.g. Door, Plumbing, Slab, 22)..."
+                    className="w-full pl-9 pr-8 py-1.5 bg-bg-input border border-border-strong rounded-lg text-xs text-text-primary focus:outline-none focus:border-gold"
+                  />
+                  {catalogSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCatalogSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllMissing}
+                    className="px-2.5 py-1 text-xs text-text-secondary hover:text-gold border border-border-strong hover:border-gold rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    {selectedCatalogIds.size === filteredMissingCatalogPlans.length && filteredMissingCatalogPlans.length > 0
+                      ? 'Deselect All'
+                      : `Select All (${filteredMissingCatalogPlans.length})`}
+                  </button>
+                  {selectedCatalogIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCatalogIds(new Set())}
+                      className="px-2.5 py-1 text-xs text-text-muted hover:text-danger border border-border-strong rounded-lg transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Available Plans Checklist */}
+              <div className="border border-border-strong rounded-xl divide-y divide-border/60 max-h-96 overflow-y-auto bg-bg-card shadow-inner">
+                {filteredMissingCatalogPlans.map((catPlan) => {
+                  const isSelected = selectedCatalogIds.has(catPlan.id);
+                  const numDisplay = catPlan.num || catPlan.name?.match(/^(\d+)/)?.[1] || '';
+                  const pureName = catPlan.mainName || extractPureMainName(catPlan.name);
+                  const fullName = numDisplay ? `${numDisplay}-${pureName}` : pureName;
+
+                  return (
+                    <div
+                      key={catPlan.id}
+                      onClick={() => toggleSelectCatalogPlan(catPlan.id)}
+                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-gold/10 hover:bg-gold/15'
+                          : 'hover:bg-bg-input/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {/* Custom Checkbox */}
+                        <div
+                          className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                            isSelected
+                              ? 'bg-gold border-gold text-bg-primary'
+                              : 'border-border-strong bg-bg-input'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+
+                        {/* Drawing Number Badge */}
+                        {numDisplay && (
+                          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-bg-input border border-border-strong text-gold shrink-0">
+                            {numDisplay}
+                          </span>
+                        )}
+
+                        {/* Drawing Name & Category */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-xs text-text-primary">
+                              {fullName}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-bg-input border border-border-strong text-text-muted">
+                              {catPlan.category || 'Architectural'}
+                            </span>
+                          </div>
+                          {catPlan.desc && (
+                            <p className="text-[11px] text-text-muted truncate mt-0.5">
+                              {catPlan.desc}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 1-Click Quick Add Button for this single plan */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddSingleCatalogPlan(catPlan);
+                        }}
+                        disabled={addingPlans}
+                        className="px-2.5 py-1 text-xs font-bold text-gold hover:text-bg-primary bg-gold/10 hover:bg-gold border border-gold/30 hover:border-gold rounded-lg transition-all flex items-center gap-1 shrink-0 active:scale-95 disabled:opacity-50"
+                        title={`Instantly add ${fullName} only`}
+                      >
+                        <Plus className="w-3 h-3 stroke-[2.5]" />
+                        <span>+ Add</span>
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {filteredMissingCatalogPlans.length === 0 && (
+                  <div className="p-6 text-center text-xs text-text-muted">
+                    No drawings match &ldquo;{catalogSearch}&rdquo;
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* ── ADD PLAN TO OWNER MODAL (FROM CATALOG OR CUSTOM) ─────────────── */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       <Modal
@@ -3223,11 +3728,21 @@ export default function Plans() {
               className="mt-1 w-full px-3 py-2.5 bg-bg-input border border-border-strong rounded-lg text-xs text-text-primary focus:outline-none focus:border-gold"
             >
               <option value="">-- Choose from Master Catalog ({masterCatalog.length} Plans) --</option>
-              {masterCatalog.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  {plan.num ? `${plan.num}-` : ''}{plan.mainName || extractPureMainName(plan.name)} ({plan.category})
-                </option>
-              ))}
+              {masterCatalog.map((plan) => {
+                const numDisplay = plan.num || plan.name?.match(/^(\d+)/)?.[1] || '';
+                const pureName = plan.mainName || extractPureMainName(plan.name);
+                const isAlreadyAttached = (activeOwner?.plansList || []).some((p) => {
+                  const pNum = (p.num || p.name?.match(/^(\d+)/)?.[1] || '').trim();
+                  const pPure = extractPureMainName(p.name).toLowerCase().trim();
+                  return (numDisplay && pNum === numDisplay) || (pureName.toLowerCase() === pPure);
+                });
+
+                return (
+                  <option key={plan.id} value={plan.id}>
+                    {numDisplay ? `${numDisplay}-` : ''}{pureName} ({plan.category}){isAlreadyAttached ? ' ✓ (Already Added)' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

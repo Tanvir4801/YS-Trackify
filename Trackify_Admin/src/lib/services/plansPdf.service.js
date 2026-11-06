@@ -793,7 +793,18 @@ export async function generateHousePlanInvoicePDF({
 
   const planHeaders = ['#', 'Engineering Plan / Drawing Deliverable', 'Discipline', 'Status / Release'];
 
-  const planRows = rawPlans.map((p, idx) => {
+  // Sort drawings: Completed (Released) drawings always placed on top
+  const sortedPlansForPdf = [...rawPlans].sort((a, b) => {
+    const aDone = a.status === 'completed' ? 1 : 0;
+    const bDone = b.status === 'completed' ? 1 : 0;
+    if (aDone !== bDone) return bDone - aDone;
+    const aNum = parseInt(a.num || a.name?.match(/^(\d+)/)?.[1] || '999', 10);
+    const bNum = parseInt(b.num || b.name?.match(/^(\d+)/)?.[1] || '999', 10);
+    if (aNum !== bNum) return aNum - bNum;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  const planRows = sortedPlansForPdf.map((p, idx) => {
     const numDisplay = p.num || String(idx + 1).padStart(2, '0');
     const cleanName = (p.name || '').replace(/^\d+[\s._-]+/, '');
     const isCompleted = p.status === 'completed';

@@ -11,6 +11,8 @@ const Modal = ({
   onConfirm,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
+  confirmDisabled = false,
+  footer,
   className,
   zIndex = 100000,
 }) => {
@@ -53,20 +55,29 @@ const Modal = ({
               <h2 className="text-[16px] font-semibold tracking-wide text-text-primary uppercase">{title}</h2>
             </div>
             <div className="p-5 text-text-secondary">{children}</div>
-            <div className="flex justify-end gap-3 border-t border-border p-5 bg-bg-elevated/50 rounded-b-xl">
-              <button
-                onClick={onClose}
-                className="flex h-9 items-center gap-2 rounded-lg border border-border-strong bg-bg-elevated px-4 text-[13px] font-medium text-text-secondary hover:text-text-primary transition-colors"
-              >
-                {cancelText}
-              </button>
-              <button
-                onClick={onConfirm}
-                className="flex h-9 items-center gap-2 rounded-lg bg-gold px-5 text-[13px] font-semibold text-bg-primary shadow-[0_0_15px_rgba(245,166,35,0.2)] hover:scale-105 transition-all"
-              >
-                {confirmText}
-              </button>
-            </div>
+            {footer !== undefined ? (
+              <div className="border-t border-border p-4 bg-bg-elevated/50 rounded-b-xl">
+                {footer}
+              </div>
+            ) : (
+              <div className="flex justify-end gap-3 border-t border-border p-5 bg-bg-elevated/50 rounded-b-xl">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-9 items-center gap-2 rounded-lg border border-border-strong bg-bg-elevated px-4 text-[13px] font-medium text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  {cancelText}
+                </button>
+                <button
+                  type="button"
+                  onClick={onConfirm}
+                  disabled={confirmDisabled}
+                  className="flex h-9 items-center gap-2 rounded-lg bg-gold px-5 text-[13px] font-semibold text-bg-primary shadow-[0_0_15px_rgba(245,166,35,0.2)] hover:scale-105 transition-all disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed"
+                >
+                  {confirmText}
+                </button>
+              </div>
+            )}
           </motion.div>
         </div>
       )}

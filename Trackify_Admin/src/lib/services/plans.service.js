@@ -432,6 +432,46 @@ export async function addPlanToOwner(ownerId, planItem) {
 }
 
 /**
+ * Add multiple plans to an owner in a single atomic update.
+ * Useful for selectively adding 1, 2, or multiple missing drawings from the catalog.
+ */
+export async function addMultiplePlansToOwner(ownerId, planItems) {
+  if (!ownerId) throw new Error('ownerId is required');
+  if (!Array.isArray(planItems) || planItems.length === 0) return [];
+
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+
+  const newPlans = planItems.map((planItem, idx) => {
+    const cleanName = extractMainPlanName(planItem.name?.trim()) || 'New Plan';
+    const numMatch = planItem.num || cleanName.match(/^(\d+)/)?.[1] || '';
+    return {
+      id: `plan_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
+      num: numMatch,
+      name: cleanName,
+      category: planItem.category || 'Architectural',
+      status: planItem.status || 'not_started',
+      notes: planItem.notes?.trim() || '',
+      fileUrl: planItem.fileUrl?.trim() || '',
+      createdAt: new Date().toISOString(),
+      completedDate: planItem.status === 'completed' ? new Date().toISOString().split('T')[0] : null,
+    };
+  });
+
+  const updatedPlans = [...currentPlans, ...newPlans];
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    updatedAt: serverTimestamp(),
+  });
+
+  return newPlans;
+}
+
+/**
  * Resets / Syncs an owner's checklist to the EXACT 21 engineering plans,
  * removing any old/duplicate plans and removing any client names.
  */
