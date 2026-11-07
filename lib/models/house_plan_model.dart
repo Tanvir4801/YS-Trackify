@@ -42,7 +42,12 @@ class HousePlanDrawing {
     return clean.isNotEmpty ? clean : name;
   }
 
-  factory HousePlanDrawing.fromMap(Map<String, dynamic> map, [String? fallbackId]) {
+  factory HousePlanDrawing.fromMap(
+    Map<String, dynamic> map, {
+    String? fallbackId,
+    int? fallbackIndex,
+    Set<String>? usedNumbers,
+  }) {
     final rawName = (map['name'] as String?) ?? '';
     
     // Robust number extraction: handles string, int, or regex from name
@@ -50,17 +55,38 @@ class HousePlanDrawing {
     final rawNum = map['num'];
     if (rawNum != null && rawNum.toString().trim().isNotEmpty) {
       numStr = rawNum.toString().trim();
-    } else {
+    }
+    
+    if (numStr.isEmpty) {
       final match = RegExp(r'^(\d+)').firstMatch(rawName.trim());
       if (match != null) {
         numStr = match.group(1)!;
       } else {
         final splitPart = rawName.split('-').firstOrNull?.trim() ?? '';
-        numStr = RegExp(r'^\d+').hasMatch(splitPart) ? splitPart : '01';
+        final splitMatch = RegExp(r'^\d+').firstMatch(splitPart);
+        if (splitMatch != null) {
+          numStr = splitMatch.group(0)!;
+        }
       }
     }
-    if (numStr.length == 1) {
+
+    if (numStr.isNotEmpty && numStr.length == 1) {
       numStr = '0$numStr';
+    }
+
+    // Auto-repair duplicate "01" badges and assign true sequential numbers:
+    // If numStr is empty, OR if numStr is a duplicate (already used by another drawing in this project),
+    // assign the sequential 1-based index (e.g. 17, 18, 19, 20...).
+    if (numStr.isEmpty || (usedNumbers != null && usedNumbers.contains(numStr))) {
+      if (fallbackIndex != null && fallbackIndex > 0) {
+        numStr = fallbackIndex.toString().padLeft(2, '0');
+      } else if (numStr.isEmpty) {
+        numStr = '01';
+      }
+    }
+
+    if (usedNumbers != null && numStr.isNotEmpty) {
+      usedNumbers.add(numStr);
     }
 
     return HousePlanDrawing(
@@ -364,10 +390,17 @@ class HousePlanOwner {
     final rawPlans = data['plansList'];
     final List<HousePlanDrawing> parsedPlans = [];
     if (rawPlans is List) {
-      for (final p in rawPlans) {
+      final Set<String> usedNumbers = {};
+      for (int i = 0; i < rawPlans.length; i++) {
+        final p = rawPlans[i];
         if (p is Map) {
           try {
-            parsedPlans.add(HousePlanDrawing.fromMap(Map<String, dynamic>.from(p)));
+            parsedPlans.add(HousePlanDrawing.fromMap(
+              Map<String, dynamic>.from(p),
+              fallbackId: null,
+              fallbackIndex: i + 1,
+              usedNumbers: usedNumbers,
+            ));
           } catch (_) {}
         }
       }

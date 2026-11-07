@@ -408,11 +408,14 @@ export async function addPlanToOwner(ownerId, planItem) {
   const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
 
   const cleanName = extractMainPlanName(planItem.name?.trim()) || 'New Plan';
-  const numMatch = planItem.num || cleanName.match(/^(\d+)/)?.[1] || '';
+  let numMatch = planItem.num || cleanName.match(/^(\d+)/)?.[1] || '';
+  if (!numMatch) {
+    numMatch = String(currentPlans.length + 1).padStart(2, '0');
+  }
   const newPlan = {
     id: `plan_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     num: numMatch,
-    name: cleanName,
+    name: cleanName.match(/^\d+/) ? cleanName : `${numMatch}-${cleanName}`,
     category: planItem.category || 'Architectural',
     status: planItem.status || 'not_started', // 'not_started' | 'pending' | 'in_progress' | 'completed'
     notes: planItem.notes?.trim() || '',
@@ -447,11 +450,14 @@ export async function addMultiplePlansToOwner(ownerId, planItems) {
 
   const newPlans = planItems.map((planItem, idx) => {
     const cleanName = extractMainPlanName(planItem.name?.trim()) || 'New Plan';
-    const numMatch = planItem.num || cleanName.match(/^(\d+)/)?.[1] || '';
+    let numMatch = planItem.num || cleanName.match(/^(\d+)/)?.[1] || '';
+    if (!numMatch) {
+      numMatch = String(currentPlans.length + idx + 1).padStart(2, '0');
+    }
     return {
       id: `plan_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
       num: numMatch,
-      name: cleanName,
+      name: cleanName.match(/^\d+/) ? cleanName : `${numMatch}-${cleanName}`,
       category: planItem.category || 'Architectural',
       status: planItem.status || 'not_started',
       notes: planItem.notes?.trim() || '',
@@ -469,6 +475,38 @@ export async function addMultiplePlansToOwner(ownerId, planItems) {
   });
 
   return newPlans;
+}
+
+/**
+ * Renumbers all drawings of an owner sequentially (01, 02, ... N)
+ * and repairs any duplicate '01' or missing numbers in Firestore.
+ */
+export async function renumberOwnerPlans(ownerId) {
+  if (!ownerId) throw new Error('ownerId is required');
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+  if (currentPlans.length === 0) return [];
+
+  const updatedPlans = currentPlans.map((plan, idx) => {
+    const seqNum = String(idx + 1).padStart(2, '0');
+    const cleanMain = extractPureMainName(plan.name) || plan.name;
+    return {
+      ...plan,
+      num: seqNum,
+      name: `${seqNum}-${cleanMain}`,
+      mainName: cleanMain,
+    };
+  });
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    updatedAt: serverTimestamp(),
+  });
+
+  return updatedPlans;
 }
 
 /**

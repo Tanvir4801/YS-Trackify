@@ -75,6 +75,7 @@ import {
   revertPlanInOwner,
   verifySiteVisitInOwner,
   verifyAllPendingInOwner,
+  renumberOwnerPlans,
   DEFAULT_SITE_VISIT_PRESETS,
   saveMasterPlanCatalog,
   DEFAULT_MASTER_PLANS,
@@ -945,6 +946,11 @@ export default function Plans() {
       return toast.error('Please select a plan from catalog or enter a custom name');
     }
 
+    const currentPlans = activeOwner.plansList || [];
+    if (!finalPlanNum) {
+      finalPlanNum = String(currentPlans.length + 1).padStart(2, '0');
+    }
+
     try {
       await addPlanToOwner(activeOwner.id, {
         num: finalPlanNum,
@@ -964,6 +970,25 @@ export default function Plans() {
     } catch (err) {
       console.error(err);
       toast.error('Failed to add plan');
+    }
+  };
+
+  // Renumber all owner plans sequentially (01..N) to fix missing/duplicate numbers
+  const handleRenumberPlans = async () => {
+    if (!activeOwner) return;
+    const count = (activeOwner.plansList || []).length;
+    if (count === 0) return toast.error('No drawings attached to renumber');
+    const t = toast.loading(`Renumbering all ${count} drawings sequentially (01 to ${String(count).padStart(2, '0')})...`);
+    try {
+      const updated = await renumberOwnerPlans(activeOwner.id);
+      setActiveOwner((prev) => ({
+        ...prev,
+        plansList: updated,
+      }));
+      toast.success(`Drawings renumbered sequentially (01 to ${String(updated.length).padStart(2, '0')})!`, { id: t });
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to renumber drawings', { id: t });
     }
   };
 
@@ -2452,6 +2477,16 @@ export default function Plans() {
                           <span>Sync Standard Plans ({DEFAULT_MASTER_PLANS.length})</span>
                         </button>
 
+                        {/* Fix & Renumber Plan Sequence */}
+                        <button
+                          onClick={handleRenumberPlans}
+                          className="px-3 py-1.5 bg-bg-input border border-border-strong hover:border-cyan-500 rounded-lg text-xs font-semibold text-text-secondary hover:text-cyan-400 transition-all flex items-center gap-1.5"
+                          title="Auto-repair and renumber all drawings sequentially (01 to N), fixing any duplicate '01' badges"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Renumber Sequence (01-{(activeOwner.plansList || []).length})</span>
+                        </button>
+
                         {/* Primary Selective Catalog Action: Pick only 1, 2, or specific drawings */}
                         <button
                           onClick={() => {
@@ -2560,7 +2595,12 @@ export default function Plans() {
                             <div className="space-y-2">
                               {completedPlans.map((plan) => {
                                 const statusStyle = PLAN_STATUS_CONFIG[plan.status] || PLAN_STATUS_CONFIG.completed;
-                                const planBadgeNum = plan.num || plan.name?.match(/^(\d+)/)?.[1] || '';
+                                const allPlans = activeOwner?.plansList || [];
+                                const fullIndex = allPlans.findIndex((p) => p.id === plan.id);
+                                let planBadgeNum = (plan.num || plan.name?.match(/^(\d+)/)?.[1] || '').trim();
+                                if (!planBadgeNum || (planBadgeNum === '01' && fullIndex > 0)) {
+                                  planBadgeNum = String(fullIndex >= 0 ? fullIndex + 1 : 1).padStart(2, '0');
+                                }
                                 const pureName = extractPureMainName(plan.name);
 
                                 return (
@@ -2690,7 +2730,12 @@ export default function Plans() {
                             <div className="space-y-2">
                               {pendingPlans.map((plan) => {
                                 const statusStyle = PLAN_STATUS_CONFIG[plan.status] || PLAN_STATUS_CONFIG.not_started;
-                                const planBadgeNum = plan.num || plan.name?.match(/^(\d+)/)?.[1] || '';
+                                const allPlans = activeOwner?.plansList || [];
+                                const fullIndex = allPlans.findIndex((p) => p.id === plan.id);
+                                let planBadgeNum = (plan.num || plan.name?.match(/^(\d+)/)?.[1] || '').trim();
+                                if (!planBadgeNum || (planBadgeNum === '01' && fullIndex > 0)) {
+                                  planBadgeNum = String(fullIndex >= 0 ? fullIndex + 1 : 1).padStart(2, '0');
+                                }
                                 const pureName = extractPureMainName(plan.name);
 
                                 return (
