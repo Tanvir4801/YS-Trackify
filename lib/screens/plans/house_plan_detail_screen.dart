@@ -32,6 +32,9 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -504,24 +507,43 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: border),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('TOTAL VISITS LOGGED', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textMuted)),
-                  const SizedBox(height: 2),
-                  Text('${visits.length} Visit${visits.length == 1 ? '' : 's'}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('TOTAL VISITS LOGGED', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textMuted)),
+                      const SizedBox(height: 2),
+                      Text('${visits.length} Visit${visits.length == 1 ? '' : 's'}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('TOTAL VISITS FEE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textMuted)),
+                      const SizedBox(height: 2),
+                      Text(_currencyFmt.format(owner.totalVisitsAmount), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryColor(context))),
+                    ],
+                  ),
                 ],
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('TOTAL VISITS FEE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textMuted)),
-                  const SizedBox(height: 2),
-                  Text(_currencyFmt.format(owner.totalVisitsAmount), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryColor(context))),
-                ],
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.add_location_alt_rounded, size: 18, color: Colors.black),
+                  label: const Text('+ Log Site Visit', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black, fontSize: 13)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryColor(context),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  onPressed: () => SiteVisitBottomSheet.show(context, owner: owner, provider: provider),
+                ),
               ),
             ],
           ),
@@ -531,19 +553,30 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
         if (visits.isEmpty)
           Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40),
+              padding: const EdgeInsets.symmetric(vertical: 36),
               child: Column(
                 children: [
                   Icon(Icons.directions_car_filled_rounded, size: 48, color: textMuted.withValues(alpha: 0.5)),
                   const SizedBox(height: 12),
                   Text('No site visits recorded yet', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textPrimary)),
                   const SizedBox(height: 4),
-                  Text('Tap "+ Log Visit" below to add a consultation or inspection trip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: textMuted)),
+                  Text('Tap below to add a consultation or inspection trip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: textMuted)),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.add_rounded, size: 18, color: Colors.black),
+                    label: const Text('Log First Visit', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryColor(context),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () => SiteVisitBottomSheet.show(context, owner: owner, provider: provider),
+                  ),
                 ],
               ),
             ),
           )
-        else
+        else ...[
           ...visits.asMap().entries.map((entry) {
             final v = entry.value;
             return Container(
@@ -645,6 +678,38 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
               ),
             );
           }),
+          const SizedBox(height: 10),
+          BouncyTap(
+            onTap: () => SiteVisitBottomSheet.show(context, owner: owner, provider: provider),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.primaryColor(context).withValues(alpha: 0.45),
+                  width: 1.2,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_circle_outline_rounded, color: AppColors.primaryColor(context), size: 19),
+                  const SizedBox(width: 8),
+                  Text(
+                    '+ Log Another Site Visit',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primaryColor(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 70), // space for FAB
+        ],
       ],
     );
   }

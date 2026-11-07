@@ -99,14 +99,36 @@ class HousePlansService {
 
     final houseAmount = (data['houseAmount'] is num) ? (data['houseAmount'] as num).toDouble() : 0.0;
     final totalBillable = houseAmount + newVisitsSum;
-    final totalPaid = (data['totalPaid'] is num) ? (data['totalPaid'] as num).toDouble() : 0.0;
+
+    final payments = (data['payments'] as List<dynamic>?) ?? [];
+    double paymentsSum = 0;
+    for (final p in payments) {
+      if (p is Map) {
+        final amt = p['amount'];
+        if (amt is num) paymentsSum += amt.toDouble();
+      }
+    }
+    final rawPaid = (data['totalPaid'] is num) ? (data['totalPaid'] as num).toDouble() : 0.0;
+    final totalPaid = paymentsSum > 0 ? paymentsSum : rawPaid;
     final pendingBalance = (totalBillable - totalPaid).clamp(0.0, double.infinity);
+
+    final planFeePaid = (totalPaid > houseAmount ? houseAmount : totalPaid);
+    final planFeePending = (houseAmount - planFeePaid).clamp(0.0, double.infinity);
+    final visitsPaid = (totalPaid - houseAmount).clamp(0.0, double.infinity);
+    final visitsPending = (newVisitsSum - visitsPaid).clamp(0.0, double.infinity);
+    final isVisitsCleared = newVisitsSum > 0 ? visitsPending <= 0 : true;
+    final isFullyCleared = totalBillable > 0 && pendingBalance <= 0;
 
     await docRef.update({
       'siteVisits': updatedVisits,
       'totalVisitsAmount': newVisitsSum,
       'totalBillableAmount': totalBillable,
+      'totalPaid': totalPaid,
       'pendingBalance': pendingBalance,
+      'visitsPaid': visitsPaid,
+      'visitsPending': visitsPending,
+      'isVisitsCleared': isVisitsCleared,
+      'isFullyCleared': isFullyCleared,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -139,14 +161,36 @@ class HousePlansService {
 
     final houseAmount = (data['houseAmount'] is num) ? (data['houseAmount'] as num).toDouble() : 0.0;
     final totalBillable = houseAmount + newVisitsSum;
-    final totalPaid = (data['totalPaid'] is num) ? (data['totalPaid'] as num).toDouble() : 0.0;
+
+    final payments = (data['payments'] as List<dynamic>?) ?? [];
+    double paymentsSum = 0;
+    for (final p in payments) {
+      if (p is Map) {
+        final amt = p['amount'];
+        if (amt is num) paymentsSum += amt.toDouble();
+      }
+    }
+    final rawPaid = (data['totalPaid'] is num) ? (data['totalPaid'] as num).toDouble() : 0.0;
+    final totalPaid = paymentsSum > 0 ? paymentsSum : rawPaid;
     final pendingBalance = (totalBillable - totalPaid).clamp(0.0, double.infinity);
+
+    final planFeePaid = (totalPaid > houseAmount ? houseAmount : totalPaid);
+    final planFeePending = (houseAmount - planFeePaid).clamp(0.0, double.infinity);
+    final visitsPaid = (totalPaid - houseAmount).clamp(0.0, double.infinity);
+    final visitsPending = (newVisitsSum - visitsPaid).clamp(0.0, double.infinity);
+    final isVisitsCleared = newVisitsSum > 0 ? visitsPending <= 0 : true;
+    final isFullyCleared = totalBillable > 0 && pendingBalance <= 0;
 
     await docRef.update({
       'siteVisits': updatedVisits,
       'totalVisitsAmount': newVisitsSum,
       'totalBillableAmount': totalBillable,
+      'totalPaid': totalPaid,
       'pendingBalance': pendingBalance,
+      'visitsPaid': visitsPaid,
+      'visitsPending': visitsPending,
+      'isVisitsCleared': isVisitsCleared,
+      'isFullyCleared': isFullyCleared,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
