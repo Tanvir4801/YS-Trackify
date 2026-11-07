@@ -123,7 +123,7 @@ class ReportsProvider extends ChangeNotifier {
       final monthPayments = payBox?.values.where((p) {
         return p.date.year == year &&
             p.date.month == month &&
-            (relevantLabourIds.contains(p.labourId) || p.supervisorId == uid || p.contractorId == uid);
+            (relevantLabourIds.contains(p.labourId) || p.supervisorId == uid);
       }).toList() ?? [];
 
       final payByLabour = <String, List<Payment>>{};
