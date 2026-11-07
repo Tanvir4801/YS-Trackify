@@ -5,7 +5,8 @@ import SurveyMarker from '@/components/ui/SurveyMarker';
 import PayrollCalculator from '@/components/demos/PayrollCalculator';
 import OfflineSimulator from '@/components/demos/OfflineSimulator';
 import DrawingChecklist from '@/components/demos/DrawingChecklist';
-import { Calculator, WifiOff, FileCheck2, ArrowRight } from 'lucide-react';
+import ConstructionCalculator from '@/components/demos/ConstructionCalculator';
+import { Calculator, WifiOff, FileCheck2, Boxes } from 'lucide-react';
 
 const demos = [
   {
@@ -23,6 +24,13 @@ const demos = [
     icon: FileCheck2,
   },
   {
+    id: 'calculator',
+    title: 'Construction & Material Calculator',
+    shortTitle: 'Material Estimator',
+    subtitle: 'IS 456 standard civil calculations. Instant cement bags, sand, steel rebar, bricks, and floor tiles with live cost estimation.',
+    icon: Boxes,
+  },
+  {
     id: 'payroll',
     title: 'Live Payroll Calculator',
     shortTitle: 'Payroll Engine',
@@ -32,7 +40,7 @@ const demos = [
 ];
 
 export default function InteractiveDemos() {
-  const [activeTab, setActiveTab] = useState<'offline' | 'drawings' | 'payroll'>('offline');
+  const [activeTab, setActiveTab] = useState<'offline' | 'drawings' | 'calculator' | 'payroll'>('offline');
 
   // If navigated to #plans via navbar or hash, switch to Drawings & Billing tab
   useEffect(() => {
@@ -112,6 +120,17 @@ export default function InteractiveDemos() {
               transition={{ duration: 0.3 }}
             >
               <DrawingChecklist />
+            </motion.div>
+          )}
+
+          {activeTab === 'calculator' && (
+            <motion.div
+              key="calculator"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <ConstructionCalculator />
             </motion.div>
           )}
 
