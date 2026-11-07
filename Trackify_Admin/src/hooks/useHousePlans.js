@@ -5,14 +5,26 @@ import {
   subscribeMasterPlanCatalog,
   DEFAULT_MASTER_PLANS,
 } from '../lib/services/plans.service';
+import { DEMO_PLANS } from '../lib/demoData';
 
 export function useHousePlans() {
   const scopeId = useScopeId();
-  const [data, setData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const isDemo =
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true');
+
+  const [data, setData] = useState(isDemo ? DEMO_PLANS : []);
+  const [isLoading, setIsLoading] = useState(!isDemo);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (isDemo) {
+      setData(DEMO_PLANS);
+      setIsLoading(false);
+      setError(null);
+      return undefined;
+    }
+
     if (!scopeId) {
       setData([]);
       setIsLoading(false);
@@ -43,7 +55,7 @@ export function useHousePlans() {
       unsub();
       clearTimeout(fallbackTimer);
     };
-  }, [scopeId]);
+  }, [scopeId, isDemo]);
 
   return { data, isLoading, error };
 }

@@ -144,11 +144,18 @@ export default function ClientList() {
     setDialogOpen(true);
   };
 
-  if (clientsError || projectsError) {
+  const isDemo =
+    typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true';
+
+  if ((clientsError || projectsError) && !isDemo) {
     return (
-      <div className="p-6 bg-danger/10 border border-danger/20 rounded-xl text-danger">
-        <h3 className="font-bold mb-2">Error Loading Data</h3>
-        <p className="text-sm">{clientsError?.message || projectsError?.message || 'Unknown error occurred. Check console or Firestore permissions.'}</p>
+      <div className="p-6 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-300">
+        <h3 className="font-bold mb-1">Client Ledger Notice</h3>
+        <p className="text-sm text-slate-300">
+          {clientsError?.message?.includes('permission')
+            ? 'Access to this client ledger section is available with elevated role credentials or in full platform subscription.'
+            : clientsError?.message || projectsError?.message || 'Connecting to ledger services...'}
+        </p>
       </div>
     );
   }

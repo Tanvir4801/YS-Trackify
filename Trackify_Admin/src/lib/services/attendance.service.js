@@ -592,6 +592,33 @@ export async function updateAttendanceAllowances(id, {
 export async function getAttendanceRange(scopeId, startDate, endDate, labourId) {
   if (!startDate || !endDate || !scopeId) return [];
 
+  if (
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    const dates = [];
+    const curr = new Date(startDate);
+    const end = new Date(endDate);
+    while (curr <= end) {
+      dates.push(curr.toISOString().split('T')[0]);
+      curr.setDate(curr.getDate() + 1);
+    }
+    const mockRange = [];
+    dates.forEach((d) => {
+      for (let i = 0; i < 22; i++) {
+        mockRange.push({
+          id: `demo_${d}_${i}`,
+          date: d,
+          status: 'present',
+          labourId: `labour_${String.fromCharCode(97 + (i % 26))}`,
+        });
+      }
+      mockRange.push({ id: `demo_${d}_a`, date: d, status: 'half', labourId: 'labour_d' });
+      mockRange.push({ id: `demo_${d}_b`, date: d, status: 'absent', labourId: 'labour_i' });
+    });
+    return mockRange;
+  }
+
   // IMPORTANT:
   // Firestore must filter by date; doing it only in JS can cause stale/partial results
   // (especially when deletes happen concurrently).

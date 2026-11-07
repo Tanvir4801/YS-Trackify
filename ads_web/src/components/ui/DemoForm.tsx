@@ -177,7 +177,7 @@ export default function DemoForm({
           </h4>
           <p className="text-xs text-trackify-textMuted max-w-md mx-auto leading-relaxed mt-1.5">
             Instant read-only sandbox environment provisioned for{' '}
-            <strong className="text-trackify-textMain">{formData.companyName || 'Your Construction Firm'}</strong> with 3 live sites, 28 sample workers, and real-time attendance math.
+            <strong className="text-trackify-textMain">{formData.companyName || 'XYZ Construction'}</strong> with 3 live sites, 26 sample workers, and real-time attendance math.
           </p>
         </div>
 

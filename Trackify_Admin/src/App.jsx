@@ -144,7 +144,7 @@ export default function App() {
           contractorId: 'trackify_demo',
         });
         useAuthStore.setState({ isDemo: true });
-        switchContractor('trackify_demo', 'Trackify Demo Construction Pvt. Ltd.');
+        switchContractor('trackify_demo', 'XYZ Construction');
         clearTimeout(watchdogTimer);
         setLoading(false);
         return;

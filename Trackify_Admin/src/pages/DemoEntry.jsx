@@ -29,7 +29,7 @@ export default function DemoEntry() {
           'trackify_demo_expires_at',
           String(Date.now() + 24 * 60 * 60 * 1000)
         );
-        sessionStorage.setItem('trackify_demo_company', 'Trackify Demo Construction Pvt. Ltd.');
+        sessionStorage.setItem('trackify_demo_company', 'XYZ Construction');
 
         // Attempt custom token if passed in query parameter
         if (token) {
@@ -54,12 +54,12 @@ export default function DemoEntry() {
         setUser({
           uid: auth.currentUser?.uid || 'demo_user_visitor',
           role: 'contractor',
-          name: 'Demo Visitor',
-          email: 'demo@trackify.live',
+          name: 'Demo Admin',
+          email: 'demo@xyz.com',
           contractorId: 'trackify_demo',
         });
         useAuthStore.setState({ isDemo: true });
-        switchContractor('trackify_demo', 'Trackify Demo Construction Pvt. Ltd.');
+        switchContractor('trackify_demo', 'XYZ Construction');
 
         if (isMounted) {
           setStatusText('Demo environment activated! Entering dashboard...');
@@ -123,7 +123,7 @@ export default function DemoEntry() {
           <LoadingSpinner label="" />
         </div>
         <p className="text-[11px] text-slate-400 pt-2">
-          Connecting to sandbox tenant: <span className="text-slate-200 font-mono">trackify_demo</span>
+          Connecting to sandbox workspace: <span className="text-slate-200 font-mono">XYZ Construction</span>
         </p>
       </div>
     </div>

@@ -1554,14 +1554,21 @@ export default function Plans() {
     toast.success(`${label} copied: ${text}`);
   };
 
-  if (error) {
+  const isDemo =
+    typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true';
+
+  if (error && !isDemo) {
     return (
-      <div className="p-6 bg-danger/10 border border-danger/20 rounded-xl text-danger space-y-2">
+      <div className="p-6 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-300 space-y-2">
         <div className="flex items-center gap-2">
           <AlertCircle className="w-5 h-5" />
-          <h3 className="font-bold">Error Loading House Plans</h3>
+          <h3 className="font-bold">House Plans Notice</h3>
         </div>
-        <p className="text-sm">{error.message || 'Check Firestore permissions.'}</p>
+        <p className="text-sm text-slate-300">
+          {error.message?.includes('permission')
+            ? 'Plan catalog and 23-drawing checklists are viewable in demo mode or with contractor credentials.'
+            : error.message}
+        </p>
       </div>
     );
   }

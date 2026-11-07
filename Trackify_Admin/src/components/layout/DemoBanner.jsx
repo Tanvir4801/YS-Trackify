@@ -84,17 +84,12 @@ export default function DemoBanner() {
   return (
     <div className="w-full bg-gradient-to-r from-[#0F1A2E] via-[#16233B] to-[#0F1A2E] border-b border-amber-500/30 px-4 py-2.5 text-xs text-slate-200 shadow-lg relative z-30">
       <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
-        {/* Left: Indicator & Description */}
+        {/* Left: Indicator */}
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-400 font-mono text-[11px] font-bold tracking-wide">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            DEMO MODE · READ-ONLY
+            XYZ CONSTRUCTION · LIVE DEMO PREVIEW
           </span>
-          <p className="text-slate-300 text-xs hidden sm:inline">
-            Exploring sample workforce operations for{' '}
-            <strong className="text-amber-300 font-semibold">Trackify Demo Construction Pvt. Ltd.</strong>{' '}
-            (All data modifications are disabled).
-          </p>
         </div>
 
         {/* Right: Timer & Action Buttons */}
