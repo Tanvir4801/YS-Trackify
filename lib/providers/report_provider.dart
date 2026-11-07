@@ -3,7 +3,14 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 
+import '../models/attendance_model.dart';
+import '../models/labour_model.dart';
+import '../models/payment_model.dart';
+import '../models/site_model.dart';
+import '../models/material_purchase_model.dart';
+import '../models/site_expense_model.dart';
 import '../services/session_service.dart';
 
 class ReportsProvider extends ChangeNotifier {
@@ -20,123 +27,439 @@ class ReportsProvider extends ChangeNotifier {
 
   Timer? _debounce;
   final List<StreamSubscription> _subs = [];
+  bool _isFetchingRemote = false;
+
   String get uid => _auth.currentUser?.uid ?? '';
 
-  void _scheduleBuild(String monthStr) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () async {
-      final snap = await _db.collection('labours')
-          .where('supervisorId', isEqualTo: uid)
-          .get();
-      await _buildReports(snap.docs, monthStr);
-    });
+  String get _contractorId {
+    final cached = SessionService.instance.contractorId;
+    if (cached != null && cached.isNotEmpty) return cached;
+    return uid;
   }
 
   void loadReport({int? month, int? year}) {
     if (month != null) this.month = month;
     if (year  != null) this.year  = year;
+
+    // 1. FAST LOCAL HYDRATION: Build report from local cache immediately (0ms latency)
+    _buildFromLocalCache();
+
+    // 2. REMOTE REFRESH: Fetch fresh updates from Firestore in the background
     _cancelSubs();
-    _startReportStreams();
+    _fetchRemoteAndBuild();
   }
 
-  void _startReportStreams() {
-    isLoading = true;
-    notifyListeners();
-
-    final monthStr = '$year-${month.toString().padLeft(2,'0')}';
-
-    // Stream 1: all labours for this supervisor
-    final labourSub = _db.collection('labours')
-        .where('supervisorId', isEqualTo: uid)
-        .snapshots()
-        .listen((_) => _scheduleBuild(monthStr));
-    _subs.add(labourSub);
-
-    // Stream 2: attendance changes this month → rebuild
-    final nextMonthStr = month == 12 ? '${year+1}-01' : '$year-${(month+1).toString().padLeft(2, '0')}';
-    final attSub = _db.collection('attendance')
-        .where('supervisorId', isEqualTo: uid)
-        .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-        .where('date', isLessThan: '$nextMonthStr-01')
-        .snapshots()
-        .listen((_) => _scheduleBuild(monthStr));
-    _subs.add(attSub);
-
-    // Stream 3: payments changes → rebuild
-    final startTs = Timestamp.fromDate(DateTime(year, month, 1));
-    final endTs   = Timestamp.fromDate(DateTime(year, month + 1, 0, 23, 59, 59));
-    final paySub = _db.collection('payments')
-        .where('supervisorId', isEqualTo: uid)
-        .where('date', isGreaterThanOrEqualTo: startTs)
-        .where('date', isLessThanOrEqualTo: endTs)
-        .snapshots()
-        .listen((_) => _scheduleBuild(monthStr));
-    _subs.add(paySub);
-  }
-
-  Future<void> _buildReports(
-    List<QueryDocumentSnapshot> labourDocs,
-    String monthStr,
-  ) async {
+  /// Synchronously builds reports from Hive boxes for instant, zero-delay rendering.
+  void _buildFromLocalCache() {
     try {
-      final results = <LabourMonthlyReport>[];
-      
-      // Batch fetch legacy root attendance
-      final nextMonthStr = month == 12 ? '${year+1}-01' : '$year-${(month+1).toString().padLeft(2, '0')}';
-      final allAttSnap = await _db.collection('attendance')
-          .where('supervisorId', isEqualTo: uid)
-          .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-          .where('date', isLessThan: '$nextMonthStr-01')
-          .get();
-          
-      final fetchedRecords = <Map<String, dynamic>>[];
-      for (final doc in allAttSnap.docs) {
-        fetchedRecords.add(doc.data());
+      if (!Hive.isBoxOpen(Labour.boxName) || !Hive.isBoxOpen(Attendance.boxName)) {
+        if (reports.isEmpty) {
+          isLoading = true;
+          notifyListeners();
+        }
+        return;
       }
-      
-      // Batch fetch multi-site nested attendance
-      final cId = SessionService.instance.contractorId ?? uid;
-      if (cId.isNotEmpty) {
-        final daysInMonth = DateTime(year, month + 1, 0).day;
-        final futures = List.generate(daysInMonth, (index) async {
-          final day = index + 1;
-          final dateKey = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-          try {
-            return await _db
+
+      final labourBox = Hive.box<Labour>(Labour.boxName);
+      final attBox    = Hive.box<Attendance>(Attendance.boxName);
+      final payBox    = Hive.isBoxOpen(Payment.boxName) ? Hive.box<Payment>(Payment.boxName) : null;
+      final siteBox   = Hive.isBoxOpen(SiteModel.boxName) ? Hive.box<SiteModel>(SiteModel.boxName) : null;
+      final matBox    = Hive.isBoxOpen(MaterialPurchaseModel.boxName) ? Hive.box<MaterialPurchaseModel>(MaterialPurchaseModel.boxName) : null;
+      final expBox    = Hive.isBoxOpen(SiteExpenseModel.boxName) ? Hive.box<SiteExpenseModel>(SiteExpenseModel.boxName) : null;
+
+      final monthStr = '$year-${month.toString().padLeft(2, '0')}';
+      final cId = _contractorId;
+
+      // Filter labours for this contractor / supervisor
+      final relevantLabours = labourBox.values.where((l) {
+        if (!l.isActive) return false;
+        return l.supervisorId == uid ||
+            l.contractorId == uid ||
+            (cId.isNotEmpty && l.contractorId == cId);
+      }).toList();
+
+      if (relevantLabours.isEmpty && reports.isEmpty) {
+        isLoading = true;
+        notifyListeners();
+        return;
+      }
+
+      // Map site names
+      final siteNames = <String, String>{};
+      if (siteBox != null) {
+        for (final site in siteBox.values) {
+          siteNames[site.id] = site.name;
+        }
+      }
+
+      // Attendance records for this month
+      final monthRecords = attBox.values.where((a) {
+        if (!a.date.startsWith(monthStr)) return false;
+        return a.supervisorId == uid ||
+            a.contractorId == uid ||
+            (cId.isNotEmpty && a.contractorId == cId);
+      }).toList();
+
+      // Group attendance by labourId
+      final attByLabour = <String, List<Attendance>>{};
+      for (final a in monthRecords) {
+        attByLabour.putIfAbsent(a.labourId, () => []).add(a);
+      }
+
+      // Payments for this month
+      final monthPayments = payBox?.values.where((p) {
+        return p.date.year == year &&
+            p.date.month == month &&
+            (p.supervisorId == uid || p.contractorId == uid || (cId.isNotEmpty && p.contractorId == cId));
+      }).toList() ?? [];
+
+      final payByLabour = <String, List<Payment>>{};
+      for (final p in monthPayments) {
+        payByLabour.putIfAbsent(p.labourId, () => []).add(p);
+      }
+
+      // Material purchases and expenses
+      double totalMaterials = 0;
+      double totalExpenses  = 0;
+      final siteMaterials   = <String, double>{};
+      final siteExpenses    = <String, double>{};
+
+      if (matBox != null) {
+        for (final m in matBox.values) {
+          if (m.purchaseDate.year == year && m.purchaseDate.month == month) {
+            totalMaterials += m.totalAmount;
+            final sId = m.siteId.isNotEmpty ? m.siteId : 'no_site';
+            siteMaterials[sId] = (siteMaterials[sId] ?? 0) + m.totalAmount;
+          }
+        }
+      }
+
+      if (expBox != null) {
+        for (final e in expBox.values) {
+          if (e.expenseDate.year == year && e.expenseDate.month == month) {
+            totalExpenses += e.amount;
+            final sId = e.siteId.isNotEmpty ? e.siteId : 'no_site';
+            siteExpenses[sId] = (siteExpenses[sId] ?? 0) + e.amount;
+          }
+        }
+      }
+
+      final results = <LabourMonthlyReport>[];
+
+      for (final labour in relevantLabours) {
+        final labourAtt = attByLabour[labour.id] ?? [];
+        final labourPay = payByLabour[labour.id] ?? [];
+
+        final byDate = <String, List<Map<String, dynamic>>>{};
+        final siteBreakdown = <String, SiteReport>{};
+
+        double totalShiftDays  = 0;
+        double totalWage       = 0;
+        double totalOTPay      = 0;
+
+        for (final a in labourAtt) {
+          final factor = a.effectiveShiftFactor;
+          final wage = a.wageAtTime > 0 ? a.wageAtTime : labour.dailyWage;
+          final ot = a.overtimeHours;
+          final otRate = labour.overtimeWagePerHour;
+          final siteId = a.siteId.isNotEmpty ? a.siteId : 'no_site';
+          final siteName = siteNames[siteId] ?? a.siteName ?? siteId;
+
+          final recordMap = <String, dynamic>{
+            'date': a.date,
+            'status': a.status.firestoreValue,
+            'shiftFactor': factor,
+            'dailyWageSnapshot': wage,
+            'wageAtTime': wage,
+            'overtimeHours': ot,
+            'otRateSnapshot': otRate,
+            'siteId': siteId,
+            'siteName': siteName,
+            'notes': a.notes,
+          };
+
+          byDate.putIfAbsent(a.date, () => []).add(recordMap);
+
+          totalShiftDays += factor.clamp(0.0, 1.0);
+          totalWage      += factor * wage;
+          totalOTPay     += ot * otRate;
+
+          siteBreakdown.putIfAbsent(siteId, () => SiteReport(siteId: siteId, siteName: siteName));
+          siteBreakdown[siteId]!.addRecord(
+            factor: factor,
+            wage: wage * factor,
+            status: a.status.firestoreValue,
+          );
+        }
+
+        final totalAdvances = labourPay
+            .where((p) => p.type == PaymentType.advance)
+            .fold<double>(0.0, (sum, p) => sum + p.amount);
+
+        final grossSalary = totalWage + totalOTPay;
+        final netPayable  = grossSalary - totalAdvances;
+
+        if (grossSalary == 0 && totalAdvances == 0 && labourAtt.isEmpty) {
+          continue; // Skip inactive workers with no activity
+        }
+
+        results.add(LabourMonthlyReport(
+          labourId: labour.id,
+          labourName: labour.name,
+          phone: labour.phone,
+          dailyWage: labour.dailyWage,
+          isTemp: labour.isTemporary || labour.type == 'temporary',
+          totalDays: totalShiftDays,
+          totalWage: totalWage,
+          totalOTPay: totalOTPay,
+          grossSalary: grossSalary,
+          totalAdvances: totalAdvances,
+          netPayable: netPayable,
+          siteBreakdown: siteBreakdown.values.toList(),
+          attendanceByDate: byDate,
+        ));
+      }
+
+      results.sort((a, b) {
+        if (a.isTemp != b.isTemp) return a.isTemp ? 1 : -1;
+        return a.labourName.compareTo(b.labourName);
+      });
+
+      reports = results;
+      summary = ReportSummary(
+        month: month,
+        year: year,
+        totalLabours: results.where((r) => !r.isTemp).length,
+        tempLabours: results.where((r) => r.isTemp).length,
+        totalGross: results.fold(0.0, (s, r) => s + r.grossSalary),
+        totalAdvances: results.fold(0.0, (s, r) => s + r.totalAdvances),
+        totalNet: results.fold(0.0, (s, r) => s + r.netPayable),
+        totalDaysWorked: results.fold(0.0, (s, r) => s + r.totalDays),
+        totalMaterials: totalMaterials,
+        totalExpenses: totalExpenses,
+        siteMaterials: siteMaterials,
+        siteExpenses: siteExpenses,
+      );
+
+      // If we found cached records, hide spinner right away!
+      if (reports.isNotEmpty) {
+        isLoading = false;
+        error = null;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[ReportsProvider] Local cache build error: $e');
+    }
+  }
+
+  /// Fetches fresh data from Firestore with strict timeouts and resilient fallbacks.
+  Future<void> _fetchRemoteAndBuild() async {
+    if (_isFetchingRemote) return;
+    _isFetchingRemote = true;
+
+    final monthStr = '$year-${month.toString().padLeft(2, '0')}';
+    final nextMonthStr = month == 12 ? '${year + 1}-01' : '$year-${(month + 1).toString().padLeft(2, '0')}';
+    final cId = _contractorId;
+
+    if (reports.isEmpty) {
+      isLoading = true;
+      notifyListeners();
+    }
+
+    try {
+      // 1. Fetch Labours (both supervisor & contractor scoped)
+      final labourQueries = [
+        _db.collection('labours').where('supervisorId', isEqualTo: uid).get().timeout(const Duration(seconds: 6)),
+        if (cId.isNotEmpty && cId != uid)
+          _db.collection('labours').where('contractorId', isEqualTo: cId).get().timeout(const Duration(seconds: 6)),
+      ];
+
+      final labourSnapshots = await Future.wait(
+        labourQueries.map((q) => q.catchError((_) => _db.collection('labours').where('supervisorId', isEqualTo: uid).limit(0).get())),
+      );
+
+      final labourDocs = <String, QueryDocumentSnapshot>{};
+      for (final s in labourSnapshots) {
+        for (final doc in s.docs) {
+          labourDocs[doc.id] = doc;
+          // Sync to local Hive box if open
+          if (Hive.isBoxOpen(Labour.boxName)) {
+            try {
+              Hive.box<Labour>(Labour.boxName).put(doc.id, Labour.fromFirestore(doc));
+            } catch (_) {}
+          }
+        }
+      }
+
+      // 2. Fetch Attendance (Flat collection with date range)
+      final attQueries = [
+        _db.collection('attendance')
+            .where('supervisorId', isEqualTo: uid)
+            .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+            .where('date', isLessThan: '$nextMonthStr-01')
+            .get()
+            .timeout(const Duration(seconds: 6)),
+        if (cId.isNotEmpty && cId != uid)
+          _db.collection('attendance')
+              .where('contractorId', isEqualTo: cId)
+              .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+              .where('date', isLessThan: '$nextMonthStr-01')
+              .get()
+              .timeout(const Duration(seconds: 6)),
+      ];
+
+      final attSnapshots = await Future.wait(
+        attQueries.map((q) => q.catchError((_) => _db.collection('attendance').limit(0).get())),
+      );
+
+      final fetchedRecords = <Map<String, dynamic>>[];
+      for (final s in attSnapshots) {
+        for (final doc in s.docs) {
+          final data = doc.data();
+          fetchedRecords.add(data);
+          if (Hive.isBoxOpen(Attendance.boxName)) {
+            try {
+              final att = Attendance.fromFirestore(doc);
+              Hive.box<Attendance>(Attendance.boxName).put(att.id, att);
+            } catch (_) {}
+          }
+        }
+      }
+
+      // 3. Fast nested attendance check:
+      // Try collectionGroup query first (1 fast network query instead of 31!)
+      try {
+        final groupSnap = await _db
+            .collectionGroup('records')
+            .where('contractorId', isEqualTo: cId)
+            .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+            .where('date', isLessThan: '$nextMonthStr-01')
+            .get()
+            .timeout(const Duration(seconds: 5));
+
+        for (final doc in groupSnap.docs) {
+          fetchedRecords.add(doc.data());
+        }
+      } catch (_) {
+        // If collectionGroup is unavailable or index is pending, query active days up to current day
+        if (cId.isNotEmpty) {
+          final daysInMonth = DateTime(year, month + 1, 0).day;
+          final maxDayToCheck = (year == DateTime.now().year && month == DateTime.now().month)
+              ? DateTime.now().day
+              : daysInMonth;
+
+          // Parallel query only past & present days with 4s timeout
+          final dateQueries = List.generate(maxDayToCheck, (i) {
+            final day = i + 1;
+            final dateKey = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+            return _db
                 .collection('attendance')
                 .doc(cId)
                 .collection('dates')
                 .doc(dateKey)
                 .collection('records')
-                .get();
-          } catch (_) {
-            return null;
-          }
-        });
+                .get()
+                .timeout(const Duration(seconds: 4))
+                .catchError((_) => _db.collection('attendance').limit(0).get());
+          });
 
-        final snapshots = await Future.wait(futures);
-        for (final snap in snapshots) {
-          if (snap == null) continue;
-          for (final doc in snap.docs) {
-            final data = doc.data();
-            if (data['supervisorId'] == uid || data['contractorId'] == uid) {
-              fetchedRecords.add(data);
+          final dateSnaps = await Future.wait(dateQueries);
+          for (final snap in dateSnaps) {
+            for (final doc in snap.docs) {
+              fetchedRecords.add(doc.data());
             }
           }
         }
       }
 
-      // Deduplicate fetchedRecords (new nested collections + legacy flat collection)
-      // Prefer records that have 'shiftFactor' or are from the nested collection.
+      // 4. Batch fetch sites to resolve names
+      final siteNames = <String, String>{};
+      try {
+        final sitesSnap = await _db.collection('sites')
+            .where('contractorId', isEqualTo: cId)
+            .get()
+            .timeout(const Duration(seconds: 5));
+        for (final doc in sitesSnap.docs) {
+          final d = doc.data();
+          siteNames[doc.id] = d['name'] as String? ?? doc.id;
+        }
+      } catch (_) {}
+
+      // 5. Batch fetch payments
+      final startTs = Timestamp.fromDate(DateTime(year, month, 1));
+      final endTs   = Timestamp.fromDate(DateTime(year, month + 1, 0, 23, 59, 59));
+      final paymentDocs = <Map<String, dynamic>>[];
+
+      try {
+        final paySnap = await _db.collection('payments')
+            .where('supervisorId', isEqualTo: uid)
+            .where('date', isGreaterThanOrEqualTo: startTs)
+            .where('date', isLessThanOrEqualTo: endTs)
+            .get()
+            .timeout(const Duration(seconds: 5));
+        for (final doc in paySnap.docs) {
+          paymentDocs.add(doc.data());
+        }
+      } catch (_) {
+        try {
+          final paySnapAlt = await _db.collection('payments')
+              .where('contractorId', isEqualTo: cId)
+              .get()
+              .timeout(const Duration(seconds: 5));
+          for (final doc in paySnapAlt.docs) {
+            final ts = doc.data()['date'] as Timestamp?;
+            if (ts != null && ts.compareTo(startTs) >= 0 && ts.compareTo(endTs) <= 0) {
+              paymentDocs.add(doc.data());
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 6. Material purchases and expenses (non-blocking)
+      double totalMaterials = 0;
+      double totalExpenses = 0;
+      final siteMaterials = <String, double>{};
+      final siteExpenses = <String, double>{};
+
+      try {
+        final matSnap = await _db.collection('materialPurchases')
+            .doc(cId).collection('purchases')
+            .where('purchaseDate', isGreaterThanOrEqualTo: startTs)
+            .where('purchaseDate', isLessThanOrEqualTo: endTs)
+            .get()
+            .timeout(const Duration(seconds: 4));
+        for (final doc in matSnap.docs) {
+          final amt = (doc.data()['totalAmount'] as num?)?.toDouble() ?? 0;
+          totalMaterials += amt;
+          final sId = doc.data()['siteId'] as String? ?? 'no_site';
+          siteMaterials[sId] = (siteMaterials[sId] ?? 0) + amt;
+        }
+      } catch (_) {}
+
+      try {
+        final expSnap = await _db.collection('siteExpenses')
+            .doc(cId).collection('expenses')
+            .where('expenseDate', isGreaterThanOrEqualTo: startTs)
+            .where('expenseDate', isLessThanOrEqualTo: endTs)
+            .get()
+            .timeout(const Duration(seconds: 4));
+        for (final doc in expSnap.docs) {
+          final amt = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
+          totalExpenses += amt;
+          final sId = doc.data()['siteId'] as String? ?? 'no_site';
+          siteExpenses[sId] = (siteExpenses[sId] ?? 0) + amt;
+        }
+      } catch (_) {}
+
+      // Deduplicate fetchedRecords
       final uniqueRecords = <String, Map<String, dynamic>>{};
       for (final doc in fetchedRecords) {
         final dDate = doc['date'] as String? ?? '';
         final lId = doc['labourId'] as String? ?? '';
         final sId = doc['siteId'] as String? ?? 'no_site';
         if (dDate.isEmpty || lId.isEmpty) continue;
-        
+
         final key = '${dDate}_${lId}_$sId';
-        // If it already exists, only overwrite if the new one is 'better' (e.g., has shiftFactor which implies it's newer)
         if (!uniqueRecords.containsKey(key)) {
           uniqueRecords[key] = doc;
         } else {
@@ -148,77 +471,9 @@ class ReportsProvider extends ChangeNotifier {
       }
       final deduplicatedRecords = uniqueRecords.values.toList();
 
-      // Batch fetch all sites to resolve names
-      final sitesSnap = await _db.collection('sites')
-          .where('contractorId', isEqualTo: cId)
-          .get();
-          
-      // Also fetch sites where contractorId is the supervisor's uid (for older sites)
-      final sitesSnapSup = cId != uid 
-          ? await _db.collection('sites').where('contractorId', isEqualTo: uid).get()
-          : null;
-          
-      final siteNames = <String, String>{};
-      final allSiteDocs = [
-        ...sitesSnap.docs, 
-        if (sitesSnapSup != null) ...sitesSnapSup.docs
-      ];
-      
-      for (var doc in allSiteDocs) {
-        final d = doc.data();
-        siteNames[doc.id] = d['name'] as String? ?? doc.id;
-        if (d['id'] != null) {
-          siteNames[d['id']] = d['name'] as String? ?? d['id'];
-        }
-      }
-          
-      // Batch fetch all payments
-      final startTs = Timestamp.fromDate(DateTime(year, month, 1));
-      final endTs   = Timestamp.fromDate(DateTime(year, month + 1, 0, 23, 59, 59));
-      
-      final allPaySnap = await _db.collection('payments')
-          .where('supervisorId', isEqualTo: uid)
-          .where('date', isGreaterThanOrEqualTo: startTs)
-          .where('date', isLessThanOrEqualTo: endTs)
-          .get();
-
-      // Batch fetch material purchases and expenses
-      double totalMaterials = 0;
-      double totalExpenses = 0;
-      final siteMaterials = <String, double>{};
-      final siteExpenses = <String, double>{};
-
-      try {
-        final matSnap = await _db.collection('materialPurchases')
-            .doc(cId).collection('purchases')
-            .where('purchaseDate', isGreaterThanOrEqualTo: startTs)
-            .where('purchaseDate', isLessThanOrEqualTo: endTs)
-            .get();
-        for (var doc in matSnap.docs) {
-          final amt = (doc.data()['totalAmount'] as num?)?.toDouble() ?? 0;
-          totalMaterials += amt;
-          final sId = doc.data()['siteId'] as String? ?? 'no_site';
-          siteMaterials[sId] = (siteMaterials[sId] ?? 0) + amt;
-        }
-
-        final expSnap = await _db.collection('siteExpenses')
-            .doc(cId).collection('expenses')
-            .where('expenseDate', isGreaterThanOrEqualTo: startTs)
-            .where('expenseDate', isLessThanOrEqualTo: endTs)
-            .get();
-        for (var doc in expSnap.docs) {
-          final amt = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
-          totalExpenses += amt;
-          final sId = doc.data()['siteId'] as String? ?? 'no_site';
-          siteExpenses[sId] = (siteExpenses[sId] ?? 0) + amt;
-        }
-      } catch (e) {
-        debugPrint('Error fetching materials/expenses for report: $e');
-      }
-
-      // Group data by labourId in memory
+      // Group attendance & payments by labourId
       final attByLabour = <String, List<Map<String, dynamic>>>{};
-      for (var d in deduplicatedRecords) {
+      for (final d in deduplicatedRecords) {
         final lId = d['labourId'] as String?;
         if (lId != null) {
           attByLabour.putIfAbsent(lId, () => []).add(d);
@@ -226,33 +481,31 @@ class ReportsProvider extends ChangeNotifier {
       }
 
       final payByLabour = <String, List<Map<String, dynamic>>>{};
-      for (var doc in allPaySnap.docs) {
-        final d = doc.data();
+      for (final d in paymentDocs) {
         final lId = d['labourId'] as String?;
         if (lId != null) {
           payByLabour.putIfAbsent(lId, () => []).add(d);
         }
       }
 
-      for (final labourDoc in labourDocs) {
+      final results = <LabourMonthlyReport>[];
+
+      for (final labourDoc in labourDocs.values) {
         final labData  = labourDoc.data() as Map<String, dynamic>;
         final labourId = labourDoc.id;
 
-        // Group by date to get daily totals
         final byDate = <String, List<Map<String, dynamic>>>{};
         final labourAtt = attByLabour[labourId] ?? [];
-        for (var d in labourAtt) {
+        for (final d in labourAtt) {
           final date = d['date'] as String? ?? '';
           if (date.startsWith(monthStr)) {
             byDate.putIfAbsent(date, () => []).add(d);
           }
         }
 
-        // Calculate days and wages date by date
         double totalShiftDays  = 0;
         double totalWage       = 0;
         double totalOTPay      = 0;
-        int    daysWithRecords = 0;
         final siteBreakdown    = <String, SiteReport>{};
 
         byDate.forEach((date, records) {
@@ -271,17 +524,15 @@ class ReportsProvider extends ChangeNotifier {
             final siteId   = rec['siteId']   as String? ?? 'no_site';
             final rawName = rec['siteName'] as String?;
             final siteName = siteNames[siteId] ?? rawName ?? siteId;
-            rec['siteName'] = siteName; // Inject resolved siteName back into record for PDF
+            rec['siteName'] = siteName;
 
             dayFactor += factor;
             dayWage   += factor * wage;
             totalOTPay += ot * otRate;
 
-            // Track per-site breakdown
-            siteBreakdown.putIfAbsent(siteId, () =>
-              SiteReport(siteId: siteId, siteName: siteName));
+            siteBreakdown.putIfAbsent(siteId, () => SiteReport(siteId: siteId, siteName: siteName));
             siteBreakdown[siteId]!.addRecord(
-              factor: factor, 
+              factor: factor,
               wage: wage * factor,
               status: rec['status'] as String?,
             );
@@ -289,14 +540,11 @@ class ReportsProvider extends ChangeNotifier {
 
           totalShiftDays  += dayFactor.clamp(0.0, 1.0);
           totalWage       += dayWage;
-          if (dayFactor > 0) daysWithRecords++;
         });
 
-        // TEMP LABOUR: include but mark separately
         final isTemp  = labData['type'] == 'temporary';
         final dailyWage = (labData['dailyWage'] as num?)?.toDouble() ?? 0;
 
-        // Advances this month
         final labourPay = payByLabour[labourId] ?? [];
         final totalAdvances = labourPay
             .where((d) {
@@ -310,61 +558,68 @@ class ReportsProvider extends ChangeNotifier {
         final grossSalary = totalWage + totalOTPay;
         final netPayable  = grossSalary - totalAdvances;
 
-        if (grossSalary == 0 && totalAdvances == 0) {
-          continue; // Skip workers with no financial activity this month
+        if (grossSalary == 0 && totalAdvances == 0 && byDate.isEmpty) {
+          continue;
         }
 
-      results.add(LabourMonthlyReport(
-        labourId:      labourId,
-        labourName:    labData['name']  as String? ?? '',
-        phone:         labData['phone'] as String? ?? '',
-        dailyWage:     dailyWage,
-        isTemp:        isTemp,
-        totalDays:     totalShiftDays,
-        totalWage:     totalWage,
-        totalOTPay:    totalOTPay,
-        grossSalary:   grossSalary,
-        totalAdvances: totalAdvances,
-        netPayable:    netPayable,
-        siteBreakdown: siteBreakdown.values.toList(),
-        attendanceByDate: byDate,
-      ));
-    }
+        results.add(LabourMonthlyReport(
+          labourId:      labourId,
+          labourName:    labData['name']  as String? ?? '',
+          phone:         labData['phone'] as String? ?? '',
+          dailyWage:     dailyWage,
+          isTemp:        isTemp,
+          totalDays:     totalShiftDays,
+          totalWage:     totalWage,
+          totalOTPay:    totalOTPay,
+          grossSalary:   grossSalary,
+          totalAdvances: totalAdvances,
+          netPayable:    netPayable,
+          siteBreakdown: siteBreakdown.values.toList(),
+          attendanceByDate: byDate,
+        ));
+      }
 
-    // Sort: regular labours first, then temp
-    results.sort((a, b) {
-      if (a.isTemp != b.isTemp) return a.isTemp ? 1 : -1;
-      return a.labourName.compareTo(b.labourName);
-    });
+      results.sort((a, b) {
+        if (a.isTemp != b.isTemp) return a.isTemp ? 1 : -1;
+        return a.labourName.compareTo(b.labourName);
+      });
 
-    reports = results;
-    summary = ReportSummary(
-      month:           month,
-      year:            year,
-      totalLabours:    results.where((r) => !r.isTemp).length,
-      tempLabours:     results.where((r) =>  r.isTemp).length,
-      totalGross:      results.fold(0, (s, r) => s + r.grossSalary),
-      totalAdvances:   results.fold(0, (s, r) => s + r.totalAdvances),
-      totalNet:        results.fold(0, (s, r) => s + r.netPayable),
-      totalDaysWorked: results.fold(0.0, (s, r) => s + r.totalDays),
-      totalMaterials:  totalMaterials,
-      totalExpenses:   totalExpenses,
-      siteMaterials:   siteMaterials,
-      siteExpenses:    siteExpenses,
-    );
+      reports = results;
+      summary = ReportSummary(
+        month:           month,
+        year:            year,
+        totalLabours:    results.where((r) => !r.isTemp).length,
+        tempLabours:     results.where((r) =>  r.isTemp).length,
+        totalGross:      results.fold(0, (s, r) => s + r.grossSalary),
+        totalAdvances:   results.fold(0, (s, r) => s + r.totalAdvances),
+        totalNet:        results.fold(0, (s, r) => s + r.netPayable),
+        totalDaysWorked: results.fold(0.0, (s, r) => s + r.totalDays),
+        totalMaterials:  totalMaterials,
+        totalExpenses:   totalExpenses,
+        siteMaterials:   siteMaterials,
+        siteExpenses:    siteExpenses,
+      );
 
-    isLoading = false;
-    error     = null;
-    notifyListeners();
-
-    debugPrint('Reports built: ${results.length} labours, '
-        'gross=₹${summary!.totalGross}');
+      isLoading = false;
+      error     = null;
+      notifyListeners();
     } catch (e, stack) {
-      debugPrint('Error building reports: $e');
+      debugPrint('[ReportsProvider] Remote fetch error: $e');
       debugPrint(stack.toString());
-      error = 'Failed to load reports';
+
+      // If we already had cached reports, don't show an error screen
+      if (reports.isEmpty) {
+        error = 'Failed to load reports. Please check your network and retry.';
+      }
       isLoading = false;
       notifyListeners();
+    } finally {
+      _isFetchingRemote = false;
+      // Always ensure isLoading is false when completed
+      if (isLoading) {
+        isLoading = false;
+        notifyListeners();
+      }
     }
   }
 

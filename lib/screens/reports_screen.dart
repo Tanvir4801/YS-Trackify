@@ -163,6 +163,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         .map((r) => _labourReportCard(r)),
                   ],
 
+                  // Empty State when no labours had records for this month
+                  if (prov.reports.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.assessment_outlined, size: 48, color: isDark ? Colors.white38 : const Color(0xFF91AAC8)),
+                            const SizedBox(height: 12),
+                            Text('No records for this month', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : const Color(0xFF102A4C))),
+                            const SizedBox(height: 4),
+                            Text('Attendance or payments marked for this month will appear here.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : const Color(0xFF6F89A6))),
+                          ],
+                        ),
+                      ),
+                    ),
+
                   const SizedBox(height: 100),
                 ]),
               ),
