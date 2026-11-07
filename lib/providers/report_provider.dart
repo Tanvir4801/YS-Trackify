@@ -107,10 +107,11 @@ class ReportsProvider extends ChangeNotifier {
       }
 
       // Payments for this month
+      final relevantLabourIds = relevantLabours.map((l) => l.id).toSet();
       final monthPayments = payBox?.values.where((p) {
         return p.date.year == year &&
             p.date.month == month &&
-            (p.supervisorId == uid || p.contractorId == uid || (cId.isNotEmpty && p.contractorId == cId));
+            (relevantLabourIds.contains(p.labourId) || p.supervisorId == uid);
       }).toList() ?? [];
 
       final payByLabour = <String, List<Payment>>{};
@@ -126,7 +127,7 @@ class ReportsProvider extends ChangeNotifier {
 
       if (matBox != null) {
         for (final m in matBox.values) {
-          if (m.purchaseDate.year == year && m.purchaseDate.month == month) {
+          if (m.purchaseDate.startsWith(monthStr)) {
             totalMaterials += m.totalAmount;
             final sId = m.siteId.isNotEmpty ? m.siteId : 'no_site';
             siteMaterials[sId] = (siteMaterials[sId] ?? 0) + m.totalAmount;
@@ -136,7 +137,7 @@ class ReportsProvider extends ChangeNotifier {
 
       if (expBox != null) {
         for (final e in expBox.values) {
-          if (e.expenseDate.year == year && e.expenseDate.month == month) {
+          if (e.date.startsWith(monthStr)) {
             totalExpenses += e.amount;
             final sId = e.siteId.isNotEmpty ? e.siteId : 'no_site';
             siteExpenses[sId] = (siteExpenses[sId] ?? 0) + e.amount;
@@ -424,8 +425,8 @@ class ReportsProvider extends ChangeNotifier {
       try {
         final matSnap = await _db.collection('materialPurchases')
             .doc(cId).collection('purchases')
-            .where('purchaseDate', isGreaterThanOrEqualTo: startTs)
-            .where('purchaseDate', isLessThanOrEqualTo: endTs)
+            .where('purchaseDate', isGreaterThanOrEqualTo: '$monthStr-01')
+            .where('purchaseDate', isLessThan: '$nextMonthStr-01')
             .get()
             .timeout(const Duration(seconds: 4));
         for (final doc in matSnap.docs) {
@@ -439,8 +440,8 @@ class ReportsProvider extends ChangeNotifier {
       try {
         final expSnap = await _db.collection('siteExpenses')
             .doc(cId).collection('expenses')
-            .where('expenseDate', isGreaterThanOrEqualTo: startTs)
-            .where('expenseDate', isLessThanOrEqualTo: endTs)
+            .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+            .where('date', isLessThan: '$nextMonthStr-01')
             .get()
             .timeout(const Duration(seconds: 4));
         for (final doc in expSnap.docs) {
