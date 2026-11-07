@@ -81,7 +81,9 @@ function verifyToken(token) {
       .digest('hex')
       .substring(0, 16);
 
-    if (signature !== expectedSig) {
+    const sigBuffer = Buffer.from(signature, 'utf8');
+    const expectedSigBuffer = Buffer.from(expectedSig, 'utf8');
+    if (sigBuffer.length !== expectedSigBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedSigBuffer)) {
       return { error: 'invalid_signature' };
     }
 
@@ -537,8 +539,21 @@ You MUST output ONLY a valid JSON object in this exact format, with no markdown 
   });
 
 exports.executeSecurityAction = functions.https.onCall(async (data, context) => {
-  // Only Super Admins can execute this
-  if (!context.auth || context.auth.token.role !== 'super_admin') {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.');
+  }
+
+  // Check token claims or fallback to Firestore users/{uid}.role
+  let isSuper = context.auth.token && (context.auth.token.role === 'super_admin' || context.auth.token.role === 'trackops');
+  if (!isSuper) {
+    const userDoc = await db.collection('users').doc(context.auth.uid).get();
+    const role = userDoc.exists ? userDoc.data().role : '';
+    if (role === 'super_admin' || role === 'trackops') {
+      isSuper = true;
+    }
+  }
+
+  if (!isSuper) {
     throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can execute security actions.');
   }
 
