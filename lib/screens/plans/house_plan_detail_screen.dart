@@ -112,11 +112,15 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
             Text(
               owner.ownerName,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             if (owner.villageCity.isNotEmpty)
               Text(
                 '${owner.villageCity} • Plan #${owner.planNo}',
                 style: TextStyle(fontSize: 11, color: textMuted),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
           ],
         ),
@@ -381,9 +385,12 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Text(
-                            drawing.category,
-                            style: TextStyle(fontSize: 10, color: textMuted),
+                          Flexible(
+                            child: Text(
+                              drawing.category,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 10, color: textMuted),
+                            ),
                           ),
                           if (drawing.completedDate != null) ...[
                             Text(' • ', style: TextStyle(fontSize: 10, color: textMuted)),
@@ -539,15 +546,27 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              v.purpose,
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: textPrimary),
+                            Expanded(
+                              child: Text(
+                                v.purpose,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: textPrimary,
+                                  height: 1.25,
+                                ),
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             Text(
                               _currencyFmt.format(v.amount),
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primaryColor(context)),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryColor(context),
+                              ),
                             ),
                           ],
                         ),
@@ -559,6 +578,7 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                         if (v.notes.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Container(
+                            width: double.infinity,
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: isDark ? const Color(0xFF0F1A2A) : const Color(0xFFF8FAFC),
@@ -573,7 +593,11 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                       ],
                     ),
                   ),
+                  const SizedBox(width: 4),
                   IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     icon: Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.errorColor(context)),
                     onPressed: () async {
                       final confirm = await showDialog<bool>(
@@ -673,38 +697,51 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Total Billable', style: TextStyle(fontSize: 12, color: textMuted)),
-                      Text(_currencyFmt.format(owner.totalBillableAmount), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary)),
-                    ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Total Billable', style: TextStyle(fontSize: 11, color: textMuted), overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Text(_currencyFmt.format(owner.totalBillableAmount), style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textPrimary), overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text('Received', style: TextStyle(fontSize: 12, color: textMuted)),
-                      Text(_currencyFmt.format(owner.calculatedTotalPaid), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: emerald)),
-                    ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text('Received', style: TextStyle(fontSize: 11, color: textMuted), overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Text(_currencyFmt.format(owner.calculatedTotalPaid), style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: emerald), overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        owner.siteVisits.isNotEmpty && owner.isPlanFeeCleared && owner.visitsPending > 0
-                            ? 'Visit Due'
-                            : 'Remaining Balance',
-                        style: TextStyle(fontSize: 12, color: textMuted),
-                      ),
-                      Text(
-                        owner.netPending <= 0 ? '₹0 PAID' : _currencyFmt.format(owner.netPending),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: owner.netPending <= 0 ? emerald : amber,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          owner.siteVisits.isNotEmpty && owner.isPlanFeeCleared && owner.visitsPending > 0
+                              ? 'Visit Due'
+                              : 'Remaining',
+                          style: TextStyle(fontSize: 11, color: textMuted),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          owner.netPending <= 0 ? '₹0 PAID' : _currencyFmt.format(owner.netPending),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: owner.netPending <= 0 ? emerald : amber,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

@@ -163,23 +163,27 @@ class _SiteVisitBottomSheetState extends State<SiteVisitBottomSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Record Site Visit',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: textPrimary,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Record Site Visit',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Client: ${widget.owner.ownerName}',
-                        style: TextStyle(fontSize: 12, color: textMuted),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          'Client: ${widget.owner.ownerName}',
+                          style: TextStyle(fontSize: 12, color: textMuted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded),

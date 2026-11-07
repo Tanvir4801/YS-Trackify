@@ -388,41 +388,49 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
                             // Top Meta Row: Plan # and Badges
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  children: [
-                                    if (owner.planNo.isNotEmpty)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primaryColor(context).withValues(alpha: 0.16),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: AppColors.primaryColor(context).withValues(alpha: 0.35)),
+                                Expanded(
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    children: [
+                                      if (owner.planNo.isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primaryColor(context).withValues(alpha: 0.16),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: AppColors.primaryColor(context).withValues(alpha: 0.35)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.explore_outlined, size: 13, color: AppColors.primaryColor(context)),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                owner.planNo,
+                                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primaryColor(context)),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                        child: Row(
+                                      if (owner.villageCity.isNotEmpty)
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(Icons.explore_outlined, size: 13, color: AppColors.primaryColor(context)),
-                                            const SizedBox(width: 4),
+                                            Icon(Icons.location_on_outlined, size: 13, color: textMuted),
+                                            const SizedBox(width: 2),
                                             Text(
-                                              owner.planNo,
-                                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primaryColor(context)),
+                                              owner.villageCity,
+                                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: textMuted),
                                             ),
                                           ],
                                         ),
-                                      ),
-                                    if (owner.villageCity.isNotEmpty) ...[
-                                      const SizedBox(width: 8),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.location_on_outlined, size: 13, color: textMuted),
-                                          const SizedBox(width: 2),
-                                          Text(owner.villageCity, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: textMuted)),
-                                        ],
-                                      ),
                                     ],
-                                  ],
+                                  ),
                                 ),
+                                const SizedBox(width: 8),
 
                                 // Multi-Badge Container (Plan Fee Status + Visit Fee Status)
                                 Column(
