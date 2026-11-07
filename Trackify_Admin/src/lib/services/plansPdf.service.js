@@ -455,7 +455,7 @@ export async function generateHousePlanInvoicePDF({
     curRightY += 3.8;
   });
 
-  doc.text(`Plan Serial No: ${planNumber}  •  3D Model Ref: ${serialNumber3D}`, clientBoxX + innerPad, curRightY);
+  doc.text(`Plan Serial No: ${planNumber}  |  3D Model Ref: ${serialNumber3D}`, clientBoxX + innerPad, curRightY);
   curRightY += 3.8;
   doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, clientBoxX + innerPad, curRightY);
 
@@ -497,7 +497,7 @@ export async function generateHousePlanInvoicePDF({
   doc.text('CONFIGURATION & FACING:', margin + specColWidth * 2 + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${owner.floors || 'G+1'} • ${owner.bhk || '3 BHK'} • ${owner.facing || 'East'}`, margin + specColWidth * 2 + 4, specY + 8.2);
+  doc.text(`${owner.floors || 'G+1'} | ${owner.bhk || '3 BHK'} | ${owner.facing || 'East'}`, margin + specColWidth * 2 + 4, specY + 8.2);
 
   // Spec 4: Engineer In-Charge
   doc.setFont('helvetica', 'bold');
@@ -800,7 +800,7 @@ export async function generateHousePlanInvoicePDF({
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Plan Ref: #${planNumber} • Site Visits & Billing Statement`, pageWidth - margin, 46.5, { align: 'right' });
+      doc.text(`Plan Ref: #${planNumber} | Site Visits & Billing Statement`, pageWidth - margin, 46.5, { align: 'right' });
 
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.3);
@@ -816,7 +816,7 @@ export async function generateHousePlanInvoicePDF({
     doc.setTextColor(148, 163, 184); // slate-400
     doc.setFont('helvetica', 'normal');
     doc.text(
-      `${companyName} • Architecture, Planner, Consultant, Interior Designer • Thank you for your business!`,
+      `${companyName} | Architecture, Planner, Consultant, Interior Designer | Thank you for your business!`,
       margin,
       pageHeight - 5
     );

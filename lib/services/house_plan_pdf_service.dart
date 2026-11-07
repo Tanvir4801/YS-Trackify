@@ -348,7 +348,7 @@ class HousePlanPdfService {
               if (owner.bhk.isNotEmpty || owner.facing.isNotEmpty) ...[
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  'Configuration: ${owner.bhk} • ${owner.facing} Facing (${owner.floors})',
+                  'Configuration: ${owner.bhk} | ${owner.facing} Facing (${owner.floors})',
                   style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
                 ),
               ],
@@ -721,7 +721,7 @@ class HousePlanPdfService {
                 style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate700),
               ),
               pw.Text(
-                'Plan Ref: #$planNumber • Site Visits & Billing Statement',
+                'Plan Ref: #$planNumber | Site Visits & Billing Statement',
                 style: const pw.TextStyle(fontSize: 8, color: _cSlate500),
               ),
             ],
