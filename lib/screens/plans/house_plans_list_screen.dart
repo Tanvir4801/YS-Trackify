@@ -50,8 +50,8 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
+      await Clipboard.setData(ClipboardData(text: clean));
       if (mounted) {
-        await Clipboard.setData(ClipboardData(text: clean));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Phone number $clean copied to clipboard'),
@@ -592,6 +592,7 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
                                     children: [
                                       if (owner.planNo.isNotEmpty)
                                         Container(
+                                          constraints: const BoxConstraints(minWidth: 44, minHeight: 26),
                                           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
                                           decoration: BoxDecoration(
                                             color: AppColors.primaryColor(context).withValues(alpha: 0.16),
@@ -606,6 +607,26 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
                                               Text(
                                                 owner.planNo,
                                                 style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.primaryColor(context)),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      if (owner.hasPendingSupervisorChanges)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF59E0B).withValues(alpha: 0.16),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.45)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.shield_outlined, size: 12, color: Color(0xFFF59E0B)),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Verification Needed (${owner.pendingVerificationCount})',
+                                                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFFD97706)),
                                               ),
                                             ],
                                           ),

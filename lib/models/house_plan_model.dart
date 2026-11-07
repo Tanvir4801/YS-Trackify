@@ -9,6 +9,11 @@ class HousePlanDrawing {
   final String status; // 'completed', 'in_progress', 'pending'
   final String? completedDate;
   final String? notes;
+  final String verificationStatus; // 'verified', 'pending_admin_verification'
+  final String? modifiedByRole; // 'supervisor', 'contractor', 'admin'
+  final String? modifiedByName;
+  final String? modifiedByUid;
+  final String? modifiedAt;
 
   const HousePlanDrawing({
     required this.id,
@@ -19,13 +24,44 @@ class HousePlanDrawing {
     this.status = 'in_progress',
     this.completedDate,
     this.notes,
+    this.verificationStatus = 'verified',
+    this.modifiedByRole,
+    this.modifiedByName,
+    this.modifiedByUid,
+    this.modifiedAt,
   });
 
   bool get isCompleted => status.toLowerCase() == 'completed';
+  bool get isPendingAdminVerification => verificationStatus == 'pending_admin_verification';
+
+  /// Clean display name without leading "01-" or "22-" prefix duplication
+  String get displayName {
+    if (mainName.isNotEmpty && mainName != name) return mainName;
+    final clean = name.replaceFirst(RegExp(r'^\d+[\s\-_.:]*'), '').trim();
+    return clean.isNotEmpty ? clean : name;
+  }
 
   factory HousePlanDrawing.fromMap(Map<String, dynamic> map, [String? fallbackId]) {
     final rawName = (map['name'] as String?) ?? '';
-    final numStr = (map['num'] as String?) ?? (rawName.split('-').firstOrNull?.trim() ?? '01');
+    
+    // Robust number extraction: handles string, int, or regex from name
+    String numStr = '';
+    final rawNum = map['num'];
+    if (rawNum != null && rawNum.toString().trim().isNotEmpty) {
+      numStr = rawNum.toString().trim();
+    } else {
+      final match = RegExp(r'^(\d+)').firstMatch(rawName.trim());
+      if (match != null) {
+        numStr = match.group(1)!;
+      } else {
+        final splitPart = rawName.split('-').firstOrNull?.trim() ?? '';
+        numStr = RegExp(r'^\d+').hasMatch(splitPart) ? splitPart : '01';
+      }
+    }
+    if (numStr.length == 1) {
+      numStr = '0$numStr';
+    }
+
     return HousePlanDrawing(
       id: (map['id'] as String?) ?? fallbackId ?? 'plan_${DateTime.now().microsecondsSinceEpoch}',
       num: numStr,
@@ -35,6 +71,11 @@ class HousePlanDrawing {
       status: (map['status'] as String?) ?? 'in_progress',
       completedDate: map['completedDate'] as String?,
       notes: map['notes'] as String?,
+      verificationStatus: (map['verificationStatus'] as String?) ?? 'verified',
+      modifiedByRole: map['modifiedByRole'] as String?,
+      modifiedByName: map['modifiedByName'] as String?,
+      modifiedByUid: map['modifiedByUid'] as String?,
+      modifiedAt: map['modifiedAt'] as String?,
     );
   }
 
@@ -48,6 +89,11 @@ class HousePlanDrawing {
       'status': status,
       if (completedDate != null) 'completedDate': completedDate,
       if (notes != null) 'notes': notes,
+      'verificationStatus': verificationStatus,
+      if (modifiedByRole != null) 'modifiedByRole': modifiedByRole,
+      if (modifiedByName != null) 'modifiedByName': modifiedByName,
+      if (modifiedByUid != null) 'modifiedByUid': modifiedByUid,
+      if (modifiedAt != null) 'modifiedAt': modifiedAt,
     };
   }
 
@@ -55,6 +101,11 @@ class HousePlanDrawing {
     String? status,
     String? completedDate,
     String? notes,
+    String? verificationStatus,
+    String? modifiedByRole,
+    String? modifiedByName,
+    String? modifiedByUid,
+    String? modifiedAt,
   }) {
     return HousePlanDrawing(
       id: id,
@@ -65,6 +116,11 @@ class HousePlanDrawing {
       status: status ?? this.status,
       completedDate: completedDate ?? this.completedDate,
       notes: notes ?? this.notes,
+      verificationStatus: verificationStatus ?? this.verificationStatus,
+      modifiedByRole: modifiedByRole ?? this.modifiedByRole,
+      modifiedByName: modifiedByName ?? this.modifiedByName,
+      modifiedByUid: modifiedByUid ?? this.modifiedByUid,
+      modifiedAt: modifiedAt ?? this.modifiedAt,
     );
   }
 }
@@ -76,6 +132,10 @@ class HouseSiteVisit {
   final String purpose;
   final String notes;
   final String recordedAt;
+  final String verificationStatus; // 'verified', 'pending_admin_verification'
+  final String? recordedByRole;
+  final String? recordedByName;
+  final String? recordedByUid;
 
   const HouseSiteVisit({
     required this.id,
@@ -84,7 +144,13 @@ class HouseSiteVisit {
     this.purpose = 'Site Consultation',
     this.notes = '',
     required this.recordedAt,
+    this.verificationStatus = 'verified',
+    this.recordedByRole,
+    this.recordedByName,
+    this.recordedByUid,
   });
+
+  bool get isPendingAdminVerification => verificationStatus == 'pending_admin_verification';
 
   factory HouseSiteVisit.fromMap(Map<String, dynamic> map, [String? fallbackId]) {
     final rawAmt = map['amount'];
@@ -96,6 +162,10 @@ class HouseSiteVisit {
       purpose: (map['purpose'] as String?) ?? 'Site Consultation',
       notes: (map['notes'] as String?) ?? '',
       recordedAt: (map['recordedAt'] as String?) ?? DateTime.now().toIso8601String(),
+      verificationStatus: (map['verificationStatus'] as String?) ?? 'verified',
+      recordedByRole: map['recordedByRole'] as String?,
+      recordedByName: map['recordedByName'] as String?,
+      recordedByUid: map['recordedByUid'] as String?,
     );
   }
 
@@ -107,6 +177,10 @@ class HouseSiteVisit {
       'purpose': purpose,
       'notes': notes,
       'recordedAt': recordedAt,
+      'verificationStatus': verificationStatus,
+      if (recordedByRole != null) 'recordedByRole': recordedByRole,
+      if (recordedByName != null) 'recordedByName': recordedByName,
+      if (recordedByUid != null) 'recordedByUid': recordedByUid,
     };
   }
 }
@@ -243,16 +317,32 @@ class HousePlanOwner {
   List<HousePlanDrawing> get inProgressDrawings =>
       plansList.where((p) => !p.isCompleted).toList();
 
+  // ── SUPERVISOR TWO-FACTOR VERIFICATION WORKFLOW ──
+
+  int get pendingVerificationCount =>
+      plansList.where((p) => p.isPendingAdminVerification).length +
+      siteVisits.where((v) => v.isPendingAdminVerification).length;
+
+  bool get hasPendingSupervisorChanges => pendingVerificationCount > 0;
+
+  List<HousePlanDrawing> get pendingVerificationDrawings =>
+      plansList.where((p) => p.isPendingAdminVerification).toList();
+
+  List<HouseSiteVisit> get pendingVerificationVisits =>
+      siteVisits.where((v) => v.isPendingAdminVerification).toList();
+
   factory HousePlanOwner.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     
-    // Parse drawings
+    // Parse drawings (safely handling both Map<String, dynamic> and Map<dynamic, dynamic>)
     final rawPlans = data['plansList'];
     final List<HousePlanDrawing> parsedPlans = [];
     if (rawPlans is List) {
       for (final p in rawPlans) {
-        if (p is Map<String, dynamic>) {
-          parsedPlans.add(HousePlanDrawing.fromMap(p));
+        if (p is Map) {
+          try {
+            parsedPlans.add(HousePlanDrawing.fromMap(Map<String, dynamic>.from(p)));
+          } catch (_) {}
         }
       }
     }
@@ -262,8 +352,10 @@ class HousePlanOwner {
     final List<HouseSiteVisit> parsedVisits = [];
     if (rawVisits is List) {
       for (final v in rawVisits) {
-        if (v is Map<String, dynamic>) {
-          parsedVisits.add(HouseSiteVisit.fromMap(v));
+        if (v is Map) {
+          try {
+            parsedVisits.add(HouseSiteVisit.fromMap(Map<String, dynamic>.from(v)));
+          } catch (_) {}
         }
       }
     }
@@ -273,8 +365,10 @@ class HousePlanOwner {
     final List<HousePlanPayment> parsedPayments = [];
     if (rawPayments is List) {
       for (final pay in rawPayments) {
-        if (pay is Map<String, dynamic>) {
-          parsedPayments.add(HousePlanPayment.fromMap(pay));
+        if (pay is Map) {
+          try {
+            parsedPayments.add(HousePlanPayment.fromMap(Map<String, dynamic>.from(pay)));
+          } catch (_) {}
         }
       }
     }
@@ -296,16 +390,32 @@ class HousePlanOwner {
       return null;
     }
 
+    final villageCity = (data['villageCity'] as String?) ??
+        (data['city'] as String?) ??
+        (data['town'] as String?) ??
+        '';
+
+    final plotArea = (data['plotArea'] as String?) ??
+        (data['plotAreaSqFt'] != null ? '${data['plotAreaSqFt']} sq.ft' : '');
+
+    final planNo = (data['planNo'] as String?) ??
+        (data['planNumber'] as String?) ??
+        '';
+
+    final serial3D = (data['serial3D'] as String?) ??
+        (data['serialNumber3D'] as String?) ??
+        '';
+
     return HousePlanOwner(
       id: doc.id,
       contractorId: (data['contractorId'] as String?) ?? '',
       ownerName: (data['ownerName'] as String?) ?? 'Unknown Client',
       ownerPhone: (data['ownerPhone'] as String?) ?? '',
-      villageCity: (data['villageCity'] as String?) ?? '',
-      plotArea: (data['plotArea'] as String?) ?? '',
-      planNo: (data['planNo'] as String?) ?? '',
-      serial3D: (data['serial3D'] as String?) ?? '',
-      supervisingEngineer: (data['supervisingEngineer'] as String?) ?? '',
+      villageCity: villageCity,
+      plotArea: plotArea,
+      planNo: planNo,
+      serial3D: serial3D,
+      supervisingEngineer: (data['supervisingEngineer'] as String?) ?? (data['engineerName'] as String?) ?? '',
       houseAmount: parsedHouseAmount,
       directTotalPaid: parsedTotalPaid,
       specsNotes: (data['specsNotes'] as String?) ?? '',

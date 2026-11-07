@@ -538,6 +538,170 @@ export async function updatePlanInOwner(ownerId, planItemId, updates) {
 }
 
 /**
+ * Admin Two-Factor Verification: Approve a specific plan modified by a supervisor
+ */
+export async function verifyPlanInOwner(ownerId, planItemId, adminUser) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+  const currentVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
+  const nowIso = new Date().toISOString();
+
+  const updatedPlans = currentPlans.map((p) => {
+    if (p.id === planItemId) {
+      return {
+        ...p,
+        verificationStatus: 'verified',
+        verifiedBy: adminUser?.name || 'Admin',
+        verifiedByUid: adminUser?.uid || '',
+        verifiedAt: nowIso,
+      };
+    }
+    return p;
+  });
+
+  const stillHasPendingPlans = updatedPlans.some((p) => p.verificationStatus === 'pending_admin_verification');
+  const stillHasPendingVisits = currentVisits.some((v) => v.verificationStatus === 'pending_admin_verification');
+  const hasPending = stillHasPendingPlans || stillHasPendingVisits;
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    hasPendingSupervisorChanges: hasPending,
+    ...(!hasPending ? { lastSupervisorAction: null } : {}),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Admin Two-Factor Verification: Revert a drawing status change made by supervisor
+ */
+export async function revertPlanInOwner(ownerId, planItemId, adminUser) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+  const currentVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
+  const nowIso = new Date().toISOString();
+
+  const updatedPlans = currentPlans.map((p) => {
+    if (p.id === planItemId) {
+      const revertedStatus = p.status === 'completed' ? 'in_progress' : 'in_progress';
+      return {
+        ...p,
+        status: revertedStatus,
+        completedDate: null,
+        verificationStatus: 'verified',
+        verifiedBy: adminUser?.name || 'Admin',
+        verifiedByUid: adminUser?.uid || '',
+        verifiedAt: nowIso,
+        revertedAt: nowIso,
+      };
+    }
+    return p;
+  });
+
+  const stillHasPendingPlans = updatedPlans.some((p) => p.verificationStatus === 'pending_admin_verification');
+  const stillHasPendingVisits = currentVisits.some((v) => v.verificationStatus === 'pending_admin_verification');
+  const hasPending = stillHasPendingPlans || stillHasPendingVisits;
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    hasPendingSupervisorChanges: hasPending,
+    ...(!hasPending ? { lastSupervisorAction: null } : {}),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Admin Two-Factor Verification: Approve a site visit logged by a supervisor
+ */
+export async function verifySiteVisitInOwner(ownerId, visitId, adminUser) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+  const currentVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
+  const nowIso = new Date().toISOString();
+
+  const updatedVisits = currentVisits.map((v) => {
+    if (v.id === visitId) {
+      return {
+        ...v,
+        verificationStatus: 'verified',
+        verifiedBy: adminUser?.name || 'Admin',
+        verifiedByUid: adminUser?.uid || '',
+        verifiedAt: nowIso,
+      };
+    }
+    return v;
+  });
+
+  const stillHasPendingPlans = currentPlans.some((p) => p.verificationStatus === 'pending_admin_verification');
+  const stillHasPendingVisits = updatedVisits.some((v) => v.verificationStatus === 'pending_admin_verification');
+  const hasPending = stillHasPendingPlans || stillHasPendingVisits;
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    siteVisits: updatedVisits,
+    hasPendingSupervisorChanges: hasPending,
+    ...(!hasPending ? { lastSupervisorAction: null } : {}),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Admin Two-Factor Verification: Approve ALL pending changes (plans + visits) for an owner
+ */
+export async function verifyAllPendingInOwner(ownerId, adminUser) {
+  const snap = await getDoc(doc(db, 'house_plans', ownerId));
+  if (!snap.exists()) throw new Error('House Plan project not found');
+
+  const data = snap.data();
+  const currentPlans = Array.isArray(data.plansList) ? data.plansList : [];
+  const currentVisits = Array.isArray(data.siteVisits) ? data.siteVisits : [];
+  const nowIso = new Date().toISOString();
+
+  const updatedPlans = currentPlans.map((p) => {
+    if (p.verificationStatus === 'pending_admin_verification') {
+      return {
+        ...p,
+        verificationStatus: 'verified',
+        verifiedBy: adminUser?.name || 'Admin',
+        verifiedByUid: adminUser?.uid || '',
+        verifiedAt: nowIso,
+      };
+    }
+    return p;
+  });
+
+  const updatedVisits = currentVisits.map((v) => {
+    if (v.verificationStatus === 'pending_admin_verification') {
+      return {
+        ...v,
+        verificationStatus: 'verified',
+        verifiedBy: adminUser?.name || 'Admin',
+        verifiedByUid: adminUser?.uid || '',
+        verifiedAt: nowIso,
+      };
+    }
+    return v;
+  });
+
+  await updateDoc(doc(db, 'house_plans', ownerId), {
+    plansList: updatedPlans,
+    siteVisits: updatedVisits,
+    hasPendingSupervisorChanges: false,
+    lastSupervisorAction: null,
+    lastAdminVerifiedAt: serverTimestamp(),
+    lastAdminVerifiedBy: adminUser?.name || 'Admin',
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * Toggle plan status (e.g. Quick Mark Complete / Pending)
  */
 export async function togglePlanStatus(ownerId, planItemId, currentStatus) {

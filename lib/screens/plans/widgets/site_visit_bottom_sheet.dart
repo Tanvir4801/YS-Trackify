@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/haptic_utils.dart';
 import '../../../models/house_plan_model.dart';
 import '../../../providers/house_plans_provider.dart';
+import '../../../services/session_service.dart';
 
 class SiteVisitBottomSheet extends StatefulWidget {
   final HousePlanOwner owner;
@@ -107,10 +108,15 @@ class _SiteVisitBottomSheetState extends State<SiteVisitBottomSheet> {
 
       if (mounted) {
         Navigator.pop(context);
+        final isSupervisor = SessionService.instance.role == 'supervisor';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: AppColors.successColor(context),
-            content: Text('✓ Site visit recorded (Rs. ${amount.round()}) for ${widget.owner.ownerName}'),
+            content: Text(
+              isSupervisor
+                  ? '✓ Site visit logged (₹${amount.round()}) • Sent for Admin Verification'
+                  : '✓ Site visit recorded (₹${amount.round()}) for ${widget.owner.ownerName}',
+            ),
           ),
         );
       }

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/house_plan_model.dart';
 import '../services/house_plans_service.dart';
 import '../services/notification_service.dart';
+import '../services/session_service.dart';
 
 class HousePlansProvider extends ChangeNotifier {
   final HousePlansService _service;
@@ -112,21 +113,41 @@ class HousePlansProvider extends ChangeNotifier {
     required String ownerId,
     required String planId,
     required String newStatus,
+    String? userRole,
+    String? userName,
+    String? userUid,
   }) async {
+    final role = userRole ?? SessionService.instance.role ?? 'contractor';
+    final name = userName ?? SessionService.instance.name ?? 'Supervisor';
+    final uid = userUid ?? SessionService.instance.uid ?? '';
+
     await _service.updateDrawingStatus(
       ownerId: ownerId,
       planId: planId,
       newStatus: newStatus,
+      userRole: role,
+      userName: name,
+      userUid: uid,
     );
   }
 
   Future<void> addSiteVisit({
     required String ownerId,
     required HouseSiteVisit visit,
+    String? userRole,
+    String? userName,
+    String? userUid,
   }) async {
+    final role = userRole ?? SessionService.instance.role ?? 'contractor';
+    final name = userName ?? SessionService.instance.name ?? 'Supervisor';
+    final uid = userUid ?? SessionService.instance.uid ?? '';
+
     await _service.addSiteVisit(
       ownerId: ownerId,
       visit: visit,
+      userRole: role,
+      userName: name,
+      userUid: uid,
     );
   }
 
@@ -137,6 +158,49 @@ class HousePlansProvider extends ChangeNotifier {
     await _service.deleteSiteVisit(
       ownerId: ownerId,
       visitId: visitId,
+    );
+  }
+
+  /// Admin 2-Factor Verification: Approve a specific drawing changed by supervisor.
+  Future<void> verifyDrawingChange({
+    required String ownerId,
+    required String planId,
+  }) async {
+    final uid = SessionService.instance.uid ?? '';
+    final name = SessionService.instance.name ?? 'Admin';
+    await _service.verifyDrawingChange(
+      ownerId: ownerId,
+      planId: planId,
+      adminUid: uid,
+      adminName: name,
+    );
+  }
+
+  /// Admin 2-Factor Verification: Approve a site visit logged by supervisor.
+  Future<void> verifySiteVisit({
+    required String ownerId,
+    required String visitId,
+  }) async {
+    final uid = SessionService.instance.uid ?? '';
+    final name = SessionService.instance.name ?? 'Admin';
+    await _service.verifySiteVisit(
+      ownerId: ownerId,
+      visitId: visitId,
+      adminUid: uid,
+      adminName: name,
+    );
+  }
+
+  /// Admin 2-Factor Verification: Approve ALL pending changes for an owner.
+  Future<void> verifyAllPendingChanges({
+    required String ownerId,
+  }) async {
+    final uid = SessionService.instance.uid ?? '';
+    final name = SessionService.instance.name ?? 'Admin';
+    await _service.verifyAllPendingChanges(
+      ownerId: ownerId,
+      adminUid: uid,
+      adminName: name,
     );
   }
 

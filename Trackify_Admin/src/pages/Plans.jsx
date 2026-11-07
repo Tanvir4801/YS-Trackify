@@ -43,6 +43,8 @@ import {
   ListPlus,
   CheckSquare,
   Square,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -69,6 +71,10 @@ import {
   addSiteVisitToOwner,
   updateSiteVisitInOwner,
   deleteSiteVisitFromOwner,
+  verifyPlanInOwner,
+  revertPlanInOwner,
+  verifySiteVisitInOwner,
+  verifyAllPendingInOwner,
   DEFAULT_SITE_VISIT_PRESETS,
   saveMasterPlanCatalog,
   DEFAULT_MASTER_PLANS,
@@ -972,6 +978,51 @@ export default function Plans() {
     }
   };
 
+  // Admin Two-Factor Verification handlers
+  const handleVerifyPlan = async (planId, planName) => {
+    if (!activeOwner) return;
+    try {
+      await verifyPlanInOwner(activeOwner.id, planId, { name: userName || 'Admin', uid: scopeId });
+      toast.success(`Verified: ${extractPureMainName(planName)}`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to verify plan');
+    }
+  };
+
+  const handleRevertPlan = async (planId, planName) => {
+    if (!activeOwner) return;
+    try {
+      await revertPlanInOwner(activeOwner.id, planId, { name: userName || 'Admin', uid: scopeId });
+      toast.success(`Reverted: ${extractPureMainName(planName)} to In Progress`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to revert plan');
+    }
+  };
+
+  const handleVerifyVisit = async (visitId, purpose) => {
+    if (!activeOwner) return;
+    try {
+      await verifySiteVisitInOwner(activeOwner.id, visitId, { name: userName || 'Admin', uid: scopeId });
+      toast.success(`Verified visit: ${purpose}`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to verify visit');
+    }
+  };
+
+  const handleVerifyAllPending = async () => {
+    if (!activeOwner) return;
+    try {
+      await verifyAllPendingInOwner(activeOwner.id, { name: userName || 'Admin', uid: scopeId });
+      toast.success('All supervisor changes verified & approved!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to verify all changes');
+    }
+  };
+
   // Change plan status directly
   const handleChangePlanStatus = async (planId, status) => {
     if (!activeOwner) return;
@@ -1690,14 +1741,26 @@ export default function Plans() {
                 <div>
                   {/* Top Bar: Clean Plan No Badge & Distinct Plan Fee + Visit Badges */}
                   <div className="flex items-center justify-between gap-2 mb-4">
-                    <span
-                      onClick={(e) => copyToClipboard(e, owner.planNumber, 'Plan No')}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-mono text-xs font-bold rounded-lg shadow-sm transition-colors shrink-0"
-                      title="Click to copy Plan No"
-                    >
-                      <Compass className="w-3.5 h-3.5 text-gold" />
-                      <span>{owner.planNumber || 'PLN'}</span>
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        onClick={(e) => copyToClipboard(e, owner.planNumber, 'Plan No')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-mono text-xs font-bold rounded-lg shadow-sm transition-colors"
+                        title="Click to copy Plan No"
+                      >
+                        <Compass className="w-3.5 h-3.5 text-gold" />
+                        <span>{owner.planNumber || 'PLN'}</span>
+                      </span>
+
+                      {owner.hasPendingSupervisorChanges && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-500/15 border border-amber-500/40 text-amber-600 dark:text-amber-400 text-[10px] font-extrabold rounded-lg shadow-xs animate-pulse"
+                          title="Supervisor changes awaiting admin verification"
+                        >
+                          <ShieldAlert className="w-3 h-3 text-amber-500" />
+                          <span>Review</span>
+                        </span>
+                      )}
+                    </div>
 
                     {/* Distinct Badges for Plan Fee & Visit Fee */}
                     <div className="flex flex-wrap items-center justify-end gap-1.5 max-w-[70%]">
@@ -2330,6 +2393,36 @@ export default function Plans() {
                 {/* ════ TAB 1: PLANS WORKFLOW ════ */}
                 {ownerTab === 'plans' && (
                   <div className="space-y-4">
+                    {/* ── ADMIN TWO-FACTOR VERIFICATION ALERT BANNER ── */}
+                    {activeOwner.hasPendingSupervisorChanges && (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-xl bg-amber-500/10 border-2 border-amber-500/40 shadow-sm animate-pulse-subtle">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-xl bg-amber-500 text-white shadow-xs shrink-0">
+                            <ShieldAlert className="w-5 h-5 stroke-[2.5]" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-extrabold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                              <span>Admin Two-Factor Verification Needed</span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                                Action Required
+                              </span>
+                            </h4>
+                            <p className="text-xs text-text-muted mt-0.5 leading-snug">
+                              {activeOwner.lastSupervisorAction || 'Supervisor updated drawings or site visits in this project. Please review and confirm.'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleVerifyAllPending}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg shadow-sm hover:scale-105 active:scale-95 transition-all shrink-0"
+                          title="Approve all supervisor drawing and visit changes at once"
+                        >
+                          <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
+                          <span>Approve All Supervisor Changes</span>
+                        </button>
+                      </div>
+                    )}
+
                     {/* Controls Bar for Plans */}
                     <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-bg-elevated/40 border border-border-strong rounded-xl p-3.5">
                       <div className="flex flex-wrap items-center gap-3">
@@ -2474,10 +2567,10 @@ export default function Plans() {
                                     className="p-3.5 sm:p-4 rounded-xl border-2 border-emerald-500/40 hover:border-emerald-500 bg-bg-card hover:bg-emerald-500/[0.03] shadow-sm transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5"
                                   >
                                     <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-                                      {/* Plan Number Badge */}
+                                      {/* Plan Number Badge - Fixed non-clipping width */}
                                       {planBadgeNum && (
-                                        <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shrink-0 shadow-2xs">
-                                          {planBadgeNum}
+                                        <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shrink-0 shadow-2xs min-w-[34px] text-center inline-block">
+                                          {String(planBadgeNum).padStart(2, '0')}
                                         </span>
                                       )}
 
@@ -2502,11 +2595,39 @@ export default function Plans() {
                                             <span>Completed on {plan.completedDate}</span>
                                           </p>
                                         )}
+
+                                        {plan.verificationStatus === 'pending_admin_verification' && (
+                                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-xs font-bold mt-1.5 w-fit">
+                                            <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                                            <span>Changed by Supervisor ({plan.modifiedByName || 'Supervisor'}) • Pending Admin Verification</span>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
 
                                     {/* Status Dropdown & Toggle Button */}
-                                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0 flex-wrap">
+                                      {plan.verificationStatus === 'pending_admin_verification' && (
+                                        <div className="flex items-center gap-1.5 mr-1">
+                                          <button
+                                            onClick={() => handleVerifyPlan(plan.id, plan.name)}
+                                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all hover:scale-105 active:scale-95"
+                                            title="Approve & verify supervisor's change"
+                                          >
+                                            <ShieldCheck className="w-3.5 h-3.5" />
+                                            <span>Verify & Approve</span>
+                                          </button>
+                                          <button
+                                            onClick={() => handleRevertPlan(plan.id, plan.name)}
+                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-bg-input border border-border-strong text-text-muted hover:text-danger hover:border-danger/40 transition-all"
+                                            title="Revert change back to in progress"
+                                          >
+                                            <RotateCcw className="w-3 h-3" />
+                                            <span>Revert</span>
+                                          </button>
+                                        </div>
+                                      )}
+
                                       <select
                                         value={plan.status}
                                         onChange={(e) => handleChangePlanStatus(plan.id, e.target.value)}
@@ -2576,10 +2697,10 @@ export default function Plans() {
                                     className="p-3.5 sm:p-4 rounded-xl border border-border-strong hover:border-amber-400/80 bg-bg-card hover:bg-bg-elevated/40 shadow-xs transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5"
                                   >
                                     <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-                                      {/* Plan Number Badge */}
+                                      {/* Plan Number Badge - Fixed non-clipping width */}
                                       {planBadgeNum && (
-                                        <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shrink-0 shadow-2xs">
-                                          {planBadgeNum}
+                                        <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shrink-0 shadow-2xs min-w-[34px] text-center inline-block">
+                                          {String(planBadgeNum).padStart(2, '0')}
                                         </span>
                                       )}
 
@@ -2598,11 +2719,39 @@ export default function Plans() {
                                             {plan.notes}
                                           </p>
                                         )}
+
+                                        {plan.verificationStatus === 'pending_admin_verification' && (
+                                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-xs font-bold mt-1.5 w-fit">
+                                            <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                                            <span>Changed by Supervisor ({plan.modifiedByName || 'Supervisor'}) • Pending Admin Verification</span>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
 
                                     {/* Status Dropdown & Toggle Button */}
-                                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0 flex-wrap">
+                                      {plan.verificationStatus === 'pending_admin_verification' && (
+                                        <div className="flex items-center gap-1.5 mr-1">
+                                          <button
+                                            onClick={() => handleVerifyPlan(plan.id, plan.name)}
+                                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all hover:scale-105 active:scale-95"
+                                            title="Approve & verify supervisor's change"
+                                          >
+                                            <ShieldCheck className="w-3.5 h-3.5" />
+                                            <span>Verify & Approve</span>
+                                          </button>
+                                          <button
+                                            onClick={() => handleRevertPlan(plan.id, plan.name)}
+                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-bg-input border border-border-strong text-text-muted hover:text-danger hover:border-danger/40 transition-all"
+                                            title="Revert change back to in progress"
+                                          >
+                                            <RotateCcw className="w-3 h-3" />
+                                            <span>Revert</span>
+                                          </button>
+                                        </div>
+                                      )}
+
                                       <select
                                         value={plan.status}
                                         onChange={(e) => handleChangePlanStatus(plan.id, e.target.value)}
@@ -2805,6 +2954,12 @@ export default function Plans() {
                                       {visit.notes}
                                     </div>
                                   )}
+                                  {visit.verificationStatus === 'pending_admin_verification' && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 rounded-md mt-1">
+                                      <ShieldAlert className="w-3 h-3 text-amber-500" />
+                                      <span>Supervisor Entry ({visit.recordedByName || 'Supervisor'}) • Pending Verification</span>
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="py-3.5 px-4 whitespace-nowrap">
                                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
@@ -2817,6 +2972,15 @@ export default function Plans() {
                                 </td>
                                 <td className="py-3.5 px-4 text-right whitespace-nowrap">
                                   <div className="flex items-center justify-end gap-1">
+                                    {visit.verificationStatus === 'pending_admin_verification' && (
+                                      <button
+                                        onClick={() => handleVerifyVisit(visit.id, visit.purpose)}
+                                        className="p-1.5 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg transition-colors"
+                                        title="Approve & Verify this Site Visit"
+                                      >
+                                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => handleOpenEditVisit(visit)}
                                       className="p-1.5 hover:bg-gold/15 text-text-muted hover:text-gold rounded-lg transition-colors"

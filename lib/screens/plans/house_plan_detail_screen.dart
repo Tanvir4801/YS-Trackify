@@ -11,6 +11,7 @@ import '../../models/house_plan_model.dart';
 import '../../providers/branding_provider.dart';
 import '../../providers/house_plans_provider.dart';
 import '../../services/house_plan_pdf_service.dart';
+import '../../services/session_service.dart';
 import '../../widgets/animations/bouncy_tap.dart';
 import 'widgets/site_visit_bottom_sheet.dart';
 
@@ -49,8 +50,8 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
+      await Clipboard.setData(ClipboardData(text: clean));
       if (mounted) {
-        await Clipboard.setData(ClipboardData(text: clean));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Phone number $clean copied to clipboard'),
@@ -212,8 +213,98 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     final inProgress = owner.inProgressDrawings;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
+        // ── SUPERVISOR TWO-FACTOR VERIFICATION ALERT BANNER ──
+        if (owner.hasPendingSupervisorChanges) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDark
+                    ? [const Color(0xFF2E1C07), const Color(0xFF1F1505)]
+                    : [const Color(0xFFFEF3C7), const Color(0xFFFFFBEB)],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.45 : 0.55),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.12 : 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.shield_outlined, color: Color(0xFFF59E0B), size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Admin Verification Pending',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${owner.pendingVerificationCount} change(s) by supervisor awaiting admin approval.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? const Color(0xFFE2E8F0) : const Color(0xFF475569),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (SessionService.instance.role != 'supervisor') ...[
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () async {
+                      HapticUtils.select();
+                      await provider.verifyAllPendingChanges(ownerId: owner.id);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            backgroundColor: Color(0xFF10B981),
+                            content: Text('✓ All supervisor changes verified & approved!'),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      elevation: 0,
+                    ),
+                    child: const Text('Approve All'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+
         // Quick progress summary card
         Container(
           padding: const EdgeInsets.all(16),
@@ -325,6 +416,215 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     );
   }
 
+  /// Confirmation Dialog before changing drawing status to prevent accidental taps
+  Future<void> _confirmToggleDrawingStatus({
+    required BuildContext context,
+    required HousePlanDrawing drawing,
+    required HousePlanOwner owner,
+    required HousePlansProvider provider,
+    required bool isCompleted,
+  }) async {
+    final nextStatus = isCompleted ? 'in_progress' : 'completed';
+    final actionWord = isCompleted ? 'revert this drawing back to In Progress' : 'mark this drawing as Completed';
+    final isSupervisor = SessionService.instance.role == 'supervisor';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final emerald = AppColors.successColor(ctx);
+        final warning = AppColors.warningColor(ctx);
+
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF132238) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+          contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: (isCompleted ? warning : emerald).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isCompleted ? Icons.replay_rounded : Icons.check_circle_rounded,
+                  color: isCompleted ? warning : emerald,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  isCompleted ? 'Revert Drawing Status?' : 'Complete Drawing?',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to $actionWord?',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F1A2A) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF91AAC8).withValues(alpha: 0.15) : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: (isCompleted ? emerald : warning).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        drawing.num.padLeft(2, '0'),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isCompleted ? emerald : warning,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            drawing.displayName,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            drawing.category,
+                            style: TextStyle(fontSize: 11, color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSupervisor) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.shield_outlined, size: 16, color: Color(0xFFF59E0B)),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Supervisor Action: Change will be sent to Admin for final verification.',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFD97706)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isCompleted ? warning : emerald,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text(isCompleted ? 'Yes, Revert' : 'Yes, Complete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      HapticUtils.select();
+      await provider.toggleDrawingStatus(
+        ownerId: owner.id,
+        planId: drawing.id,
+        newStatus: nextStatus,
+        userRole: SessionService.instance.role,
+        userName: SessionService.instance.name,
+        userUid: SessionService.instance.uid,
+      );
+
+      if (context.mounted) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  nextStatus == 'completed' ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                  color: nextStatus == 'completed' ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isSupervisor
+                      ? '${drawing.displayName} updated (Awaiting Admin Verification)'
+                      : '${drawing.displayName} marked ${nextStatus == 'completed' ? 'Completed' : 'In Progress'}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            action: SnackBarAction(
+              label: 'UNDO',
+              textColor: const Color(0xFFF5A623),
+              onPressed: () async {
+                await provider.toggleDrawingStatus(
+                  ownerId: owner.id,
+                  planId: drawing.id,
+                  newStatus: drawing.status,
+                  userRole: SessionService.instance.role,
+                  userName: SessionService.instance.name,
+                  userUid: SessionService.instance.uid,
+                );
+              },
+            ),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildDrawingItem({
     required HousePlanDrawing drawing,
     required HousePlanOwner owner,
@@ -337,6 +637,7 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
   }) {
     final emerald = AppColors.successColor(context);
     final warning = AppColors.warningColor(context);
+    final isSupervisor = SessionService.instance.role == 'supervisor';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 9),
@@ -355,128 +656,222 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
         borderRadius: BorderRadius.circular(14),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isCompleted
-                    ? [
-                        emerald.withValues(alpha: isDark ? 0.16 : 0.10),
-                        emerald.withValues(alpha: isDark ? 0.08 : 0.04),
-                      ]
-                    : [
-                        isDark ? const Color(0xFF16253D).withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.85),
-                        isDark ? const Color(0xFF0F1A2A).withValues(alpha: 0.75) : const Color(0xFFF8FAFC).withValues(alpha: 0.80),
-                      ],
-              ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isCompleted
-                    ? emerald.withValues(alpha: 0.45)
-                    : (isDark ? const Color(0xFF91AAC8).withValues(alpha: 0.16) : Colors.white.withValues(alpha: 0.8)),
-                width: 1,
+              onTap: () => _confirmToggleDrawingStatus(
+                context: context,
+                drawing: drawing,
+                owner: owner,
+                provider: provider,
+                isCompleted: isCompleted,
               ),
-            ),
-            child: Row(
-              children: [
-                // Number badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
-                  decoration: BoxDecoration(
-                    color: isCompleted ? emerald.withValues(alpha: 0.22) : (isDark ? const Color(0xFF0F1A2A) : const Color(0xFFF1F5F9)),
-                    borderRadius: BorderRadius.circular(7),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isCompleted
+                        ? [
+                            emerald.withValues(alpha: isDark ? 0.16 : 0.10),
+                            emerald.withValues(alpha: isDark ? 0.08 : 0.04),
+                          ]
+                        : [
+                            isDark ? const Color(0xFF16253D).withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.85),
+                            isDark ? const Color(0xFF0F1A2A).withValues(alpha: 0.75) : const Color(0xFFF8FAFC).withValues(alpha: 0.80),
+                          ],
                   ),
-                  child: Text(
-                    drawing.num,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: isCompleted ? emerald : textMuted,
-                    ),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: drawing.isPendingAdminVerification
+                        ? const Color(0xFFF59E0B).withValues(alpha: 0.60)
+                        : (isCompleted
+                            ? emerald.withValues(alpha: 0.45)
+                            : (isDark ? const Color(0xFF91AAC8).withValues(alpha: 0.16) : Colors.white.withValues(alpha: 0.8))),
+                    width: drawing.isPendingAdminVerification ? 1.5 : 1,
                   ),
                 ),
-                const SizedBox(width: 12),
-
-                // Title & category
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        drawing.name,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: textPrimary,
+                child: Row(
+                  children: [
+                    // High-contrast, non-clipping 2-digit number badge
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isCompleted
+                            ? emerald.withValues(alpha: 0.22)
+                            : (isDark ? const Color(0xFF0F1A2A) : const Color(0xFFF1F5F9)),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isCompleted
+                              ? emerald.withValues(alpha: 0.45)
+                              : (isDark ? const Color(0xFF91AAC8).withValues(alpha: 0.20) : const Color(0xFFCBD5E1)),
+                          width: 1,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Row(
+                      child: Text(
+                        drawing.num.padLeft(2, '0'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                          color: isCompleted ? emerald : textMuted,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Title & category & verification pill
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
-                            child: Text(
-                              drawing.category,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 10, color: textMuted),
+                          Text(
+                            drawing.displayName,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
                             ),
                           ),
-                          if (drawing.completedDate != null) ...[
-                            Text(' • ', style: TextStyle(fontSize: 10, color: textMuted)),
-                            Text(
-                              'Done ${drawing.completedDate}',
-                              style: TextStyle(fontSize: 10, color: emerald, fontWeight: FontWeight.bold),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  drawing.category,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 10, color: textMuted),
+                                ),
+                              ),
+                              if (drawing.completedDate != null) ...[
+                                Text(' • ', style: TextStyle(fontSize: 10, color: textMuted)),
+                                Text(
+                                  'Done ${drawing.completedDate}',
+                                  style: TextStyle(fontSize: 10, color: emerald, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (drawing.isPendingAdminVerification) ...[
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF59E0B).withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.shield_outlined, size: 10, color: Color(0xFFF59E0B)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    drawing.modifiedByName != null
+                                        ? 'Pending Admin Verification (${drawing.modifiedByName})'
+                                        : 'Pending Admin Verification',
+                                    style: const TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFFD97706),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ],
                       ),
-                    ],
-                  ),
-                ),
-
-                // 1-Tap Toggle Action Button (Bouncy Animated Glass Button)
-                BouncyTap(
-                  onTap: () async {
-                    HapticUtils.select();
-                    final newStatus = isCompleted ? 'in_progress' : 'completed';
-                    await provider.toggleDrawingStatus(
-                      ownerId: owner.id,
-                      planId: drawing.id,
-                      newStatus: newStatus,
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isCompleted
-                          ? emerald.withValues(alpha: 0.22)
-                          : warning.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isCompleted ? emerald.withValues(alpha: 0.55) : warning.withValues(alpha: 0.45),
-                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                          size: 14,
-                          color: isCompleted ? emerald : warning,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          isCompleted ? 'Done' : 'Mark Done',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: isCompleted ? emerald : warning,
+
+                    // Action: Either Admin Approve quick action or Status Toggle button
+                    if (!isSupervisor && drawing.isPendingAdminVerification) ...[
+                      BouncyTap(
+                        onTap: () async {
+                          HapticUtils.select();
+                          await provider.verifyDrawingChange(
+                            ownerId: owner.id,
+                            planId: drawing.id,
+                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xFF10B981),
+                                content: Text('✓ Verified: ${drawing.displayName}'),
+                              ),
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.20),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.verified_rounded, size: 12, color: Color(0xFF10B981)),
+                              SizedBox(width: 3),
+                              Text(
+                                'Approve',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
+                    ],
+
+                    // Confirmation-guarded Toggle Action Button
+                    BouncyTap(
+                      onTap: () => _confirmToggleDrawingStatus(
+                        context: context,
+                        drawing: drawing,
+                        owner: owner,
+                        provider: provider,
+                        isCompleted: isCompleted,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isCompleted
+                              ? emerald.withValues(alpha: 0.22)
+                              : warning.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isCompleted ? emerald.withValues(alpha: 0.55) : warning.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                              size: 14,
+                              color: isCompleted ? emerald : warning,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isCompleted ? 'Done' : 'Mark Done',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isCompleted ? emerald : warning,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -497,7 +892,7 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     final visits = owner.siteVisits;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
         // Visits financial banner
         Container(
@@ -648,6 +1043,64 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                             ),
                           ),
                         ],
+                        if (v.isPendingAdminVerification) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.shield_outlined, size: 10, color: Color(0xFFF59E0B)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      v.recordedByName != null
+                                          ? 'Pending Admin Verification (${v.recordedByName})'
+                                          : 'Pending Admin Verification',
+                                      style: const TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFFD97706),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (SessionService.instance.role != 'supervisor') ...[
+                                const SizedBox(width: 6),
+                                InkWell(
+                                  onTap: () async {
+                                    HapticUtils.select();
+                                    await provider.verifySiteVisit(ownerId: owner.id, visitId: v.id);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          backgroundColor: Color(0xFF10B981),
+                                          content: Text('✓ Visit verified & approved!'),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981).withValues(alpha: 0.20),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                                    ),
+                                    child: const Text('Approve', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -727,7 +1180,7 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     final amber = AppColors.warningColor(context);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
         // 3-Row Comprehensive Breakdown (Same as Web Admin)
         Container(
