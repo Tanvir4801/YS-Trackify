@@ -785,56 +785,6 @@ export async function generateHousePlanInvoicePDF({
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 8. TERMS, CONDITIONS & AUTHORIZED SIGNATURE BLOCKS
-  // ─────────────────────────────────────────────────────────────────────────
-  const termsBoxH = 13;
-  const sigBoxH = 18;
-  const neededSignSpace = termsBoxH + sigBoxH + 6; // ~37mm total
-  const currentFinalY = doc.lastAutoTable.finalY;
-  const bottomFooterLimit = pageHeight - 12; // 285mm (above bottom footer line)
-
-  let signY;
-  // If content cannot fit on the current page before footer, add page 2
-  if (currentFinalY + neededSignSpace > bottomFooterLimit) {
-    doc.addPage();
-    signY = 16;
-  } else {
-    // If it fits on the current page (e.g. single-page bill with <= 8-10 plans):
-    // Anchor gracefully towards bottom to give a balanced, filled-out appearance
-    const minSignY = currentFinalY + 5;
-    const bottomAnchoredY = bottomFooterLimit - neededSignSpace - 2;
-    // On page 1 with few plans, anchor towards bottom; on continuation page, keep reasonably close
-    signY = doc.internal.getNumberOfPages() === 1
-      ? Math.max(minSignY, bottomAnchoredY)
-      : Math.max(minSignY, Math.min(minSignY + 12, bottomAnchoredY));
-  }
-
-  // --- Terms Box (2 Clean Balanced Columns) ---
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(margin, signY, pageWidth - margin * 2, termsBoxH, 1.5, 1.5, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.8);
-  doc.setTextColor(15, 23, 42);
-  doc.text('TERMS & CONDITIONS:', margin + 3.5, signY + 3.6);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.1);
-  doc.setTextColor(100, 116, 139);
-  const termsColW = (pageWidth - margin * 2 - 8) / 2;
-
-  // Left terms column
-  doc.text('1. Structural drawings designed per IS 456 / NBC loading & soil standards.', margin + 3.5, signY + 7.2);
-  doc.text('2. Sanction plans & loan estimates certified for municipal & banking valuation.', margin + 3.5, signY + 10.6);
-
-  // Right terms column
-  const termsRightX = margin + termsColW + 6;
-  doc.text('3. Any revisions beyond agreed architectural draft will be charged as per schedule.', termsRightX, signY + 7.2);
-  doc.text('4. Complete drawing set & CAD soft copies released upon full plan fee settlement.', termsRightX, signY + 10.6);
-
-  // ─────────────────────────────────────────────────────────────────────────
   // 9. CLEAN FOOTER & MULTI-PAGE NUMBERING (NO WATERMARK)
   // ─────────────────────────────────────────────────────────────────────────
   const pageCount = doc.internal.getNumberOfPages();

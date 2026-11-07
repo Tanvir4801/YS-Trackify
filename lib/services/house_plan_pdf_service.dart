@@ -158,11 +158,7 @@ class HousePlanPdfService {
             hasSiteVisits: hasSiteVisits,
             visitsCount: owner.siteVisits.length,
           ),
-          pw.SizedBox(height: 12),
-
-          // ── 7. COMPACT LEGAL NOTE ──
-          _buildTermsNote(),
-          pw.SizedBox(height: 24),
+          pw.SizedBox(height: 20),
         ],
       ),
     );
@@ -700,26 +696,6 @@ class HousePlanPdfService {
           ),
         ),
       ],
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 7. COMPACT LEGAL NOTE (Replaces signature block)
-  // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildTermsNote() {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: const pw.BoxDecoration(
-        color: _cSlate50,
-        borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
-      ),
-      child: pw.Text(
-        '* This is a computer-generated architectural consultancy billing statement. Dimensions must be verified on site prior to structural execution. Site visit charges apply per inspection as logged.',
-        style: const pw.TextStyle(
-          fontSize: 7,
-          color: _cSlate500,
-        ),
-      ),
     );
   }
 
