@@ -572,7 +572,7 @@ export async function generateHousePlanInvoicePDF({
 
   if (siteVisits.length > 0) {
     doc.addPage();
-    const visitsSectionY = 20;
+    const visitsSectionY = 53;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
@@ -841,17 +841,20 @@ export async function generateHousePlanInvoicePDF({
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
 
-    // Top Header Mini-strip on continuation pages (Page 2+)
+    // Top Header Mini-strip on continuation pages (Page 2+) placed below 44mm letterhead space
     if (i > 1) {
-      doc.setFillColor(15, 23, 42);
-      doc.rect(0, 0, pageWidth, 5.5, 'F');
-      doc.setFillColor(...rgbTheme);
-      doc.rect(0, 5.2, pageWidth, 0.3, 'F');
-      doc.setFontSize(7);
+      doc.setFontSize(7.5);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(255, 255, 255);
-      doc.text(`${companyName.toUpperCase()} — PLANNING INVOICE & DELIVERABLES (Ref: ${billInvoiceNo})`, margin, 3.8);
-      doc.text(`Client: ${ownerName}`, pageWidth - margin, 3.8, { align: 'right' });
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Client: ${ownerName.toUpperCase()}`, margin, 46.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Plan Ref: #${planNumber} • Site Visits & Billing Statement`, pageWidth - margin, 46.5, { align: 'right' });
+
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(margin, 48.5, pageWidth - margin, 48.5);
     }
 
     // Bottom footer line

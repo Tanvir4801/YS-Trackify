@@ -724,28 +724,34 @@ class HousePlanPdfService {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // CONTINUATION HEADER (Page 2+)
+  // CONTINUATION HEADER (Page 2+): Same 44mm top blank space as Page 1
   // ───────────────────────────────────────────────────────────────────────────
   static pw.Widget _buildContinuationHeader(String ownerName, String planNumber) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(top: 10, bottom: 8),
-      padding: const pw.EdgeInsets.only(bottom: 4),
-      decoration: const pw.BoxDecoration(
-        border: pw.Border(bottom: pw.BorderSide(color: _cSlate200, width: 0.8)),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            'Client: ${ownerName.toUpperCase()}',
-            style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate700),
+    return pw.Column(
+      children: [
+        // Exactly same 44mm blank white space as Page 1 for physical pre-printed letterhead
+        pw.SizedBox(height: 44 * PdfPageFormat.mm),
+        pw.Container(
+          margin: const pw.EdgeInsets.only(bottom: 8),
+          padding: const pw.EdgeInsets.only(bottom: 4),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(bottom: pw.BorderSide(color: _cSlate200, width: 0.8)),
           ),
-          pw.Text(
-            'Plan Ref: #$planNumber • Site Visits & Billing Statement',
-            style: const pw.TextStyle(fontSize: 8, color: _cSlate500),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Client: ${ownerName.toUpperCase()}',
+                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate700),
+              ),
+              pw.Text(
+                'Plan Ref: #$planNumber • Site Visits & Billing Statement',
+                style: const pw.TextStyle(fontSize: 8, color: _cSlate500),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
