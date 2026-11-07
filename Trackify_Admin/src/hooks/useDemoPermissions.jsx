@@ -13,10 +13,14 @@ import toast from 'react-hot-toast';
  */
 export function useDemoPermissions() {
   const role = useAuthStore((s) => s.role);
+  const email = useAuthStore((s) => s.email);
+  const contractorId = useAuthStore((s) => s.activeContractorId || s.userContractorId || s.contractorId);
   const isDemoStore = Boolean(useAuthStore((s) => s.isDemo));
   const isDemoStorage =
     typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true';
-  const isDemo = role === 'demo' || isDemoStore || isDemoStorage;
+  const isDemoContractor = contractorId === 'trackify_demo';
+  const isDemoEmail = email === 'demo@trackify.work' || email === 'demo@xyz.com';
+  const isDemo = role === 'demo' || isDemoStore || isDemoStorage || isDemoContractor || isDemoEmail;
 
   const canRead = true;
   const canWrite = !isDemo;

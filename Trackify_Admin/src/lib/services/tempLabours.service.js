@@ -22,6 +22,12 @@ export function subscribeTempLabours(contractorId, onData) {
 }
 
 export async function getTempLaboursByDate(contractorId, date) {
+  if (
+    contractorId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    return [];
+  }
   const constraints = [
     where('contractorId', '==', contractorId),
     where('date', '==', date)
@@ -106,6 +112,12 @@ export async function deleteTempLabourEntry(entryId) {
 // Requires composite index: temp_labour_entries (contractorId ASC, date ASC) — see firestore.indexes.json.
 export async function getTempLaboursByDateRange(contractorId, startDate, endDate) {
   if (!contractorId) return [];
+  if (
+    contractorId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    return [];
+  }
 
   const q = query(
     collection(db, COLLECTION_NAME),

@@ -2,26 +2,26 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../store/authStore';
-import { OFFICIAL_YS_LOGO_DATA_URL } from '../assets/ysLogoBase64';
+import { DEMO_BRANDING } from '../lib/demoData';
 
 const BrandingContext = createContext(null);
 
 export const DEFAULT_BRANDING = {
-  companyName:    'YS Construction',
-  tagline:        'Architecture, Planner, Consultant, Interior Designer',
-  address:        'Gokuldham Complex, Opp. Doodh Dairy, ANGALDHARA, Ta. Mahuva, Dist. Surat',
-  phone:          '+91 80003 40720, +91 99044 45077',
-  email:          'ysconstruction24@gmail.com',
-  gstNumber:      '',
-  logoUrl:        '/ys_logo.png',
-  logoDataUrl:    OFFICIAL_YS_LOGO_DATA_URL,
+  companyName:    'XYZ Construction',
+  tagline:        'Civil Engineering & Infrastructure Contractors',
+  address:        'Corporate Tower, Tech Park Zone, Sector 4, Metro City',
+  phone:          '+91 98765 00000',
+  email:          'contact@xyz-construction.demo',
+  gstNumber:      '24AAAAA0000A1Z5',
+  logoUrl:        null,
+  logoDataUrl:    null,
   logoStoragePath:null,
   themeColor:     '#F5A623',
   themeColorDark: '#D97706',
   themeColorLight:'#FEF3C7',
-  pdfHeaderNote:  'Thank you for partnering with YS Construction',
-  invoicePrefix:  'INV',
-  isSetup:        false,
+  pdfHeaderNote:  'Thank you for partnering with XYZ Construction',
+  invoicePrefix:  'XYZ',
+  isSetup:        true,
 };
 
 export function BrandingProvider({ children }) {
@@ -31,12 +31,33 @@ export function BrandingProvider({ children }) {
     if (s.role === 'contractor') return s.userContractorId || s.activeContractorId || s.uid;
     return s.userContractorId || s.uid;
   });
+  const isDemoStore = Boolean(useAuthStore((s) => s.isDemo));
+  const isDemoStorage =
+    typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true';
+  const isDemo = isDemoStore || isDemoStorage || contractorId === 'trackify_demo';
   
   const [branding, setBranding] = useState(() => {
+    if (isDemo) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('trackify_cached_branding');
+        localStorage.removeItem('trackify_brand_logo_data_url');
+      }
+      return DEMO_BRANDING;
+    }
     try {
       const cached = typeof window !== 'undefined' ? localStorage.getItem('trackify_cached_branding') : null;
       if (cached) {
         const parsed = JSON.parse(cached);
+        // Clean out any legacy hardcoded YS references from previous localStorage sessions
+        if (
+          parsed.companyName === 'YS Construction' ||
+          parsed.companyName === 'YS_Construction' ||
+          (parsed.phone && parsed.phone.includes('8000340720'))
+        ) {
+          localStorage.removeItem('trackify_cached_branding');
+          localStorage.removeItem('trackify_brand_logo_data_url');
+          return DEMO_BRANDING;
+        }
         const cachedLogoData = localStorage.getItem('trackify_brand_logo_data_url');
         return {
           ...DEFAULT_BRANDING,
@@ -48,9 +69,16 @@ export function BrandingProvider({ children }) {
     return DEFAULT_BRANDING;
   });
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isDemo);
 
   useEffect(() => {
+    if (isDemo) {
+      setBranding(DEMO_BRANDING);
+      setLoading(false);
+      applyTheme(DEMO_BRANDING.themeColor || '#F5A623');
+      return;
+    }
+
     if (!contractorId) {
       setLoading(false);
       return;
@@ -102,7 +130,7 @@ export function BrandingProvider({ children }) {
       unsub();
       clearTimeout(fallbackTimer);
     };
-  }, [contractorId]);
+  }, [contractorId, isDemo]);
 
   const applyTheme = (hex) => {
     const root = document.documentElement;
@@ -120,6 +148,10 @@ export function BrandingProvider({ children }) {
   };
 
   const updateBranding = async (updates) => {
+    if (isDemo) {
+      setBranding((prev) => ({ ...prev, ...updates }));
+      return;
+    }
     const targetCid = contractorId || useAuthStore.getState().userContractorId || useAuthStore.getState().activeContractorId || useAuthStore.getState().uid;
     if (!targetCid) return;
     const ref = doc(db, 'contractors', targetCid);

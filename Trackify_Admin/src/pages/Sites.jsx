@@ -15,6 +15,7 @@ import { Label } from '../components/ui/label';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import { useDemoPermissions } from '../hooks/useDemoPermissions';
+import { DEMO_SITES } from '../lib/demoData';
 
 function todayStr() {
   return new Date().toISOString().split('T')[0];
@@ -71,6 +72,11 @@ export default function Sites() {
   const [attendanceLoading, setAttendanceLoading] = useState(false);
 
   useEffect(() => {
+    if (isDemo) {
+      setSites(DEMO_SITES);
+      setLoading(false);
+      return;
+    }
     if (!scopeId) { setLoading(false); return; }
     setLoading(true);
     const unsub = subscribeSites(scopeId, (list) => {
@@ -78,7 +84,7 @@ export default function Sites() {
       setLoading(false);
     });
     return unsub;
-  }, [scopeId]);
+  }, [scopeId, isDemo]);
 
   // Subscribe to attendance whenever detail view is open or date changes
   useEffect(() => {

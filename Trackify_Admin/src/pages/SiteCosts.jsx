@@ -13,6 +13,7 @@ import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import Modal from '../components/ui/Modal';
 import Pagination, { usePagination } from '../components/shared/Pagination';
+import { useDemoPermissions } from '../hooks/useDemoPermissions';
 
 const EMPTY_MATERIAL = {
   materialName: '', category: 'Cement', quantity: '', unit: 'Bag', pricePerUnit: '', supplierId: '', supplierName: '', purchaseDate: new Date().toISOString().split('T')[0], siteId: '', remarks: ''
@@ -23,6 +24,7 @@ const EMPTY_EXPENSE = {
 
 export default function SiteCosts() {
   const scopeId = useScopeId();
+  const { isDemo, guardAction } = useDemoPermissions();
   const { materials, expenses, suppliers, tempLabours, isLoading } = useSiteCosts();
   
   const [view, setView] = useState('materials'); // 'materials' | 'expenses'
@@ -73,6 +75,7 @@ export default function SiteCosts() {
   const { page, pageCount, paginated, setPage, total } = usePagination(activeList, pageSize);
 
   const handleSaveMaterial = async () => {
+    if (!guardAction(() => {}, 'Saving material purchases')) return;
     if (!formM.materialName || !formM.quantity || !formM.pricePerUnit || !formM.siteId) {
       return toast.error("Please fill in required fields");
     }
@@ -104,6 +107,7 @@ export default function SiteCosts() {
   };
 
   const handleDeleteMaterial = async (id) => {
+    if (!guardAction(() => {}, 'Deleting material purchases')) return;
     if (deleteConfirm !== id) return setDeleteConfirm(id);
     try {
       await deleteMaterialPurchase(scopeId, id);
@@ -115,6 +119,7 @@ export default function SiteCosts() {
   };
 
   const handleSaveExpense = async () => {
+    if (!guardAction(() => {}, 'Saving site expenses')) return;
     if (!formE.description || !formE.amount || !formE.siteId) {
       return toast.error("Please fill in required fields");
     }
@@ -142,6 +147,7 @@ export default function SiteCosts() {
   };
 
   const handleDeleteExpense = async (id) => {
+    if (!guardAction(() => {}, 'Deleting site expenses')) return;
     if (deleteConfirm !== id) return setDeleteConfirm(id);
     try {
       await deleteSiteExpense(scopeId, id);
@@ -170,10 +176,10 @@ export default function SiteCosts() {
           </p>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => setAddExpenseOpen(true)} className="flex h-9 items-center gap-2 rounded-lg border border-info/30 bg-info/10 px-4 text-[13px] font-medium text-info hover:bg-info hover:text-white transition-colors">
+          <button onClick={() => { if (!guardAction(() => {}, 'Adding site expenses')) return; setAddExpenseOpen(true); }} className="flex h-9 items-center gap-2 rounded-lg border border-info/30 bg-info/10 px-4 text-[13px] font-medium text-info hover:bg-info hover:text-white transition-colors">
             <Plus className="h-4 w-4" /> Add Expense
           </button>
-          <button onClick={() => setAddMaterialOpen(true)} className="flex h-9 items-center gap-2 rounded-lg bg-gold px-4 text-[13px] font-semibold text-bg-primary shadow-[0_0_15px_rgba(245,166,35,0.2)] hover:scale-105 transition-all">
+          <button onClick={() => { if (!guardAction(() => {}, 'Adding material purchases')) return; setAddMaterialOpen(true); }} className="flex h-9 items-center gap-2 rounded-lg bg-gold px-4 text-[13px] font-semibold text-bg-primary shadow-[0_0_15px_rgba(245,166,35,0.2)] hover:scale-105 transition-all">
             <Plus className="h-4 w-4" /> Add Material
           </button>
         </div>

@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { DEMO_SUPERVISORS } from '../demoData';
 
 // ─────────────────────────────────────────────
 // HELPER
@@ -32,6 +33,12 @@ export async function getUserProfile(uid) {
 // GET ALL USERS FOR A CONTRACTOR
 // ─────────────────────────────────────────────
 export async function getUsers(scopeId, options = {}) {
+  if (
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    return DEMO_SUPERVISORS;
+  }
   try {
     const constraints = [];
 
@@ -74,6 +81,12 @@ export async function getUsers(scopeId, options = {}) {
 // GET SUPERVISORS — fixed map call
 // ─────────────────────────────────────────────
 export async function getSupervisors(scopeId) {
+  if (
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    return DEMO_SUPERVISORS;
+  }
   // Use minimal constraints to avoid composite-index requirement.
   // Filter isActive and sort client-side.
   const constraints = [where('role', '==', 'supervisor')];

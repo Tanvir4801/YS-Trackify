@@ -100,7 +100,7 @@ export default function BrandingSetupWizard({ onComplete }) {
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="e.g. YS Construction"
+              placeholder="e.g. XYZ Construction"
               autoFocus
               className="w-full bg-[#2A2D35] border border-gray-700 rounded-xl px-5 py-4 text-xl text-gray-100 focus:outline-none transition-colors"
               style={{ borderBottom: `2px solid ${companyName ? themeColor : 'transparent'}` }}

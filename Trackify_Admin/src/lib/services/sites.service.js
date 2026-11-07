@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { DEMO_SITES } from '../demoData';
 
 const SITES_COLLECTION = 'sites';
 
@@ -37,6 +38,12 @@ const sortByName = (arr) => arr.sort((a, b) => a.name.localeCompare(b.name));
 
 export async function getSites(contractorId, includeInactive = false) {
   if (!contractorId) return [];
+  if (
+    contractorId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    return DEMO_SITES;
+  }
   try {
     const qArgs = [
       collection(db, SITES_COLLECTION),
@@ -56,6 +63,13 @@ export async function getSites(contractorId, includeInactive = false) {
 
 export function subscribeSites(contractorId, callback) {
   if (!contractorId) { callback([]); return () => {}; }
+  if (
+    contractorId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    callback(DEMO_SITES);
+    return () => {};
+  }
   const q = query(
     collection(db, SITES_COLLECTION),
     where('contractorId', '==', contractorId),

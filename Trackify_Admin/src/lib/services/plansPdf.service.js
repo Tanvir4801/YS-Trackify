@@ -280,7 +280,7 @@ function drawBusinessCardVectorLogo(doc, x, y, width, height) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
   doc.setTextColor(245, 166, 35);
-  doc.text('YS Construction', centerX, y + 21.2, { align: 'center' });
+  doc.text('XYZ Construction', centerX, y + 21.2, { align: 'center' });
 }
 
 /**
@@ -338,13 +338,13 @@ export async function generateHousePlanInvoicePDF({
   // Business Card Details Fallbacks
   let rawCompanyName = effectiveBranding?.companyName || '';
   if (!rawCompanyName || rawCompanyName.toLowerCase() === 'trackify') {
-    rawCompanyName = 'YS Construction';
+    rawCompanyName = 'XYZ Construction';
   }
   const companyName = rawCompanyName.replace(/_/g, ' ').trim();
-  const tagline = effectiveBranding?.tagline || 'Architecture, Planner, Consultant, Interior Designer';
-  const companyAddress = effectiveBranding?.address || 'Gokuldham Complex, Opp. Doodh Dairy, ANGALDHARA, Ta. Mahuva, Dist. Surat';
-  const companyPhone = effectiveBranding?.phone || '+91 80003 40720, +91 99044 45077';
-  const companyEmail = effectiveBranding?.email || 'ysconstruction24@gmail.com';
+  const tagline = effectiveBranding?.tagline || 'Civil Engineering & Infrastructure Contractors';
+  const companyAddress = effectiveBranding?.address || 'Corporate Tower, Tech Park Zone, Sector 4, Metro City';
+  const companyPhone = effectiveBranding?.phone || '+91 98765 00000';
+  const companyEmail = effectiveBranding?.email || 'contact@xyz-construction.demo';
   const gstNumber = effectiveBranding?.gstNumber || '';
 
   const ownerName = owner.ownerName || 'Client';
@@ -495,7 +495,7 @@ export async function generateHousePlanInvoicePDF({
 
   doc.text(`Plan Serial No: ${planNumber}  |  3D Model Ref: ${serialNumber3D}`, clientBoxX + innerPad, curRightY);
   curRightY += 3.8;
-  doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. YS_Construction'}`, clientBoxX + innerPad, curRightY);
+  doc.text(`Supervising Engineer: ${owner.engineerName || 'Er. Structural Consultant'}`, clientBoxX + innerPad, curRightY);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 4. PROJECT & ARCHITECTURE SPECIFICATIONS BAR
@@ -543,7 +543,7 @@ export async function generateHousePlanInvoicePDF({
   doc.text('PROJECT ENGINEER:', margin + specColWidth * 3 + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(217, 119, 6);
-  doc.text(owner.engineerName || 'Er. YS_Construction', margin + specColWidth * 3 + 4, specY + 8.2);
+  doc.text(owner.engineerName || 'Er. Structural Consultant', margin + specColWidth * 3 + 4, specY + 8.2);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 5. PAYMENTS & ADVANCE INSTALLMENTS LEDGER TABLE
@@ -859,7 +859,8 @@ export async function generateHousePlanInvoicePDF({
 
   // Download PDF file
   const cleanOwnerFileName = ownerName.replace(/[^A-Za-z0-9_-]/g, '_');
-  const safeFilename = `YS_Construction_Bill_${cleanOwnerFileName}_${planNumber}.pdf`;
+  const cleanCoFileName = companyName.replace(/[^A-Za-z0-9_-]/g, '_');
+  const safeFilename = `${cleanCoFileName}_Bill_${cleanOwnerFileName}_${planNumber}.pdf`;
 
   if (saveImmediately) {
     doc.save(safeFilename);

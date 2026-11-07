@@ -12,6 +12,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { DEMO_PAYMENTS } from '../demoData';
 
 function snapToDoc(snap) {
   const data = snap.data() || {};
@@ -59,6 +60,12 @@ function applyClientFilters(items, options = {}) {
 
 
 export async function getPayments(scopeId, options = {}) {
+  if (
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    return DEMO_PAYMENTS;
+  }
   // ⚠️ Only query by contractorId — supervisorId queries return docs with
   // different contractorId values which causes permission-denied.
   try {
@@ -76,6 +83,13 @@ export async function getPayments(scopeId, options = {}) {
 }
 
 export function subscribePayments(scopeId, callback, options = {}) {
+  if (
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    callback(DEMO_PAYMENTS);
+    return () => {};
+  }
   const constraints = scopeId
     ? [where('contractorId', '==', scopeId)]
     : [];

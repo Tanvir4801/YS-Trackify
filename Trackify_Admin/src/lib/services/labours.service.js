@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { DEMO_LABOURS } from '../demoData';
 
 function snapToDoc(snap) {
   const data = snap.data() || {};
@@ -51,6 +52,12 @@ function buildQueries(contractorId, options = {}) {
 }
 
 export async function getLabours(contractorId, options = {}) {
+  if (
+    contractorId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    return DEMO_LABOURS;
+  }
   const queries = buildQueries(contractorId, options);
   const snaps = await Promise.all(queries.map((q) => getDocs(q)));
   const map = new Map();
@@ -168,6 +175,13 @@ export async function activateLabour(labourId) {
 }
 
 export function subscribeLabours(contractorId, callback, options = {}) {
+  if (
+    contractorId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    callback(DEMO_LABOURS);
+    return () => {};
+  }
   const queries = buildQueries(contractorId, options);
   const buckets = queries.map(() => new Map());
 

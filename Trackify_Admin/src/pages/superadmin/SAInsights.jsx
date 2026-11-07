@@ -50,7 +50,7 @@ const INSIGHTS = [
     icon: HardHat,
     color: '#EC4899',
     title: '3 companies added 50+ labourers this month',
-    body: 'YS Construction, MG Developers, and Raj Constructions have grown their workforce significantly. This signals platform stickiness and a good time to upsell features.',
+    body: 'XYZ Construction, MG Developers, and Raj Constructions have grown their workforce significantly. This signals platform stickiness and a good time to upsell features.',
     action: 'View growth',
   },
   {

@@ -4,9 +4,9 @@ import { db } from '../../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 
 const INITIAL_TESTS = [
-  { id: '1', name: 'Attendance V3', status: 'BETA', activeFor: ['YS Construction', 'ABC Builders'], totalAvailable: 2 },
-  { id: '2', name: 'AI Reports', status: 'BETA', activeFor: ['YS Construction', 'Apex Corp', 'Skyline Infra'], totalAvailable: 5 },
-  { id: '3', name: 'Multi-Site Payroll', status: 'ALPHA', activeFor: ['YS Construction'], totalAvailable: 1 },
+  { id: '1', name: 'Attendance V3', status: 'BETA', activeFor: ['XYZ Construction', 'ABC Builders'], totalAvailable: 2 },
+  { id: '2', name: 'AI Reports', status: 'BETA', activeFor: ['XYZ Construction', 'Apex Corp', 'Skyline Infra'], totalAvailable: 5 },
+  { id: '3', name: 'Multi-Site Payroll', status: 'ALPHA', activeFor: ['XYZ Construction'], totalAvailable: 1 },
   { id: '4', name: 'Supervisor Dashboard V3', status: 'ROLLING OUT', activeFor: ['12 Contractors'], totalAvailable: 15 },
 ];
 

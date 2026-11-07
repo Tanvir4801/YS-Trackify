@@ -192,6 +192,35 @@ export function subscribeAttendanceByDate(scopeId, date, callback, options = {})
     return () => {};
   }
 
+  if (
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    const chars = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    const mockToday = chars.map((ch, i) => {
+      let status = 'present';
+      if (i === 3 || i === 11) status = 'half';
+      else if (i === 8 || i === 18) status = 'absent';
+      const siteId = i < 12 ? 'site_x' : i < 20 ? 'site_y' : 'site_z';
+      const supervisorId = i < 12 ? 'sup_x' : i < 20 ? 'sup_y' : 'sup_z';
+      return {
+        id: `demo_att_${date}_${ch}`,
+        date,
+        labourId: `labour_${ch}`,
+        contractorId: 'trackify_demo',
+        siteId,
+        supervisorId,
+        status,
+        shiftFactor: status === 'present' ? 1.0 : status === 'half' ? 0.5 : 0.0,
+        overtimeHours: i % 4 === 0 ? 2 : 0,
+        allowances: { petrol: 0, lunch: 0, breakfast: 0, tea: 0, advance: 0 },
+        notes: '',
+      };
+    });
+    callback(mockToday);
+    return () => {};
+  }
+
   const flatQ = query(
     collection(db, 'attendance'),
     where('date', '==', date),

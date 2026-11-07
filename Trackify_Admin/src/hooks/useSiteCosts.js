@@ -2,16 +2,30 @@ import { useEffect, useState } from 'react';
 import { useScopeId } from '../store/authStore';
 import { subscribeMaterialPurchases, subscribeSiteExpenses, subscribeSuppliers } from '../lib/services/costs.service';
 import { subscribeTempLabours } from '../lib/services/tempLabours.service';
+import { DEMO_MATERIALS, DEMO_SITE_EXPENSES } from '../lib/demoData';
 
 export function useSiteCosts() {
   const scopeId = useScopeId();
-  const [materials, setMaterials] = useState([]);
-  const [expenses, setExpenses] = useState([]);
+  const isDemo =
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true');
+
+  const [materials, setMaterials] = useState(isDemo ? DEMO_MATERIALS : []);
+  const [expenses, setExpenses] = useState(isDemo ? DEMO_SITE_EXPENSES : []);
   const [suppliers, setSuppliers] = useState([]);
   const [tempLabours, setTempLabours] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isDemo);
 
   useEffect(() => {
+    if (isDemo) {
+      setMaterials(DEMO_MATERIALS);
+      setExpenses(DEMO_SITE_EXPENSES);
+      setSuppliers([]);
+      setTempLabours([]);
+      setIsLoading(false);
+      return undefined;
+    }
+
     if (!scopeId) {
       setMaterials([]);
       setExpenses([]);

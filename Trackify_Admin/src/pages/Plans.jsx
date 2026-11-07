@@ -823,7 +823,9 @@ export default function Plans() {
       const ownerName = ownerToBill.ownerName || 'Client';
       const cleanOwnerFileName = ownerName.replace(/[^A-Za-z0-9_-]/g, '_');
       const planNumber = ownerToBill.planNumber || 'PLN';
-      const safeFilename = `YS_Construction_Bill_${cleanOwnerFileName}_${planNumber}.pdf`;
+      const coName = branding?.companyName || 'XYZ Construction';
+      const cleanCoFileName = coName.replace(/[^A-Za-z0-9_-]/g, '_');
+      const safeFilename = `${cleanCoFileName}_Bill_${cleanOwnerFileName}_${planNumber}.pdf`;
 
       // 3. Prepare professional Thank You message with complete project and billing details
       const baseFee = formatCurrency(ownerToBill.houseAmount);
@@ -832,7 +834,6 @@ export default function Plans() {
       const totalBillable = (Number(ownerToBill.houseAmount) || 0) + totalVisitsAmt;
       const paid = formatCurrency(ownerToBill.totalPaid);
       const pending = formatCurrency(Math.max(0, totalBillable - (Number(ownerToBill.totalPaid) || 0)));
-      const coName = branding?.companyName || 'YS Construction';
       const siteLoc = [ownerToBill.ownerAddress, ownerToBill.city || ownerToBill.town].filter(Boolean).join(', ') || ownerToBill.city || '-';
       const builtUpArea = (Number(ownerToBill.totalSqFt) > 0 || Number(ownerToBill.plotAreaSqFt) > 0)
         ? `${Number(ownerToBill.totalSqFt || ownerToBill.plotAreaSqFt).toLocaleString('en-IN')} sq.ft`
@@ -844,7 +845,10 @@ export default function Plans() {
         paymentSectionText = `• *Base Drawing Fee:* ${baseFee}\n• *Site Inspection Visits (${visits.length}):* ${formatCurrency(totalVisitsAmt)}\n• *Gross Total Billable:* ${formatCurrency(totalBillable)}\n• *Amount Received:* ${paid}\n• *Net Balance Due:* ${pending}`;
       }
 
-      const thanksMessage = `Namaste *${ownerName}* ji, 🙏\n\nThank you for choosing *${coName}* for your house planning and architectural engineering drawings! We truly appreciate your trust and partnership.\n\n📋 *PROJECT DETAILS:*\n• *Plan Ref:* ${planNumber}\n• *Site Location:* ${siteLoc}\n• *Built-up Area:* ${builtUpArea}\n• *Scope of Drawings:* ${plansCount} Deliverables\n\n💰 *PAYMENT STATUS:*\n${paymentSectionText}\n\n📄 *Please find your official Planning Invoice & Deliverables Bill (PDF) attached.* Thank you for your business!\n\nWarm regards,\n*${coName}*\n_Architecture • Planner • Consultant • Interior Designer_\n📞 Mo: 80003 40720, 99044 45077\n📍 Gokuldham Complex, Angaldhara, Surat`;
+      const coTagline = branding?.tagline || 'Civil Engineering & Infrastructure Contractors';
+      const coPhone = branding?.phone || '+91 98765 00000';
+      const coAddress = branding?.address || 'Corporate Tower, Tech Park Zone, Sector 4, Metro City';
+      const thanksMessage = `Namaste *${ownerName}* ji, 🙏\n\nThank you for choosing *${coName}* for your house planning and architectural engineering drawings! We truly appreciate your trust and partnership.\n\n📋 *PROJECT DETAILS:*\n• *Plan Ref:* ${planNumber}\n• *Site Location:* ${siteLoc}\n• *Built-up Area:* ${builtUpArea}\n• *Scope of Drawings:* ${plansCount} Deliverables\n\n💰 *PAYMENT STATUS:*\n${paymentSectionText}\n\n📄 *Please find your official Planning Invoice & Deliverables Bill (PDF) attached.* Thank you for your business!\n\nWarm regards,\n*${coName}*\n_${coTagline}_\n📞 Mo: ${coPhone}\n📍 ${coAddress}`;
 
       const cleanPhone = normalizeWhatsAppNumber(ownerToBill.ownerPhone);
       const clean10 = extract10DigitPhone(ownerToBill.ownerPhone);
@@ -1400,7 +1404,7 @@ export default function Plans() {
     const baseFee = formatCurrency(activeOwnerFinances.baseFee);
     const paid = formatCurrency(activeOwnerFinances.totalPaid);
     const pending = formatCurrency(activeOwnerFinances.pendingBalance);
-    const coName = branding?.companyName || 'YS Construction';
+    const coName = branding?.companyName || 'XYZ Construction';
 
     let billingBreakdown = `• *Total Plan Fee:* ${baseFee}\n• *Amount Received:* ${paid}\n• *Pending Balance:* ${pending}`;
     if (activeOwnerFinances.visitsCount > 0) {

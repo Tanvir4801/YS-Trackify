@@ -30,6 +30,13 @@ export function subscribeSessionsForDate(contractorId, date, callback) {
     callback([]);
     return () => {};
   }
+  if (
+    contractorId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true')
+  ) {
+    callback([]);
+    return () => {};
+  }
   const q = query(
     sessionsCol(contractorId),
     where('date', '==', date),

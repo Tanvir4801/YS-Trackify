@@ -556,7 +556,7 @@ function MobileMockup({ conceptId, title }) {
                     
                     <div>
                       <div className="text-xs text-gray-400 mb-0.5">Contractor</div>
-                      <div className="font-semibold text-sm">YS Construction Ltd.</div>
+                      <div className="font-semibold text-sm">XYZ Construction Ltd.</div>
                     </div>
                   </div>
                   
