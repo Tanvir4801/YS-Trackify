@@ -21,6 +21,7 @@ import EmptyState from '../components/shared/EmptyState';
 import StatusBadge from '../components/shared/StatusBadge';
 import Modal from '../components/ui/Modal';
 import Pagination, { usePagination } from '../components/shared/Pagination';
+import { useDemoPermissions } from '../hooks/useDemoPermissions';
 
 const EMPTY_FORM = {
   name: '',
@@ -49,6 +50,7 @@ export default function Labours() {
   const scopeId = useScopeId();
 
   const isSupervisor = role === 'supervisor';
+  const { isDemo, guardAction } = useDemoPermissions();
 
   const { data: labours = [], isLoading } = useLabours({ activeOnly: false });
 
@@ -143,6 +145,7 @@ export default function Labours() {
 
   // ── Bulk actions ───────────────────────────────────────────
   const bulkAction = async (action) => {
+    if (!guardAction(() => {}, 'Bulk worker status updates')) return;
     if (selected.size === 0) return;
     const ids = [...selected];
     try {
@@ -162,6 +165,7 @@ export default function Labours() {
 
   // ── Dialog open ────────────────────────────────────────────
   const openAdd = () => {
+    if (!guardAction(() => {}, 'Adding new workers')) return;
     // P3-5 FIX: Prevent adding a labour when there are no supervisors available.
     // The service requires supervisorId to be valid — creating a labour without
     // a supervisor is not supported by the data model.
@@ -180,6 +184,7 @@ export default function Labours() {
   };
 
   const openEdit = (labour) => {
+    if (!guardAction(() => {}, 'Editing worker details')) return;
     setEditing(labour);
     setForm({
       name: labour.name || '',
@@ -196,6 +201,7 @@ export default function Labours() {
 
   // ── Save labour ────────────────────────────────────────────
   const handleSubmit = async () => {
+    if (!guardAction(() => {}, 'Saving worker records')) return;
     if (!form.name.trim()) return toast.error('Name is required');
     if (!form.supervisorId) return toast.error('Supervisor is required');
 

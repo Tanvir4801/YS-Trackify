@@ -15,6 +15,7 @@ import EmptyState from '../components/shared/EmptyState';
 import StatusBadge from '../components/shared/StatusBadge';
 import Modal from '../components/ui/Modal';
 import Pagination, { usePagination } from '../components/shared/Pagination';
+import { useDemoPermissions } from '../hooks/useDemoPermissions';
 
 const TYPE_OPTIONS = [
   { value: 'salary', label: 'Salary' },
@@ -47,6 +48,7 @@ export default function Payments() {
   const role = useAuthStore((s) => s.role);
   const uid = useAuthStore((s) => s.uid);
   const scopeFromStore = useScopeId();
+  const { isDemo, guardAction } = useDemoPermissions();
 
   // P2-2 FIX: contractorId is always the contractor tenant ID (never the supervisor's uid).
   // For supervisors, the supervisorId is their own uid; contractorId comes from useScopeId()
@@ -94,11 +96,15 @@ export default function Payments() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
-  const openAdd = () => { setForm(EMPTY_FORM); setDialogOpen(true); };
+  const openAdd = () => {
+    if (!guardAction(() => {}, 'Recording payments or advances')) return;
+    setForm(EMPTY_FORM); setDialogOpen(true);
+  };
   const closeDialog = () => { if (saving) return; setDialogOpen(false); };
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['payments'] });
 
   const handleSubmit = async () => {
+    if (!guardAction(() => {}, 'Recording payments')) return;
     if (!form.labourId) return toast.error('Pick a labour');
     if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter a valid amount');
     if (!form.date) return toast.error('Date is required');

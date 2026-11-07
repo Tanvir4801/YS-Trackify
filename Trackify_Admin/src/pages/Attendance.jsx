@@ -18,6 +18,7 @@ import { Label } from '../components/ui/label';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import StatusBadge from '../components/shared/StatusBadge';
+import { useDemoPermissions } from '../hooks/useDemoPermissions';
 
 const STATUS_CYCLE = ['present', 'three_quarter', 'half', 'quarter', 'absent'];
 // 'pending' is intentionally excluded from the cycle — it is a reset action,
@@ -62,6 +63,7 @@ export default function Attendance() {
   const role = useAuthStore((s) => s.role);
   const uid = useAuthStore((s) => s.uid);
   const scopeFromStore = useScopeId();
+  const { isDemo, guardAction } = useDemoPermissions();
   const isSupervisor = role === 'supervisor';
   const writeScope = isSupervisor ? uid : scopeFromStore;
 
@@ -288,6 +290,7 @@ export default function Attendance() {
   }, [date, rows, writeScope, scopeFromStore, isSupervisor, uid]);
 
   const handleSave = async () => {
+    if (!guardAction(() => {}, 'Saving attendance marks')) return;
     if (!writeScope) { toast.error('Pick a contractor in the header before saving'); return; }
     if (labours.length === 0) { toast.error('No labours to mark'); return; }
 

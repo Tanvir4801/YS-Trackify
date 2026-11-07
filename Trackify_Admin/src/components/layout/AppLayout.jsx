@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import DemoBanner from './DemoBanner';
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -15,6 +16,7 @@ export default function AppLayout() {
         className="flex flex-1 flex-col transition-all duration-300"
         style={{ paddingLeft: collapsed ? '64px' : '260px' }}
       >
+        <DemoBanner />
         <Header />
         <main className="flex-1 px-8 py-8 relative">
           <div className="mx-auto w-full max-w-[1600px]">

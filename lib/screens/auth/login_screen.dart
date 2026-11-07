@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../services/auth_service.dart';
+import '../../models/app_user.dart';
+import '../../services/session_service.dart';
+import '../../main.dart';
 
 enum _LoginMode { supervisor, labour }
 
@@ -133,6 +136,40 @@ class _LoginScreenState extends State<LoginScreen>
     }
     Navigator.of(context)
         .pushNamedAndRemoveUntil('/unauthorized', (route) => false);
+  }
+
+  Future<void> _enterDemoMode() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final demoUser = AppUser(
+        uid: 'demo_supervisor_uid',
+        name: 'Anil Sharma (Demo)',
+        role: 'demo',
+        contractorId: 'trackify_demo',
+        supervisorId: 'demo_supervisor_uid',
+        phone: '+919876543211',
+        isActive: true,
+      );
+
+      SessionService.instance.set(demoUser);
+
+      if (!mounted) return;
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil(AppRoutes.supervisorHome, (route) => false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Could not initialize demo mode: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -307,6 +344,25 @@ class _LoginScreenState extends State<LoginScreen>
           ),
           const SizedBox(height: 20),
           _buildRoleInfo(),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _isLoading ? null : _enterDemoMode,
+            icon: const Icon(Icons.shield_outlined, color: AppColors.gold, size: 18),
+            label: const Text(
+              'Explore Live Demo (Read-Only)',
+              style: TextStyle(
+                color: AppColors.gold,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AppColors.gold.withValues(alpha: 0.4)),
+              backgroundColor: AppColors.gold.withValues(alpha: 0.05),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
         ],
       ),
     );

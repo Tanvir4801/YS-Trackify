@@ -149,7 +149,54 @@ class AppShellState extends State<AppShell> with WidgetsBindingObserver {
               ),
             ),
           ],
-          IndexedStack(index: _currentIndex, children: _screens),
+          Column(
+            children: [
+              if (SessionService.instance.current?.isDemo == true)
+                SafeArea(
+                  bottom: false,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    color: AppColors.gold.withValues(alpha: 0.18),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.shield_outlined, size: 14, color: AppColors.gold),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'DEMO MODE · Read-Only (Trackify Demo)',
+                            style: TextStyle(
+                              color: AppColors.gold,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            SessionService.instance.clear();
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              AppRoutes.login,
+                              (route) => false,
+                            );
+                          },
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text('Exit', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: IndexedStack(index: _currentIndex, children: _screens),
+              ),
+            ],
+          ),
         ],
       ),
       bottomNavigationBar: ClipRRect(

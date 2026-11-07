@@ -31,8 +31,9 @@ class AppUser {
   final bool isActive;
 
   bool get isSuperAdmin => role == 'super_admin';
-  bool get isSupervisor => role == 'supervisor' || role == 'admin' || role == 'super_admin';
+  bool get isSupervisor => role == 'supervisor' || role == 'admin' || role == 'super_admin' || role == 'demo';
   bool get isLabour => role == 'labour';
+  bool get isDemo => role == 'demo' || contractorId == 'trackify_demo';
 
   AppUser copyWith({
     String? uid,

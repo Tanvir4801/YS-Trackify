@@ -31,6 +31,14 @@ exports.infralensGetKubernetes      = infralensFunctions.infralensGetKubernetes;
 exports.infralensGetContainers      = infralensFunctions.infralensGetContainers;
 exports.infralensGetForecast        = infralensFunctions.infralensGetForecast;
 
+// ─── Demo Mode & Session Engine ───────────────────────────────────────────────
+const demoSessionFunctions = require('./demoSession');
+exports.submitDemoRequest      = demoSessionFunctions.submitDemoRequest;
+exports.createDemoSession      = demoSessionFunctions.createDemoSession;
+exports.validateDemoSession    = demoSessionFunctions.validateDemoSession;
+exports.revokeDemoSession      = demoSessionFunctions.revokeDemoSession;
+exports.seedDemoTenantEndpoint = demoSessionFunctions.seedDemoTenantEndpoint;
+
 // Must match Flutter app constant.
 const QR_SALT = 'TRACKIFY_QR_SECRET_2026';
 

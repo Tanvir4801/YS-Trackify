@@ -186,6 +186,20 @@ const Login = () => {
             >
               {loading ? 'Signing in…' : 'Sign in to Console'}
             </Button>
+
+            <div className="relative my-4 flex items-center justify-center">
+              <div className="w-full border-t border-border-strong" />
+              <span className="bg-bg-primary px-3 text-[10px] font-mono uppercase text-text-muted">OR</span>
+            </div>
+
+            <Button
+              type="button"
+              onClick={() => navigate('/demo')}
+              className="h-11 w-full rounded-xl text-[13px] font-semibold bg-white/[0.04] hover:bg-white/[0.08] text-amber-400 border border-amber-500/30 hover:border-amber-500/60 transition-all flex items-center justify-center gap-2"
+            >
+              <Shield className="h-4 w-4 text-amber-400" />
+              <span>Explore Live Demo (Instant Read-Only)</span>
+            </Button>
           </form>
 
           <p className="mt-8 text-center text-[10px] tracking-widest uppercase font-medium text-text-muted">

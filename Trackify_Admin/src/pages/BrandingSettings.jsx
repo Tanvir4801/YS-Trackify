@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../lib/firebase';
 import toast from 'react-hot-toast';
+import { useDemoPermissions } from '../hooks/useDemoPermissions';
 
 const PRESET_COLORS = [
   { hex: '#F5A623', name: 'Construction Gold' },
@@ -19,6 +20,7 @@ const PRESET_COLORS = [
 export default function BrandingSettings() {
   const { branding, loading, updateBranding } = useBranding();
   const contractorId = useAuthStore((s) => s.userContractorId || s.uid);
+  const { isDemo, guardAction } = useDemoPermissions();
   
   const [formData, setFormData] = useState({
     companyName: branding?.companyName || 'Trackify',
@@ -65,6 +67,7 @@ export default function BrandingSettings() {
   };
 
   const uploadLogo = async (e) => {
+    if (!guardAction(() => {}, 'Uploading company logo')) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -108,6 +111,7 @@ export default function BrandingSettings() {
   };
 
   const handleRemoveLogo = async () => {
+    if (!guardAction(() => {}, 'Removing company logo')) return;
     try {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('trackify_brand_logo_data_url');
@@ -124,6 +128,7 @@ export default function BrandingSettings() {
   };
 
   const handleSave = async () => {
+    if (!guardAction(() => {}, 'Updating company branding')) return;
     try {
       await updateBranding(formData);
       setIsDirty(false);

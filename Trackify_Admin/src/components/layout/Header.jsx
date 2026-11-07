@@ -30,6 +30,7 @@ const ROLE_CONFIG = {
   super_admin: { label: 'Super Admin', color: '#7C3AED', bg: '#FAF5FF', border: '#DDD6FE', icon: Shield },
   contractor:  { label: 'Contractor',  color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', icon: User },
   supervisor:  { label: 'Supervisor',  color: '#059669', bg: '#ECFDF5', border: '#A7F3D0', icon: User },
+  demo:        { label: 'Demo Mode',   color: '#F59E0B', bg: '#FEF3C7', border: '#FDE68A', icon: Shield },
 };
 
 export default function Header() {

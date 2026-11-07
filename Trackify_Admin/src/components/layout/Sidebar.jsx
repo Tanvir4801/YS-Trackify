@@ -56,38 +56,38 @@ const CONTRACTOR_GROUPS = [
   {
     label: 'WORKFORCE',
     links: [
-      { to: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, roles: ['contractor', 'supervisor'] },
-      { to: '/attendance',   label: 'Attendance',   icon: ClipboardList,   roles: ['contractor', 'supervisor'] },
-      { to: '/labours',      label: 'Labours',      icon: HardHat,         roles: ['contractor', 'supervisor'] },
-      { to: '/temp-labours', label: 'Temp Labours', icon: Users2,          roles: ['contractor', 'supervisor'] },
-      { to: '/payroll',      label: 'Payroll',      icon: Calculator,      roles: ['contractor'] },
-      { to: '/payments',     label: 'Payments',     icon: Wallet,          roles: ['contractor'] },
+      { to: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, roles: ['contractor', 'supervisor', 'demo'] },
+      { to: '/attendance',   label: 'Attendance',   icon: ClipboardList,   roles: ['contractor', 'supervisor', 'demo'] },
+      { to: '/labours',      label: 'Labours',      icon: HardHat,         roles: ['contractor', 'supervisor', 'demo'] },
+      { to: '/temp-labours', label: 'Temp Labours', icon: Users2,          roles: ['contractor', 'supervisor', 'demo'] },
+      { to: '/payroll',      label: 'Payroll',      icon: Calculator,      roles: ['contractor', 'demo'] },
+      { to: '/payments',     label: 'Payments',     icon: Wallet,          roles: ['contractor', 'demo'] },
     ],
   },
   {
     label: 'OPERATIONS',
     links: [
-      { to: '/sites',       label: 'Sites',    icon: Building2, roles: ['contractor', 'supervisor'] },
-      { to: '/plans',       label: 'House Plans', icon: Compass, roles: ['contractor', 'supervisor'] },
-      { to: '/site-costs',  label: 'Site Costs', icon: Calculator, roles: ['contractor'] },
-      { to: '/expenses',    label: 'Expenses', icon: Receipt,   roles: ['contractor'] },
-      { to: '/clients',     label: 'Client Ledger', icon: BookOpen, roles: ['contractor'] },
-      { to: '/support-requests', label: 'Support', icon: LifeBuoy, roles: ['contractor', 'supervisor'] },
+      { to: '/sites',       label: 'Sites',    icon: Building2, roles: ['contractor', 'supervisor', 'demo'] },
+      { to: '/plans',       label: 'House Plans', icon: Compass, roles: ['contractor', 'supervisor', 'demo'] },
+      { to: '/site-costs',  label: 'Site Costs', icon: Calculator, roles: ['contractor', 'demo'] },
+      { to: '/expenses',    label: 'Expenses', icon: Receipt,   roles: ['contractor', 'demo'] },
+      { to: '/clients',     label: 'Client Ledger', icon: BookOpen, roles: ['contractor', 'demo'] },
+      { to: '/support-requests', label: 'Support', icon: LifeBuoy, roles: ['contractor', 'supervisor', 'demo'] },
     ],
   },
   {
     label: 'ANALYTICS',
     links: [
-      { to: '/reports', label: 'Reports', icon: FileText, roles: ['contractor'] },
+      { to: '/reports', label: 'Reports', icon: FileText, roles: ['contractor', 'demo'] },
     ],
   },
   {
     label: 'ADMINISTRATION',
     links: [
-      { to: '/supervisors', label: 'Supervisors', icon: UserCheck,  roles: ['contractor'] },
+      { to: '/supervisors', label: 'Supervisors', icon: UserCheck,  roles: ['contractor', 'demo'] },
       { to: '/users',       label: 'Users',       icon: UsersIcon,  roles: ['contractor'] },
       { to: '/branding',    label: 'Branding',    icon: Palette,    roles: ['contractor'] },
-      { to: '/settings',    label: 'Settings',    icon: Settings,   roles: ['contractor'] },
+      { to: '/settings',    label: 'Settings',    icon: Settings,   roles: ['contractor', 'demo'] },
     ],
   },
 ];

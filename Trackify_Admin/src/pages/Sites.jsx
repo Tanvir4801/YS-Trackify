@@ -14,6 +14,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
+import { useDemoPermissions } from '../hooks/useDemoPermissions';
 
 function todayStr() {
   return new Date().toISOString().split('T')[0];
@@ -48,6 +49,7 @@ function StatusBadge({ status }) {
 export default function Sites() {
   const scopeId = useScopeId();
   const { role, uid } = useAuthStore();
+  const { isDemo, guardAction } = useDemoPermissions();
   const { data: labours = [] } = useLabours({ activeOnly: true });
 
   const [sites, setSites] = useState([]);
@@ -127,8 +129,12 @@ export default function Sites() {
   }, [detailLabours, attendanceMap]);
 
   const EMPTY_DA = { petrol: 0, lunch: 0, breakfast: 0, tea: 0 };
-  const openAdd = () => { setEditingId(null); setFormName(''); setFormDesc(''); setFormAllowances(EMPTY_DA); setShowForm(true); };
+  const openAdd = () => {
+    if (!guardAction(() => {}, 'Adding new sites')) return;
+    setEditingId(null); setFormName(''); setFormDesc(''); setFormAllowances(EMPTY_DA); setShowForm(true);
+  };
   const openEdit = (site) => {
+    if (!guardAction(() => {}, 'Editing site details')) return;
     setEditingId(site.id);
     setFormName(site.name);
     setFormDesc(site.description || '');
@@ -138,6 +144,7 @@ export default function Sites() {
   const closeForm = () => { setShowForm(false); setEditingId(null); setFormName(''); setFormDesc(''); setFormAllowances(EMPTY_DA); };
 
   const handleSave = async () => {
+    if (!guardAction(() => {}, 'Saving site configurations')) return;
     if (!formName.trim()) return toast.error('Enter a site name');
     if (!scopeId) return toast.error('No contractor scope');
     setSaving(true);
@@ -161,6 +168,7 @@ export default function Sites() {
   };
 
   const handleDelete = async (site) => {
+    if (!guardAction(() => {}, 'Deleting sites')) return;
     if (deleteConfirm !== site.id) { setDeleteConfirm(site.id); return; }
     try {
       await deleteSite(site.id);

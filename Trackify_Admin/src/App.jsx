@@ -19,6 +19,7 @@ import TelemetryTracker from './components/shared/TelemetryTracker';
 // Contractor pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+const DemoEntry = lazy(() => import('./pages/DemoEntry'));
 const Labours = lazy(() => import('./pages/Labours'));
 const LabourProfile = lazy(() => import('./pages/LabourProfile'));
 const Attendance = lazy(() => import('./pages/Attendance'));
@@ -89,7 +90,7 @@ function NavigateByRole() {
   return <Navigate to="/dashboard" replace />;
 }
 
-const contractorRoles = ['contractor', 'supervisor'];
+const contractorRoles = ['contractor', 'supervisor', 'demo'];
 
 
 const SuspenseFallback = () => (
@@ -284,6 +285,7 @@ export default function App() {
       <TelemetryTracker />
       <Suspense fallback={<SuspenseFallback />}><Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/demo" element={<DemoEntry />} />
 
         {/* ── TrackOps Routes (/trackops/*) ────────────────────── */}
         <Route element={<ProtectedRoute><TrackOpsMonitoringProvider><TrackOpsLayout /></TrackOpsMonitoringProvider></ProtectedRoute>}>
@@ -338,21 +340,21 @@ export default function App() {
           <Route path="/labours"     element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><Labours /></RoleRoute>} />
           <Route path="/labours/:id" element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><LabourProfile /></RoleRoute>} />
           <Route path="/attendance"  element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><Attendance /></RoleRoute>} />
-          <Route path="/payroll"     element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Payroll /></RoleRoute>} />
-          <Route path="/payments"    element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Payments /></RoleRoute>} />
+          <Route path="/payroll"     element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><Payroll /></RoleRoute>} />
+          <Route path="/payments"    element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><Payments /></RoleRoute>} />
           <Route path="/temp-labours" element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><TempLabours /></RoleRoute>} />
-          <Route path="/reports"     element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Reports /></RoleRoute>} />
-          <Route path="/supervisors" element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Supervisors /></RoleRoute>} />
+          <Route path="/reports"     element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><Reports /></RoleRoute>} />
+          <Route path="/supervisors" element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><Supervisors /></RoleRoute>} />
           <Route path="/users"       element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Users /></RoleRoute>} />
-          <Route path="/settings"    element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Settings /></RoleRoute>} />
+          <Route path="/settings"    element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><Settings /></RoleRoute>} />
           <Route path="/branding"    element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><BrandingSettings /></RoleRoute>} />
           <Route path="/support-requests" element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><SupportRequests /></RoleRoute>} />
           <Route path="/sites"       element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><Sites /></RoleRoute>} />
           <Route path="/plans"       element={<RoleRoute allowedRoles={contractorRoles} fallback="/sa/dashboard"><Plans /></RoleRoute>} />
-          <Route path="/expenses"    element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><Expenses /></RoleRoute>} />
-          <Route path="/site-costs"  element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><SiteCosts /></RoleRoute>} />
+          <Route path="/expenses"    element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><Expenses /></RoleRoute>} />
+          <Route path="/site-costs"  element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><SiteCosts /></RoleRoute>} />
           
-          <Route path="/clients"     element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><ClientList /></RoleRoute>} />
+          <Route path="/clients"     element={<RoleRoute allowedRoles={['contractor', 'demo']}  fallback="/attendance"><ClientList /></RoleRoute>} />
           <Route path="/clients/:id" element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><ClientProfile /></RoleRoute>} />
           <Route path="/clients/:clientId/projects/:projectId" element={<RoleRoute allowedRoles={['contractor']}  fallback="/attendance"><ProjectDetails /></RoleRoute>} />
 
