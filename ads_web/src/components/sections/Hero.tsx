@@ -273,31 +273,34 @@ function FloatingChip({
 /* ─── Device Mockup Composition ─── */
 function DeviceMockup() {
   return (
-    <motion.div variants={fadeIn} className="relative w-full max-w-[460px] mx-auto">
+    <motion.div
+      variants={fadeIn}
+      className="relative w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[460px] mx-auto scale-[0.84] sm:scale-95 lg:scale-100 origin-center"
+    >
       {/* Laptop */}
       <div className="relative z-10">
         <LaptopMockup />
       </div>
 
       {/* Phone – overlapping bottom-right */}
-      <div className="absolute -bottom-10 -right-4 z-20">
+      <div className="absolute -bottom-8 -right-2 sm:-bottom-10 sm:-right-4 z-20">
         <PhoneMockup />
       </div>
 
       {/* Floating chips */}
       <FloatingChip
         label="Mason · 1.0 day ✓"
-        className="top-2 -right-8 z-30"
+        className="top-1 -right-2 sm:top-2 sm:-right-6 z-30"
         delay={0.8}
       />
       <FloatingChip
         label="Advance ₹500 logged"
-        className="-left-6 top-1/3 z-30"
+        className="-left-2 sm:-left-6 top-1/3 z-30"
         delay={1.0}
       />
       <FloatingChip
         label="Synced ✓"
-        className="bottom-20 -left-4 z-30 animate-pulse-glow"
+        className="bottom-16 sm:bottom-20 -left-2 sm:-left-4 z-30 animate-pulse-glow"
         delay={1.2}
       />
     </motion.div>
@@ -355,7 +358,7 @@ export default function Hero({ onDemoClick }: HeroProps) {
             {/* Headline */}
             <motion.h1
               variants={fadeUp}
-              className="font-heading text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight text-trackify-textMain"
+              className="font-heading text-3xl sm:text-5xl lg:text-6xl font-bold leading-tight text-trackify-textMain"
             >
               Take{' '}
               <span className="relative inline-block">
@@ -374,7 +377,7 @@ export default function Hero({ onDemoClick }: HeroProps) {
             {/* Description */}
             <motion.p
               variants={fadeUp}
-              className="text-lg text-trackify-textMuted max-w-xl mt-6 mx-auto lg:mx-0 font-body"
+              className="text-base sm:text-lg text-trackify-textMuted max-w-xl mt-4 sm:mt-6 mx-auto lg:mx-0 font-body leading-relaxed"
             >
               {siteConfig.heroDescription}
             </motion.p>
@@ -382,11 +385,11 @@ export default function Hero({ onDemoClick }: HeroProps) {
             {/* CTA Buttons */}
             <motion.div
               variants={fadeUp}
-              className="flex flex-col sm:flex-row gap-4 mt-8 justify-center lg:justify-start"
+              className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-6 sm:mt-8 justify-center lg:justify-start"
             >
               <button
                 onClick={onDemoClick}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-trackify-amber text-trackify-bg font-heading font-semibold text-sm hover:bg-trackify-amberDark transition-colors focus:outline-none focus:ring-2 focus:ring-trackify-amber/50 focus:ring-offset-2 focus:ring-offset-trackify-bg"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-trackify-amber text-trackify-bg font-heading font-semibold text-sm hover:bg-trackify-amberDark transition-colors focus:outline-none focus:ring-2 focus:ring-trackify-amber/50 shadow-lg shadow-trackify-amber/20"
               >
                 <Rocket className="w-4 h-4" aria-hidden="true" />
                 Book a Free Live Demo
@@ -394,7 +397,7 @@ export default function Hero({ onDemoClick }: HeroProps) {
               <a
                 href="#features"
                 onClick={handleScrollToFeatures}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-trackify-cardBorder text-trackify-textMuted font-heading font-semibold text-sm hover:text-trackify-textMain hover:border-trackify-amber/40 transition-all focus:outline-none focus:ring-2 focus:ring-trackify-amber/50 focus:ring-offset-2 focus:ring-offset-trackify-bg"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl border border-trackify-cardBorder text-trackify-textMuted font-heading font-semibold text-sm hover:text-trackify-textMain hover:border-trackify-amber/40 transition-all focus:outline-none focus:ring-2 focus:ring-trackify-amber/50"
               >
                 <ArrowDown className="w-4 h-4" aria-hidden="true" />
                 Explore Live Platform
@@ -404,20 +407,20 @@ export default function Hero({ onDemoClick }: HeroProps) {
             {/* Trust Bar */}
             <motion.div
               variants={fadeUp}
-              className="mt-12 grid grid-cols-2 lg:grid-cols-4 gap-4"
+              className="mt-10 sm:mt-12 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4"
             >
               {trustBarItems.map((item) => (
                 <div
                   key={item.label}
-                  className="glass-card p-4 text-center lg:text-left"
+                  className="glass-card p-3 sm:p-4 text-center lg:text-left"
                 >
-                  <p className="font-heading text-2xl font-bold text-trackify-amber">
+                  <p className="font-heading text-xl sm:text-2xl font-bold text-trackify-amber">
                     {item.value}
                   </p>
-                  <p className="font-mono text-xs text-trackify-textMain mt-1">
+                  <p className="font-mono text-[11px] sm:text-xs text-trackify-textMain mt-1 font-medium">
                     {item.label}
                   </p>
-                  <p className="text-[11px] text-trackify-textMuted mt-0.5 font-body">
+                  <p className="text-[10px] sm:text-[11px] text-trackify-textMuted mt-0.5 font-body line-clamp-2">
                     {item.description}
                   </p>
                 </div>
@@ -425,8 +428,8 @@ export default function Hero({ onDemoClick }: HeroProps) {
             </motion.div>
           </div>
 
-          {/* ── Right: Device Mockups ── */}
-          <div className="hidden lg:flex w-full lg:w-[40%] items-center justify-center relative mt-8 lg:mt-12">
+          {/* ── Right: Device Mockups (Visible and scaled beautifully on all mobile phones) ── */}
+          <div className="flex w-full lg:w-[40%] items-center justify-center relative mt-6 lg:mt-0 py-6 sm:py-8 overflow-visible">
             <DeviceMockup />
           </div>
         </motion.div>

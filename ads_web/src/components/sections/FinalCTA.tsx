@@ -19,7 +19,7 @@ export default function FinalCTA() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         {/* ── Left 5 Cols: Guarantee & Direct Founder Line ── */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="rounded-2xl p-6 sm:p-8 bg-gradient-to-br from-[#121E36] to-[#0A1120] border border-white/[0.08] shadow-2xl relative">
+          <div className="rounded-2xl p-4 sm:p-8 bg-gradient-to-br from-[#121E36] to-[#0A1120] border border-white/[0.08] shadow-2xl relative">
             <h3 className="font-heading font-bold text-xl text-trackify-textMain mb-3">
               Direct Implementation Guarantee
             </h3>
@@ -67,7 +67,7 @@ export default function FinalCTA() {
         </div>
 
         {/* ── Right 7 Cols: Full Pilot Booking Form ── */}
-        <div className="lg:col-span-7 rounded-2xl backdrop-blur-md bg-white/[0.03] border border-white/[0.08] p-6 sm:p-10 shadow-2xl relative">
+        <div className="lg:col-span-7 rounded-2xl backdrop-blur-md bg-white/[0.03] border border-white/[0.08] p-4 sm:p-10 shadow-2xl relative">
           <div className="flex items-center justify-between pb-4 border-b border-white/[0.08] mb-6">
             <div>
               <h4 className="font-heading font-bold text-lg text-trackify-textMain">

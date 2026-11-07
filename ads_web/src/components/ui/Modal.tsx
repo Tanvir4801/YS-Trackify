@@ -86,7 +86,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="glass-card relative w-full max-w-lg rounded-xl p-6 shadow-2xl"
+            className="glass-card relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl p-4 sm:p-6 shadow-2xl"
             {...panelMotion}
           >
             {/* Close button */}

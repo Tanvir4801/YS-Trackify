@@ -19,10 +19,10 @@ export default function HowItWorks() {
         className="mb-10 sm:mb-12"
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
         {/* ── Left 7 Cols: Timeline Steps ── */}
         <div className="lg:col-span-7 space-y-6">
-          <div className="relative border-l-2 border-trackify-cardBorder ml-4 sm:ml-6 pl-6 sm:pl-8 space-y-10">
+          <div className="relative border-l-2 border-trackify-cardBorder ml-3.5 sm:ml-6 pl-5 sm:pl-8 space-y-6 sm:space-y-10">
             {howItWorksSteps.map((step) => {
               const Icon = step.icon;
               const isActive = activeStep === step.step;
@@ -35,7 +35,7 @@ export default function HowItWorks() {
                 >
                   {/* Step Node Marker */}
                   <div
-                    className={`absolute -left-[35px] sm:-left-[43px] top-0.5 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-mono text-xs font-bold border-2 transition-all duration-300 ${
+                    className={`absolute -left-[32px] sm:-left-[43px] top-0.5 w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-mono text-[11px] sm:text-xs font-bold border-2 transition-all duration-300 ${
                       isActive
                         ? 'bg-trackify-amber text-trackify-bg border-trackify-amber shadow-lg shadow-trackify-amber/30 scale-110'
                         : 'bg-trackify-card text-trackify-textMuted border-trackify-cardBorder group-hover:border-trackify-amber/50 group-hover:text-trackify-textMain'
@@ -46,7 +46,7 @@ export default function HowItWorks() {
 
                   {/* Step Card Content */}
                   <div
-                    className={`p-5 rounded-xl border transition-all duration-300 ${
+                    className={`p-4 sm:p-5 rounded-xl border transition-all duration-300 ${
                       isActive
                         ? 'bg-white/[0.04] border-trackify-amber/40 shadow-xl'
                         : 'bg-white/[0.015] border-white/[0.06] hover:border-white/[0.12] hover:bg-white/[0.03]'

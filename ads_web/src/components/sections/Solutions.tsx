@@ -31,7 +31,7 @@ export default function Solutions() {
             <button
               key={persona.id}
               onClick={() => setSelectedPersonaId(persona.id)}
-              className={`p-4 rounded-xl border text-left transition-all duration-300 relative overflow-hidden ${
+              className={`p-3 sm:p-4 rounded-xl border text-left transition-all duration-300 relative overflow-hidden ${
                 isSelected
                   ? 'bg-white/[0.06] border-trackify-amber shadow-lg shadow-trackify-amber/10'
                   : 'bg-white/[0.02] border-white/[0.07] hover:border-white/[0.15] hover:bg-white/[0.04]'
@@ -61,7 +61,7 @@ export default function Solutions() {
       </div>
 
       {/* Selected Persona Deep Dive Card */}
-      <div className="rounded-2xl backdrop-blur-md bg-white/[0.03] border border-white/[0.08] p-6 sm:p-8 lg:p-10 shadow-2xl">
+      <div className="rounded-2xl backdrop-blur-md bg-white/[0.03] border border-white/[0.08] p-4 sm:p-8 lg:p-10 shadow-2xl">
         <AnimatePresence mode="wait">
           <motion.div
             key={selectedPersona.id}

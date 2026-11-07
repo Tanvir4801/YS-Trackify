@@ -58,7 +58,7 @@ export default function InteractiveDemos() {
       />
 
       {/* Tab Navigation Pill Bar */}
-      <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-10">
+      <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-8 sm:mb-10">
         {demos.map((d) => {
           const Icon = d.icon;
           const isActive = activeTab === d.id;
@@ -66,13 +66,13 @@ export default function InteractiveDemos() {
             <button
               key={d.id}
               onClick={() => setActiveTab(d.id as any)}
-              className={`flex items-center gap-2.5 px-4 sm:px-5 py-3 rounded-xl font-heading text-sm font-semibold transition-all duration-200 border ${
+              className={`flex items-center gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl font-heading text-xs sm:text-sm font-semibold transition-all duration-200 border ${
                 isActive
                   ? 'bg-trackify-amber text-trackify-bg border-trackify-amber shadow-lg shadow-trackify-amber/20 scale-[1.02]'
                   : 'bg-white/[0.03] text-trackify-textMuted border-white/[0.08] hover:border-trackify-cardBorder hover:text-trackify-textMain hover:bg-white/[0.05]'
               }`}
             >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-trackify-bg' : 'text-trackify-amber'}`} />
+              <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isActive ? 'text-trackify-bg' : 'text-trackify-amber'}`} />
               <span>{d.title}</span>
             </button>
           );
@@ -80,7 +80,7 @@ export default function InteractiveDemos() {
       </div>
 
       {/* Main Interactive Demo Container */}
-      <div className="relative rounded-2xl p-6 sm:p-8 lg:p-10 backdrop-blur-md bg-white/[0.03] border border-white/[0.08] shadow-2xl">
+      <div className="relative rounded-2xl p-4 sm:p-8 lg:p-10 backdrop-blur-md bg-white/[0.03] border border-white/[0.08] shadow-2xl">
         {/* Demo Subtitle / Info */}
         <div className="mb-8 pb-6 border-b border-white/[0.06]">
           <h3 className="font-heading text-xl sm:text-2xl font-bold text-trackify-textMain">

@@ -342,7 +342,7 @@ export default function Features() {
 
           {/* Right: Content Panel */}
           <div className="lg:w-2/3">
-            <div className="glass-card p-6 lg:p-8">
+            <div className="glass-card p-4 sm:p-6 lg:p-8">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={active.id}

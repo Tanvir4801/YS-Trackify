@@ -240,14 +240,14 @@ export default function PayrollCalculator() {
       {/* Result Display */}
       <motion.div
         layout
-        className="bg-trackify-darkSurface/40 border border-trackify-cardBorder rounded-xl p-6 text-center"
+        className="bg-trackify-darkSurface/40 border border-trackify-cardBorder rounded-xl p-4 sm:p-6 text-center"
       >
         <p className="font-mono text-xs text-trackify-textMuted mb-2 uppercase tracking-wider">
           net_payout
         </p>
         <motion.p
           key={netPayout}
-          className={`font-heading text-4xl sm:text-5xl font-bold ${
+          className={`font-heading text-3xl sm:text-5xl font-bold ${
             netPayout >= 0 ? 'text-trackify-emerald' : 'text-red-400'
           }`}
           aria-live="polite"

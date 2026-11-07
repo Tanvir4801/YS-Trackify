@@ -88,10 +88,10 @@ export default function DrawingChecklist() {
       {/* ── Left Column: 23-Drawing Checklist ── */}
       <div className="lg:col-span-7 space-y-4">
         {/* Metric & Ring Summary Header */}
-        <div className="p-4 rounded-xl bg-trackify-card border border-trackify-cardBorder flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-trackify-card border border-trackify-cardBorder flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             {/* SVG Circular Ring */}
-            <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center">
+            <div className="relative w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 flex items-center justify-center">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
                 <circle
                   cx="40"
@@ -115,34 +115,34 @@ export default function DrawingChecklist() {
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-heading text-sm font-bold text-trackify-textMain">
+                <span className="font-heading text-xs sm:text-sm font-bold text-trackify-textMain">
                   {percentage}%
                 </span>
-                <span className="text-[9px] font-mono text-trackify-textMuted uppercase">Done</span>
+                <span className="text-[8px] sm:text-[9px] font-mono text-trackify-textMuted uppercase">Done</span>
               </div>
             </div>
 
             <div>
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-trackify-amber" />
-                <h4 className="font-heading font-bold text-trackify-textMain text-base">
+                <Layers className="w-4 h-4 text-trackify-amber flex-shrink-0" />
+                <h4 className="font-heading font-bold text-trackify-textMain text-sm sm:text-base">
                   23-Drawing Scope Matrix
                 </h4>
               </div>
-              <p className="text-xs text-trackify-textMuted mt-0.5">
-                Click any drawing row to cycle its status
+              <p className="text-[11px] sm:text-xs text-trackify-textMuted mt-0.5">
+                Click any row to cycle status
               </p>
-              <div className="flex items-center gap-3 mt-2 text-xs font-mono">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1.5 text-[11px] font-mono">
                 <span className="text-trackify-emerald flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-trackify-emerald" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-trackify-emerald" />
                   {counts.delivered} Delivered
                 </span>
                 <span className="text-trackify-amber flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-trackify-amber" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-trackify-amber" />
                   {counts.completed} Done
                 </span>
                 <span className="text-trackify-textMuted flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-trackify-cardBorder" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-trackify-cardBorder" />
                   {counts.pending} Queued
                 </span>
               </div>
@@ -150,7 +150,7 @@ export default function DrawingChecklist() {
           </div>
 
           {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 bg-trackify-bg/60 p-1 rounded-lg border border-white/[0.05]">
+          <div className="flex flex-wrap items-center gap-1.5 bg-trackify-bg/60 p-1 rounded-lg border border-white/[0.05] self-start sm:self-auto">
             {(['all', 'delivered', 'completed', 'pending'] as const).map((filter) => (
               <button
                 key={filter}
@@ -168,27 +168,27 @@ export default function DrawingChecklist() {
         </div>
 
         {/* Scrollable Drawing Rows */}
-        <div className="max-h-[380px] overflow-y-auto space-y-1.5 pr-2 custom-scrollbar">
+        <div className="max-h-[360px] sm:max-h-[380px] overflow-y-auto space-y-1.5 pr-1.5 custom-scrollbar">
           {filteredDrawings.map((drawing) => {
             const status = statuses[drawing.id];
             return (
               <div
                 key={drawing.id}
                 onClick={() => cycleStatus(drawing.id)}
-                className="group flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] hover:border-trackify-amber/40 hover:bg-white/[0.04] transition-all cursor-pointer select-none"
+                className="group flex items-center justify-between p-2.5 sm:p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] hover:border-trackify-amber/40 hover:bg-white/[0.04] transition-all cursor-pointer select-none"
               >
-                <div className="flex items-center gap-3">
-                  <span className="w-7 h-7 rounded bg-trackify-card border border-trackify-cardBorder font-mono text-[11px] font-bold flex items-center justify-center text-trackify-textMuted group-hover:text-trackify-amber transition-colors">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+                  <span className="w-6 h-6 sm:w-7 sm:h-7 flex-shrink-0 rounded bg-trackify-card border border-trackify-cardBorder font-mono text-[10px] sm:text-[11px] font-bold flex items-center justify-center text-trackify-textMuted group-hover:text-trackify-amber transition-colors">
                     {String(drawing.id).padStart(2, '0')}
                   </span>
-                  <span className="text-sm font-medium text-trackify-textMain group-hover:text-white transition-colors">
+                  <span className="text-xs sm:text-sm font-medium text-trackify-textMain group-hover:text-white transition-colors truncate">
                     {drawing.name}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono border transition-all ${
+                    className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-mono border transition-all ${
                       status === 'delivered'
                         ? 'bg-trackify-emerald/15 border-trackify-emerald/30 text-trackify-emerald'
                         : status === 'completed'

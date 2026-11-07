@@ -147,7 +147,7 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
               setFormData({ ...formData, fullName: e.target.value });
               if (errors.fullName) setErrors({ ...errors, fullName: undefined });
             }}
-            className={`w-full px-3.5 py-2.5 rounded-lg bg-trackify-card border text-sm text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:ring-1 transition-colors ${
+            className={`w-full px-3.5 py-2.5 rounded-lg bg-trackify-card border text-base sm:text-sm text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:ring-1 transition-colors ${
               errors.fullName
                 ? 'border-red-500/70 focus:ring-red-500'
                 : 'border-trackify-cardBorder focus:border-trackify-amber focus:ring-trackify-amber/50'
@@ -173,7 +173,7 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
               setFormData({ ...formData, companyName: e.target.value });
               if (errors.companyName) setErrors({ ...errors, companyName: undefined });
             }}
-            className={`w-full px-3.5 py-2.5 rounded-lg bg-trackify-card border text-sm text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:ring-1 transition-colors ${
+            className={`w-full px-3.5 py-2.5 rounded-lg bg-trackify-card border text-base sm:text-sm text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:ring-1 transition-colors ${
               errors.companyName
                 ? 'border-red-500/70 focus:ring-red-500'
                 : 'border-trackify-cardBorder focus:border-trackify-amber focus:ring-trackify-amber/50'
@@ -205,7 +205,7 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
               setFormData({ ...formData, phone: e.target.value });
               if (errors.phone) setErrors({ ...errors, phone: undefined });
             }}
-            className={`w-full pl-12 pr-3.5 py-2.5 rounded-lg bg-trackify-card border text-sm font-mono text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:ring-1 transition-colors ${
+            className={`w-full pl-12 pr-3.5 py-2.5 rounded-lg bg-trackify-card border text-base sm:text-sm font-mono text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:ring-1 transition-colors ${
               errors.phone
                 ? 'border-red-500/70 focus:ring-red-500'
                 : 'border-trackify-cardBorder focus:border-trackify-amber focus:ring-trackify-amber/50'
@@ -228,7 +228,7 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
           <select
             value={formData.activeSites}
             onChange={(e) => setFormData({ ...formData, activeSites: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-trackify-card border border-trackify-cardBorder text-sm text-trackify-textMain focus:outline-none focus:border-trackify-amber"
+            className="w-full px-3 py-2.5 rounded-lg bg-trackify-card border border-trackify-cardBorder text-base sm:text-sm text-trackify-textMain focus:outline-none focus:border-trackify-amber"
           >
             <option value="1-2">1 to 2 Projects</option>
             <option value="3-5">3 to 5 Projects</option>
@@ -244,7 +244,7 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
           <select
             value={formData.workforceSize}
             onChange={(e) => setFormData({ ...formData, workforceSize: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-trackify-card border border-trackify-cardBorder text-sm text-trackify-textMain focus:outline-none focus:border-trackify-amber"
+            className="w-full px-3 py-2.5 rounded-lg bg-trackify-card border border-trackify-cardBorder text-base sm:text-sm text-trackify-textMain focus:outline-none focus:border-trackify-amber"
           >
             <option value="<25">Less than 25 Workers</option>
             <option value="25-50">25 to 50 Workers</option>
@@ -265,7 +265,7 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
           placeholder="e.g. Attendance registers getting soaked, weekly advance disputes on Sunday settlement..."
           value={formData.message}
           onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-          className="w-full px-3.5 py-2.5 rounded-lg bg-trackify-card border border-trackify-cardBorder text-sm text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:border-trackify-amber focus:ring-1 focus:ring-trackify-amber/50 transition-colors"
+          className="w-full px-3.5 py-2.5 rounded-lg bg-trackify-card border border-trackify-cardBorder text-base sm:text-sm text-trackify-textMain placeholder:text-trackify-textMuted/40 focus:outline-none focus:border-trackify-amber focus:ring-1 focus:ring-trackify-amber/50 transition-colors"
         />
       </div>
 

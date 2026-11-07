@@ -197,15 +197,15 @@ export default function OfflineSimulator() {
 
       {/* ── Right Column: Interactive Phone Mockup ── */}
       <div className="lg:col-span-7 flex justify-center">
-        <div className="w-full max-w-[340px] sm:max-w-[380px] rounded-[36px] p-3.5 bg-gradient-to-b from-[#1F2D44] via-[#0E1726] to-[#0A101D] border-2 border-white/[0.12] shadow-2xl relative">
+        <div className="w-full max-w-[310px] sm:max-w-[380px] rounded-[30px] sm:rounded-[36px] p-2.5 sm:p-3.5 bg-gradient-to-b from-[#1F2D44] via-[#0E1726] to-[#0A101D] border-2 border-white/[0.12] shadow-2xl relative">
           {/* Phone Speaker Notch */}
-          <div className="absolute top-5 left-1/2 -translate-x-1/2 w-28 h-4 bg-[#080E1A] rounded-full flex items-center justify-center gap-2 z-20">
-            <div className="w-2.5 h-2.5 rounded-full bg-trackify-cardBorder" />
-            <div className="w-8 h-1.5 rounded-full bg-trackify-cardBorder" />
+          <div className="absolute top-4 sm:top-5 left-1/2 -translate-x-1/2 w-24 sm:w-28 h-3.5 sm:h-4 bg-[#080E1A] rounded-full flex items-center justify-center gap-2 z-20">
+            <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-trackify-cardBorder" />
+            <div className="w-6 sm:w-8 h-1 sm:h-1.5 rounded-full bg-trackify-cardBorder" />
           </div>
 
           {/* Screen Container */}
-          <div className="rounded-[28px] bg-trackify-bg border border-white/[0.06] overflow-hidden pt-8 pb-4 px-3.5 relative">
+          <div className="rounded-[22px] sm:rounded-[28px] bg-trackify-bg border border-white/[0.06] overflow-hidden pt-7 sm:pt-8 pb-3.5 sm:pb-4 px-2.5 sm:px-3.5 relative">
             {/* Phone App Header */}
             <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-3">
               <div className="flex items-center gap-2">
