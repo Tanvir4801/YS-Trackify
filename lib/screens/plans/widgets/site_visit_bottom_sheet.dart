@@ -41,19 +41,22 @@ class _SiteVisitBottomSheetState extends State<SiteVisitBottomSheet> {
   bool _isSaving = false;
 
   final List<String> _quickPurposes = [
-    'Plinth Level',
-    'Column Alignment',
-    'Footing & Rebar',
-    'Slab Casting',
-    'Site Consultation',
+    'Site Inspection & Supervision',
+    'Centerline Layout',
+    'Footing & Excavation',
+    'Plinth Beam Details',
+    'First Floor Slab',
+    'Brick Work & Elevation',
+    'Slab Casting Inspection',
+    'Plumbing & Electrical',
     'Final Inspection',
   ];
 
   @override
   void initState() {
     super.initState();
-    _amountCtrl = TextEditingController(text: '1500');
-    _purposeCtrl = TextEditingController(text: 'Site Consultation');
+    _amountCtrl = TextEditingController(text: '1000');
+    _purposeCtrl = TextEditingController(text: 'Site Inspection & Supervision');
     _notesCtrl = TextEditingController();
   }
 
@@ -79,10 +82,11 @@ class _SiteVisitBottomSheetState extends State<SiteVisitBottomSheet> {
   }
 
   Future<void> _handleSave() async {
-    final amount = double.tryParse(_amountCtrl.text.trim()) ?? 0.0;
-    if (amount <= 0) {
+    final amountText = _amountCtrl.text.trim();
+    final amount = double.tryParse(amountText);
+    if (amount == null || amount < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid visit amount')),
+        const SnackBar(content: Text('Please enter a valid visit amount (₹0 or more)')),
       );
       return;
     }

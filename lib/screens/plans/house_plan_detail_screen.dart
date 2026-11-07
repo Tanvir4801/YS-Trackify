@@ -192,14 +192,6 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
           _buildFinancialsTab(owner, isDark, surface, border, textPrimary, textMuted),
         ],
       ),
-      floatingActionButton: _tabController.index == 1
-          ? FloatingActionButton.extended(
-              backgroundColor: AppColors.primaryColor(context),
-              icon: const Icon(Icons.add_rounded, color: Colors.black),
-              label: const Text('Log Visit', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-              onPressed: () => SiteVisitBottomSheet.show(context, owner: owner, provider: provider),
-            )
-          : null,
     );
   }
 
@@ -896,9 +888,9 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     final visits = owner.siteVisits;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
       children: [
-        // Visits financial banner
+        // Visits financial banner with the single authoritative Log Visit action
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -937,8 +929,8 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                   label: const Text('+ Log Site Visit', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black, fontSize: 13)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryColor(context),
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
                   onPressed: () => SiteVisitBottomSheet.show(context, owner: owner, provider: provider),
@@ -952,25 +944,14 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
         if (visits.isEmpty)
           Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 36),
+              padding: const EdgeInsets.symmetric(vertical: 40),
               child: Column(
                 children: [
                   Icon(Icons.directions_car_filled_rounded, size: 48, color: textMuted.withValues(alpha: 0.5)),
                   const SizedBox(height: 12),
                   Text('No site visits recorded yet', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textPrimary)),
                   const SizedBox(height: 4),
-                  Text('Tap below to add a consultation or inspection trip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: textMuted)),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.add_rounded, size: 18, color: Colors.black),
-                    label: const Text('Log First Visit', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryColor(context),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    onPressed: () => SiteVisitBottomSheet.show(context, owner: owner, provider: provider),
-                  ),
+                  Text('Tap "+ Log Site Visit" above to add an inspection or consultation trip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: textMuted)),
                 ],
               ),
             ),
@@ -1128,6 +1109,11 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                       );
                       if (confirm == true) {
                         await provider.deleteSiteVisit(ownerId: owner.id, visitId: v.id);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('✓ Site visit deleted and fees updated')),
+                          );
+                        }
                       }
                     },
                   ),
@@ -1135,37 +1121,7 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
               ),
             );
           }),
-          const SizedBox(height: 10),
-          BouncyTap(
-            onTap: () => SiteVisitBottomSheet.show(context, owner: owner, provider: provider),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              decoration: BoxDecoration(
-                color: surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.primaryColor(context).withValues(alpha: 0.45),
-                  width: 1.2,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add_circle_outline_rounded, color: AppColors.primaryColor(context), size: 19),
-                  const SizedBox(width: 8),
-                  Text(
-                    '+ Log Another Site Visit',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryColor(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 70), // space for FAB
+          const SizedBox(height: 12),
         ],
       ],
     );
