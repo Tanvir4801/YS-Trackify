@@ -833,7 +833,9 @@ export default function Plans() {
       const pending = formatCurrency(Math.max(0, totalBillable - (Number(ownerToBill.totalPaid) || 0)));
       const coName = branding?.companyName || 'YS Construction';
       const siteLoc = [ownerToBill.ownerAddress, ownerToBill.city || ownerToBill.town].filter(Boolean).join(', ') || ownerToBill.city || '-';
-      const builtUpArea = ownerToBill.totalSqFt ? `${Number(ownerToBill.totalSqFt).toLocaleString('en-IN')} sq.ft` : '-';
+      const builtUpArea = (Number(ownerToBill.totalSqFt) > 0 || Number(ownerToBill.plotAreaSqFt) > 0)
+        ? `${Number(ownerToBill.totalSqFt || ownerToBill.plotAreaSqFt).toLocaleString('en-IN')} sq.ft`
+        : '-';
       const plansCount = (ownerToBill.plansList || []).length || 21;
 
       let paymentSectionText = `• *Total Plan Fee:* ${baseFee}\n• *Advance Cleared:* ${paid}\n• *Net Remaining Balance:* ${pending}`;
@@ -1800,9 +1802,9 @@ export default function Plans() {
                           <span>{owner.city || owner.town}</span>
                         </span>
                       )}
-                      {owner.totalSqFt && (
+                      {(Number(owner.totalSqFt) > 0 || Number(owner.plotAreaSqFt) > 0) && (
                         <span className="text-[11px] text-text-muted font-medium bg-bg-input/40 px-2 py-0.5 rounded-md border border-border/40">
-                          {Number(owner.totalSqFt).toLocaleString('en-IN')} sq.ft
+                          {Number(owner.totalSqFt || owner.plotAreaSqFt).toLocaleString('en-IN')} sq.ft
                         </span>
                       )}
                     </div>
@@ -2245,9 +2247,9 @@ export default function Plans() {
                               {activeOwner.city || activeOwner.town}
                             </span>
                           )}
-                          {activeOwner.totalSqFt && (
+                          {(Number(activeOwner.totalSqFt) > 0 || Number(activeOwner.plotAreaSqFt) > 0) && (
                             <span className="text-text-secondary font-medium">
-                              {Number(activeOwner.totalSqFt).toLocaleString('en-IN')} sq.ft
+                              {Number(activeOwner.totalSqFt || activeOwner.plotAreaSqFt).toLocaleString('en-IN')} sq.ft
                             </span>
                           )}
                           {activeOwner.engineerName && (
@@ -3282,7 +3284,9 @@ export default function Plans() {
                         <div className="flex justify-between">
                           <span className="text-text-muted">Total House Sq. Ft:</span>
                           <span className="font-semibold text-text-primary">
-                            {Number(activeOwner.totalSqFt || 0).toLocaleString('en-IN')} sq.ft
+                            {(Number(activeOwner.totalSqFt) > 0 || Number(activeOwner.plotAreaSqFt) > 0)
+                              ? `${Number(activeOwner.totalSqFt || activeOwner.plotAreaSqFt).toLocaleString('en-IN')} sq.ft`
+                              : '-'}
                           </span>
                         </div>
                         <div className="flex justify-between">

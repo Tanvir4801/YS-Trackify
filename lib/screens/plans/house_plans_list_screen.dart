@@ -693,10 +693,10 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
                                   Text(owner.ownerPhone, style: TextStyle(fontSize: 12, color: textMuted)),
                                   const SizedBox(width: 12),
                                 ],
-                                if (owner.plotArea.isNotEmpty) ...[
+                                if (owner.displaySqFt.isNotEmpty) ...[
                                   Icon(Icons.square_foot_rounded, size: 13, color: textMuted),
                                   const SizedBox(width: 4),
-                                  Text(owner.plotArea, style: TextStyle(fontSize: 12, color: textMuted)),
+                                  Text(owner.displaySqFt, style: TextStyle(fontSize: 12, color: textMuted)),
                                 ],
                               ],
                             ),

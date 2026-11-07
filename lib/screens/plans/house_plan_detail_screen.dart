@@ -144,9 +144,13 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            if (owner.villageCity.isNotEmpty)
+            if (owner.villageCity.isNotEmpty || owner.planNo.isNotEmpty || owner.displaySqFt.isNotEmpty)
               Text(
-                '${owner.villageCity} • Plan #${owner.planNo}',
+                [
+                  if (owner.villageCity.isNotEmpty) owner.villageCity,
+                  if (owner.planNo.isNotEmpty) 'Plan #${owner.planNo}',
+                  if (owner.displaySqFt.isNotEmpty) owner.displaySqFt,
+                ].join(' • '),
                 style: TextStyle(fontSize: 11, color: textMuted),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

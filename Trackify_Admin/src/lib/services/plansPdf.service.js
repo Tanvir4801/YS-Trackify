@@ -562,7 +562,10 @@ export async function generateHousePlanInvoicePDF({
   doc.text('TOTAL BUILT-UP AREA:', margin + 4, specY + 4.2);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${Number(owner.totalSqFt || 0).toLocaleString('en-IN')} sq.ft`, margin + 4, specY + 8.2);
+  const builtUpDisplay = (Number(owner.totalSqFt) > 0 || Number(owner.plotAreaSqFt) > 0)
+    ? `${Number(owner.totalSqFt || owner.plotAreaSqFt).toLocaleString('en-IN')} sq.ft`
+    : 'N/A';
+  doc.text(builtUpDisplay, margin + 4, specY + 8.2);
 
   // Spec 2: Rate per sq.ft
   doc.setFont('helvetica', 'bold');

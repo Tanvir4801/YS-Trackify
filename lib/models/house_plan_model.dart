@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class HousePlanDrawing {
   final String id;
@@ -242,6 +243,8 @@ class HousePlanOwner {
   final String ownerPhone;
   final String villageCity;
   final String plotArea;
+  final double totalSqFt;
+  final double plotAreaSqFt;
   final String planNo;
   final String serial3D;
   final String supervisingEngineer;
@@ -262,6 +265,8 @@ class HousePlanOwner {
     required this.ownerPhone,
     this.villageCity = '',
     this.plotArea = '',
+    this.totalSqFt = 0.0,
+    this.plotAreaSqFt = 0.0,
     this.planNo = '',
     this.serial3D = '',
     this.supervisingEngineer = '',
@@ -275,6 +280,27 @@ class HousePlanOwner {
     this.createdAt,
     this.updatedAt,
   });
+
+  /// Formatted square footage string (e.g. "2,000 sq.ft") or empty string if zero/missing.
+  String get displaySqFt {
+    final effectiveSqFt = totalSqFt > 0 ? totalSqFt : plotAreaSqFt;
+    if (effectiveSqFt > 0) {
+      if (effectiveSqFt == effectiveSqFt.roundToDouble()) {
+        final int val = effectiveSqFt.toInt();
+        return '${NumberFormat('#,##0', 'en_IN').format(val)} sq.ft';
+      } else {
+        return '${NumberFormat('#,##0.##', 'en_IN').format(effectiveSqFt)} sq.ft';
+      }
+    }
+    if (plotArea.isNotEmpty) {
+      final clean = plotArea.replaceAll(RegExp(r'[^0-9.]'), '').trim();
+      final numVal = double.tryParse(clean) ?? 0.0;
+      if (numVal > 0) {
+        return plotArea.endsWith('sq.ft') ? plotArea : '$plotArea sq.ft';
+      }
+    }
+    return '';
+  }
 
   // ── FINANCIAL & CALCULATION LOGIC (IDENTICAL TO ADMIN WEB) ──
 
@@ -395,8 +421,39 @@ class HousePlanOwner {
         (data['town'] as String?) ??
         '';
 
-    final plotArea = (data['plotArea'] as String?) ??
-        (data['plotAreaSqFt'] != null ? '${data['plotAreaSqFt']} sq.ft' : '');
+    double parseSqFt(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      if (val is String) {
+        final clean = val.replaceAll(RegExp(r'[^0-9.]'), '').trim();
+        return double.tryParse(clean) ?? 0.0;
+      }
+      return 0.0;
+    }
+
+    final double parsedTotalSqFt = parseSqFt(
+      data['totalSqFt'] ?? data['houseSqFt'] ?? data['builtUpArea'] ?? data['totalArea'],
+    );
+    final double parsedPlotAreaSqFt = parseSqFt(
+      data['plotAreaSqFt'] ?? data['plotSqFt'],
+    );
+
+    String rawPlotArea = (data['plotArea'] as String?)?.trim() ?? '';
+    if (rawPlotArea == '0' || rawPlotArea == '0 sq.ft' || rawPlotArea == '0.0 sq.ft' || rawPlotArea == '0.0') {
+      rawPlotArea = '';
+    }
+
+    String finalPlotArea = rawPlotArea;
+    if (finalPlotArea.isEmpty) {
+      final effective = parsedTotalSqFt > 0 ? parsedTotalSqFt : parsedPlotAreaSqFt;
+      if (effective > 0) {
+        if (effective == effective.roundToDouble()) {
+          finalPlotArea = '${NumberFormat('#,##0', 'en_IN').format(effective.toInt())} sq.ft';
+        } else {
+          finalPlotArea = '${NumberFormat('#,##0.##', 'en_IN').format(effective)} sq.ft';
+        }
+      }
+    }
 
     final planNo = (data['planNo'] as String?) ??
         (data['planNumber'] as String?) ??
@@ -412,7 +469,9 @@ class HousePlanOwner {
       ownerName: (data['ownerName'] as String?) ?? 'Unknown Client',
       ownerPhone: (data['ownerPhone'] as String?) ?? '',
       villageCity: villageCity,
-      plotArea: plotArea,
+      plotArea: finalPlotArea,
+      totalSqFt: parsedTotalSqFt,
+      plotAreaSqFt: parsedPlotAreaSqFt,
       planNo: planNo,
       serial3D: serial3D,
       supervisingEngineer: (data['supervisingEngineer'] as String?) ?? (data['engineerName'] as String?) ?? '',

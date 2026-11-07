@@ -153,8 +153,8 @@ class HousePlanPdfService {
             children: [
               pw.Text('PROJECT SPECIFICATIONS', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
               pw.SizedBox(height: 3),
-              if (owner.plotArea.isNotEmpty)
-                pw.Text('Plot Area: ${owner.plotArea}', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800)),
+              if (owner.displaySqFt.isNotEmpty)
+                pw.Text('Built-up Area: ${owner.displaySqFt}', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800)),
               if (owner.serial3D.isNotEmpty)
                 pw.Text('3D Ref: ${owner.serial3D}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
               if (owner.supervisingEngineer.isNotEmpty)
