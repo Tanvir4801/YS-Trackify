@@ -9,20 +9,11 @@ import { Calculator, WifiOff, FileCheck2, ArrowRight } from 'lucide-react';
 
 const demos = [
   {
-    id: 'payroll',
-    title: 'Live Payroll Calculator',
-    shortTitle: 'Payroll Engine',
-    subtitle: 'Zero math mistakes. Auto-deduct advances and calculate wage settlements with fractional shift increments.',
-    icon: Calculator,
-    sheetTag: 'SHEET 05A / 12',
-  },
-  {
     id: 'offline',
     title: 'Offline-First Simulator',
     shortTitle: 'Offline Buffer',
     subtitle: 'Test how attendance and advance logs queue locally in remote excavations or basements with auto-sync.',
     icon: WifiOff,
-    sheetTag: 'SHEET 05B / 12',
   },
   {
     id: 'drawings',
@@ -30,20 +21,27 @@ const demos = [
     shortTitle: 'Drawings & Billing',
     subtitle: 'Track architectural blueprints from foundation to 3D elevation, log site inspections, and export branded client statements.',
     icon: FileCheck2,
-    sheetTag: 'SHEET 05C / 12',
+  },
+  {
+    id: 'payroll',
+    title: 'Live Payroll Calculator',
+    shortTitle: 'Payroll Engine',
+    subtitle: 'Zero math mistakes. Auto-deduct advances and calculate wage settlements with fractional shift increments.',
+    icon: Calculator,
   },
 ];
 
 export default function InteractiveDemos() {
-  const [activeTab, setActiveTab] = useState<'payroll' | 'offline' | 'drawings'>('drawings');
+  const [activeTab, setActiveTab] = useState<'offline' | 'drawings' | 'payroll'>('offline');
 
-  // If navigated to #plans, ensure Drawings & Billing is shown
+  // If navigated to #plans via navbar or hash, switch to Drawings & Billing tab
   useEffect(() => {
     const handleHash = () => {
       if (window.location.hash === '#plans') {
         setActiveTab('drawings');
       }
     };
+    handleHash();
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
@@ -95,17 +93,6 @@ export default function InteractiveDemos() {
 
         {/* Component Display */}
         <div>
-          {activeTab === 'payroll' && (
-            <motion.div
-              key="payroll"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <PayrollCalculator />
-            </motion.div>
-          )}
-
           {activeTab === 'offline' && (
             <motion.div
               key="offline"
@@ -125,6 +112,17 @@ export default function InteractiveDemos() {
               transition={{ duration: 0.3 }}
             >
               <DrawingChecklist />
+            </motion.div>
+          )}
+
+          {activeTab === 'payroll' && (
+            <motion.div
+              key="payroll"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <PayrollCalculator />
             </motion.div>
           )}
         </div>
