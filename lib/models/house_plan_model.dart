@@ -268,9 +268,14 @@ class HousePlanOwner {
   final String ownerName;
   final String ownerPhone;
   final String villageCity;
+  final String ownerAddress;
   final String plotArea;
   final double totalSqFt;
   final double plotAreaSqFt;
+  final double ratePerSqFt;
+  final String bhk;
+  final String floors;
+  final String facing;
   final String planNo;
   final String serial3D;
   final String supervisingEngineer;
@@ -290,9 +295,14 @@ class HousePlanOwner {
     required this.ownerName,
     required this.ownerPhone,
     this.villageCity = '',
+    this.ownerAddress = '',
     this.plotArea = '',
     this.totalSqFt = 0.0,
     this.plotAreaSqFt = 0.0,
+    this.ratePerSqFt = 0.0,
+    this.bhk = '3 BHK',
+    this.floors = 'G+1',
+    this.facing = 'East',
     this.planNo = '',
     this.serial3D = '',
     this.supervisingEngineer = '',
@@ -488,6 +498,14 @@ class HousePlanOwner {
       }
     }
 
+    final ownerAddress = (data['ownerAddress'] as String?) ?? '';
+    final ratePerSqFt = (data['ratePerSqFt'] is num)
+        ? (data['ratePerSqFt'] as num).toDouble()
+        : double.tryParse(data['ratePerSqFt']?.toString() ?? '0') ?? 0.0;
+    final bhk = (data['bhk'] as String?) ?? '3 BHK';
+    final floors = (data['floors'] as String?) ?? 'G+1';
+    final facing = (data['facing'] as String?) ?? 'East';
+
     final planNo = (data['planNo'] as String?) ??
         (data['planNumber'] as String?) ??
         '';
@@ -502,9 +520,14 @@ class HousePlanOwner {
       ownerName: (data['ownerName'] as String?) ?? 'Unknown Client',
       ownerPhone: (data['ownerPhone'] as String?) ?? '',
       villageCity: villageCity,
+      ownerAddress: ownerAddress,
       plotArea: finalPlotArea,
       totalSqFt: parsedTotalSqFt,
       plotAreaSqFt: parsedPlotAreaSqFt,
+      ratePerSqFt: ratePerSqFt,
+      bhk: bhk,
+      floors: floors,
+      facing: facing,
       planNo: planNo,
       serial3D: serial3D,
       supervisingEngineer: (data['supervisingEngineer'] as String?) ?? (data['engineerName'] as String?) ?? '',
