@@ -815,7 +815,7 @@ class HousePlanPdfService {
               final idx = entry.key + 1;
               final p = entry.value;
               final isEven = idx % 2 == 0;
-              final numDisplay = p.num.isNotEmpty ? p.num : String(idx).padLeft(2, '0');
+              final numDisplay = p.num.isNotEmpty ? p.num : idx.toString().padLeft(2, '0');
               final isCompleted = p.isCompleted;
               final statusText = isCompleted
                   ? 'COMPLETED (RELEASED)'
