@@ -41,12 +41,25 @@ class ReportsProvider extends ChangeNotifier {
     if (month != null) this.month = month;
     if (year  != null) this.year  = year;
 
-    // 1. FAST LOCAL HYDRATION: Build report from local cache immediately (0ms latency)
+    // 1. FAST LOCAL HYDRATION: Build report from local cache immediately (<5ms)
     _buildFromLocalCache();
 
     // 2. REMOTE REFRESH: Fetch fresh updates from Firestore in the background
     _cancelSubs();
     _fetchRemoteAndBuild();
+  }
+
+  /// Safe query executor that never throws and bounds execution with a timeout.
+  Future<QuerySnapshot<Map<String, dynamic>>?> _safeGet(
+    Query<Map<String, dynamic>> query, {
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    try {
+      return await query.get().timeout(timeout);
+    } catch (e) {
+      debugPrint('[ReportsProvider] Query notice: $e');
+      return null;
+    }
   }
 
   /// Synchronously builds reports from Hive boxes for instant, zero-delay rendering.
@@ -72,7 +85,6 @@ class ReportsProvider extends ChangeNotifier {
 
       // Filter labours for this contractor / supervisor
       final relevantLabours = labourBox.values.where((l) {
-        if (!l.isActive) return false;
         return l.supervisorId == uid ||
             l.contractorId == uid ||
             (cId.isNotEmpty && l.contractorId == cId);
@@ -111,7 +123,7 @@ class ReportsProvider extends ChangeNotifier {
       final monthPayments = payBox?.values.where((p) {
         return p.date.year == year &&
             p.date.month == month &&
-            (relevantLabourIds.contains(p.labourId) || p.supervisorId == uid);
+            (relevantLabourIds.contains(p.labourId) || p.supervisorId == uid || p.contractorId == uid);
       }).toList() ?? [];
 
       final payByLabour = <String, List<Payment>>{};
@@ -201,7 +213,7 @@ class ReportsProvider extends ChangeNotifier {
         final netPayable  = grossSalary - totalAdvances;
 
         if (grossSalary == 0 && totalAdvances == 0 && labourAtt.isEmpty) {
-          continue; // Skip inactive workers with no activity
+          continue; // Skip workers with no activity in this month
         }
 
         results.add(LabourMonthlyReport(
@@ -242,7 +254,7 @@ class ReportsProvider extends ChangeNotifier {
         siteExpenses: siteExpenses,
       );
 
-      // If we found cached records, hide spinner right away!
+      // If we found cached records, render without showing a spinner!
       if (reports.isNotEmpty) {
         isLoading = false;
         error = null;
@@ -253,7 +265,7 @@ class ReportsProvider extends ChangeNotifier {
     }
   }
 
-  /// Fetches fresh data from Firestore with strict timeouts and resilient fallbacks.
+  /// Fetches fresh data from Firestore safely without throwing unhandled exceptions.
   Future<void> _fetchRemoteAndBuild() async {
     if (_isFetchingRemote) return;
     _isFetchingRemote = true;
@@ -268,22 +280,21 @@ class ReportsProvider extends ChangeNotifier {
     }
 
     try {
-      // 1. Fetch Labours (both supervisor & contractor scoped)
+      // 1. Fetch Labours (both supervisor & contractor scoped so both account types work)
       final labourQueries = [
-        _db.collection('labours').where('supervisorId', isEqualTo: uid).get().timeout(const Duration(seconds: 6)),
+        _safeGet(_db.collection('labours').where('supervisorId', isEqualTo: uid)),
+        _safeGet(_db.collection('labours').where('contractorId', isEqualTo: uid)),
         if (cId.isNotEmpty && cId != uid)
-          _db.collection('labours').where('contractorId', isEqualTo: cId).get().timeout(const Duration(seconds: 6)),
+          _safeGet(_db.collection('labours').where('contractorId', isEqualTo: cId)),
       ];
 
-      final labourSnapshots = await Future.wait(
-        labourQueries.map((q) => q.catchError((_) => _db.collection('labours').where('supervisorId', isEqualTo: uid).limit(0).get())),
-      );
+      final labourSnapshots = await Future.wait(labourQueries);
 
       final labourDocs = <String, QueryDocumentSnapshot>{};
       for (final s in labourSnapshots) {
+        if (s == null) continue;
         for (final doc in s.docs) {
           labourDocs[doc.id] = doc;
-          // Sync to local Hive box if open
           if (Hive.isBoxOpen(Labour.boxName)) {
             try {
               Hive.box<Labour>(Labour.boxName).put(doc.id, Labour.fromFirestore(doc));
@@ -294,27 +305,26 @@ class ReportsProvider extends ChangeNotifier {
 
       // 2. Fetch Attendance (Flat collection with date range)
       final attQueries = [
-        _db.collection('attendance')
+        _safeGet(_db.collection('attendance')
             .where('supervisorId', isEqualTo: uid)
             .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-            .where('date', isLessThan: '$nextMonthStr-01')
-            .get()
-            .timeout(const Duration(seconds: 6)),
+            .where('date', isLessThan: '$nextMonthStr-01')),
+        _safeGet(_db.collection('attendance')
+            .where('contractorId', isEqualTo: uid)
+            .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
+            .where('date', isLessThan: '$nextMonthStr-01')),
         if (cId.isNotEmpty && cId != uid)
-          _db.collection('attendance')
+          _safeGet(_db.collection('attendance')
               .where('contractorId', isEqualTo: cId)
               .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-              .where('date', isLessThan: '$nextMonthStr-01')
-              .get()
-              .timeout(const Duration(seconds: 6)),
+              .where('date', isLessThan: '$nextMonthStr-01')),
       ];
 
-      final attSnapshots = await Future.wait(
-        attQueries.map((q) => q.catchError((_) => _db.collection('attendance').limit(0).get())),
-      );
+      final attSnapshots = await Future.wait(attQueries);
 
       final fetchedRecords = <Map<String, dynamic>>[];
       for (final s in attSnapshots) {
+        if (s == null) continue;
         for (final doc in s.docs) {
           final data = doc.data();
           fetchedRecords.add(data);
@@ -328,92 +338,85 @@ class ReportsProvider extends ChangeNotifier {
       }
 
       // 3. Fast nested attendance check:
-      // Try collectionGroup query first (1 fast network query instead of 31!)
-      try {
-        final groupSnap = await _db
-            .collectionGroup('records')
+      final groupSnap = await _safeGet(
+        _db.collectionGroup('records')
             .where('contractorId', isEqualTo: cId)
             .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-            .where('date', isLessThan: '$nextMonthStr-01')
-            .get()
-            .timeout(const Duration(seconds: 5));
+            .where('date', isLessThan: '$nextMonthStr-01'),
+        timeout: const Duration(seconds: 4),
+      );
 
+      if (groupSnap != null) {
         for (final doc in groupSnap.docs) {
           fetchedRecords.add(doc.data());
         }
-      } catch (_) {
-        // If collectionGroup is unavailable or index is pending, query active days up to current day
-        if (cId.isNotEmpty) {
-          final daysInMonth = DateTime(year, month + 1, 0).day;
-          final maxDayToCheck = (year == DateTime.now().year && month == DateTime.now().month)
-              ? DateTime.now().day
-              : daysInMonth;
+      } else if (cId.isNotEmpty) {
+        final daysInMonth = DateTime(year, month + 1, 0).day;
+        final maxDayToCheck = (year == DateTime.now().year && month == DateTime.now().month)
+            ? DateTime.now().day
+            : daysInMonth;
 
-          // Parallel query only past & present days with 4s timeout
-          final dateQueries = List.generate(maxDayToCheck, (i) {
-            final day = i + 1;
-            final dateKey = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-            return _db
-                .collection('attendance')
+        final dateQueries = List.generate(maxDayToCheck, (i) {
+          final day = i + 1;
+          final dateKey = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+          return _safeGet(
+            _db.collection('attendance')
                 .doc(cId)
                 .collection('dates')
                 .doc(dateKey)
-                .collection('records')
-                .get()
-                .timeout(const Duration(seconds: 4))
-                .catchError((_) => _db.collection('attendance').limit(0).get());
-          });
+                .collection('records'),
+            timeout: const Duration(seconds: 3),
+          );
+        });
 
-          final dateSnaps = await Future.wait(dateQueries);
-          for (final snap in dateSnaps) {
-            for (final doc in snap.docs) {
-              fetchedRecords.add(doc.data());
-            }
+        final dateSnaps = await Future.wait(dateQueries);
+        for (final snap in dateSnaps) {
+          if (snap == null) continue;
+          for (final doc in snap.docs) {
+            fetchedRecords.add(doc.data());
           }
         }
       }
 
       // 4. Batch fetch sites to resolve names
       final siteNames = <String, String>{};
-      try {
-        final sitesSnap = await _db.collection('sites')
-            .where('contractorId', isEqualTo: cId)
-            .get()
-            .timeout(const Duration(seconds: 5));
-        for (final doc in sitesSnap.docs) {
+      final sitesSnaps = await Future.wait([
+        _safeGet(_db.collection('sites').where('contractorId', isEqualTo: cId)),
+        if (cId != uid)
+          _safeGet(_db.collection('sites').where('contractorId', isEqualTo: uid)),
+      ]);
+      for (final snap in sitesSnaps) {
+        if (snap == null) continue;
+        for (final doc in snap.docs) {
           final d = doc.data();
           siteNames[doc.id] = d['name'] as String? ?? doc.id;
+          if (d['id'] != null) {
+            siteNames[d['id']] = d['name'] as String? ?? d['id'];
+          }
         }
-      } catch (_) {}
+      }
 
       // 5. Batch fetch payments
       final startTs = Timestamp.fromDate(DateTime(year, month, 1));
       final endTs   = Timestamp.fromDate(DateTime(year, month + 1, 0, 23, 59, 59));
       final paymentDocs = <Map<String, dynamic>>[];
 
-      try {
-        final paySnap = await _db.collection('payments')
-            .where('supervisorId', isEqualTo: uid)
-            .where('date', isGreaterThanOrEqualTo: startTs)
-            .where('date', isLessThanOrEqualTo: endTs)
-            .get()
-            .timeout(const Duration(seconds: 5));
-        for (final doc in paySnap.docs) {
-          paymentDocs.add(doc.data());
-        }
-      } catch (_) {
-        try {
-          final paySnapAlt = await _db.collection('payments')
-              .where('contractorId', isEqualTo: cId)
-              .get()
-              .timeout(const Duration(seconds: 5));
-          for (final doc in paySnapAlt.docs) {
-            final ts = doc.data()['date'] as Timestamp?;
-            if (ts != null && ts.compareTo(startTs) >= 0 && ts.compareTo(endTs) <= 0) {
-              paymentDocs.add(doc.data());
-            }
+      final paySnaps = await Future.wait([
+        _safeGet(_db.collection('payments').where('supervisorId', isEqualTo: uid)),
+        _safeGet(_db.collection('payments').where('contractorId', isEqualTo: uid)),
+        if (cId.isNotEmpty && cId != uid)
+          _safeGet(_db.collection('payments').where('contractorId', isEqualTo: cId)),
+      ]);
+
+      for (final snap in paySnaps) {
+        if (snap == null) continue;
+        for (final doc in snap.docs) {
+          final d = doc.data();
+          final ts = d['date'] as Timestamp?;
+          if (ts != null && ts.compareTo(startTs) >= 0 && ts.compareTo(endTs) <= 0) {
+            paymentDocs.add(d);
           }
-        } catch (_) {}
+        }
       }
 
       // 6. Material purchases and expenses (non-blocking)
@@ -422,35 +425,37 @@ class ReportsProvider extends ChangeNotifier {
       final siteMaterials = <String, double>{};
       final siteExpenses = <String, double>{};
 
-      try {
-        final matSnap = await _db.collection('materialPurchases')
+      final matSnap = await _safeGet(
+        _db.collection('materialPurchases')
             .doc(cId).collection('purchases')
             .where('purchaseDate', isGreaterThanOrEqualTo: '$monthStr-01')
-            .where('purchaseDate', isLessThan: '$nextMonthStr-01')
-            .get()
-            .timeout(const Duration(seconds: 4));
+            .where('purchaseDate', isLessThan: '$nextMonthStr-01'),
+        timeout: const Duration(seconds: 4),
+      );
+      if (matSnap != null) {
         for (final doc in matSnap.docs) {
           final amt = (doc.data()['totalAmount'] as num?)?.toDouble() ?? 0;
           totalMaterials += amt;
           final sId = doc.data()['siteId'] as String? ?? 'no_site';
           siteMaterials[sId] = (siteMaterials[sId] ?? 0) + amt;
         }
-      } catch (_) {}
+      }
 
-      try {
-        final expSnap = await _db.collection('siteExpenses')
+      final expSnap = await _safeGet(
+        _db.collection('siteExpenses')
             .doc(cId).collection('expenses')
             .where('date', isGreaterThanOrEqualTo: '$monthStr-01')
-            .where('date', isLessThan: '$nextMonthStr-01')
-            .get()
-            .timeout(const Duration(seconds: 4));
+            .where('date', isLessThan: '$nextMonthStr-01'),
+        timeout: const Duration(seconds: 4),
+      );
+      if (expSnap != null) {
         for (final doc in expSnap.docs) {
           final amt = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
           totalExpenses += amt;
           final sId = doc.data()['siteId'] as String? ?? 'no_site';
           siteExpenses[sId] = (siteExpenses[sId] ?? 0) + amt;
         }
-      } catch (_) {}
+      }
 
       // Deduplicate fetchedRecords
       final uniqueRecords = <String, Map<String, dynamic>>{};
@@ -608,15 +613,36 @@ class ReportsProvider extends ChangeNotifier {
       debugPrint('[ReportsProvider] Remote fetch error: $e');
       debugPrint(stack.toString());
 
-      // If we already had cached reports, don't show an error screen
-      if (reports.isEmpty) {
-        error = 'Failed to load reports. Please check your network and retry.';
+      // If we already have local cache or partial data, show it cleanly
+      if (reports.isNotEmpty) {
+        error = null;
+      } else {
+        // Fallback: build from local cache once more
+        _buildFromLocalCache();
+        if (reports.isNotEmpty) {
+          error = null;
+        } else {
+          // If no records exist, show an empty state rather than a crash screen
+          summary = ReportSummary(
+            month: month,
+            year: year,
+            totalLabours: 0,
+            tempLabours: 0,
+            totalGross: 0,
+            totalAdvances: 0,
+            totalNet: 0,
+            totalDaysWorked: 0,
+            totalMaterials: 0,
+            totalExpenses: 0,
+          );
+          reports = [];
+          error = null;
+        }
       }
       isLoading = false;
       notifyListeners();
     } finally {
       _isFetchingRemote = false;
-      // Always ensure isLoading is false when completed
       if (isLoading) {
         isLoading = false;
         notifyListeners();
