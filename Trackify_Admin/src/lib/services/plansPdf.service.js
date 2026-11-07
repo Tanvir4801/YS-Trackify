@@ -40,6 +40,76 @@ function formatPdfCurrency(amount) {
 }
 
 /**
+ * Comprehensive text sanitization ensuring 100% printable ASCII compatibility
+ * with standard PDF Helvetica font, preventing any tofu [?] or [+] glyph boxes.
+ */
+export function cleanPdfText(input) {
+  if (!input) return '';
+  let text = String(input);
+
+  // 1. Bullets & list markers -> clean ASCII dash with space
+  text = text.replace(/[\u2022\u2023\u25E6\u2043\u204C\u204D\u2219\u25CF\u25CB\u25AA\u25AB\u25A0\u25A1\u25B8\u25BA\u27A4\u279C\u2794\u204B]\s*/g, '- ');
+
+  // 2. Checkmarks & status icons
+  text = text
+    .replace(/[\u2713\u2714\u2611\u2705]/g, '[OK] ')
+    .replace(/[\u2716\u2718\u274C\u2612]/g, '[X] ')
+    .replace(/[\u26A0\u2757]/g, '[!] ');
+
+  // 3. Smart double and single quotes
+  text = text
+    .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, '"')
+    .replace(/[\u2018\u2019\u201A\u201B\u00B4`]/g, "'");
+
+  // 4. Dashes, hyphens & horizontal bars
+  text = text.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-');
+
+  // 5. Horizontal ellipsis
+  text = text.replace(/\u2026/g, '...');
+
+  // 6. Currency symbols
+  text = text.replace(/\u20B9/g, 'Rs. ').replace(/\u00A3/g, 'GBP ').replace(/\u20AC/g, 'EUR ');
+
+  // 7. Math & measurement symbols
+  text = text
+    .replace(/\u00D7/g, 'x')
+    .replace(/\u00F7/g, '/')
+    .replace(/\u00B1/g, '+/-')
+    .replace(/\u00B0/g, ' deg')
+    .replace(/\u00B2/g, '2')
+    .replace(/\u00B3/g, '3')
+    .replace(/\u00BD/g, '1/2')
+    .replace(/\u00BC/g, '1/4')
+    .replace(/\u00BE/g, '3/4')
+    .replace(/\u2248/g, '~')
+    .replace(/\u2260/g, '!=')
+    .replace(/\u2264/g, '<=')
+    .replace(/\u2265/g, '>=');
+
+  // 8. Arrows
+  text = text
+    .replace(/[\u2192\u21D2\u2799]/g, '->')
+    .replace(/[\u2190\u21D0]/g, '<-')
+    .replace(/[\u2194\u21D4]/g, '<->');
+
+  // 9. Zero-width spaces/formatters & non-breaking spaces & replacement chars
+  text = text
+    .replace(/[\u200B\u200C\u200D\uFEFF\uFFFD]/g, '')
+    .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
+
+  // 10. CR LF normalization
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // 11. Strictly remove any remaining non-ASCII characters that cannot be drawn by standard PDF fonts
+  text = text.replace(/[^\x20-\x7E\n\t]/g, ' ');
+
+  // 12. Normalize multiple spaces on the same line (preserve newlines)
+  text = text.split('\n').map((line) => line.replace(/[ ]{2,}/g, ' ').trim()).join('\n');
+
+  return text.trim();
+}
+
+/**
  * Parses natural dimensions from a base64 DataURL
  */
 function parseDataUrlDimensions(dataUrl) {
@@ -489,10 +559,10 @@ export async function generateHousePlanInvoicePDF({
   let paymentRows = [];
   if (payments.length > 0) {
     paymentRows = payments.map((p, idx) => [
-      `${idx + 1}. ${p.installmentName || p.type || 'Part Payment'}`,
+      `${idx + 1}. ${cleanPdfText(p.installmentName || p.type || 'Part Payment')}`,
       p.date ? formatDate(p.date) : '-',
-      p.mode || 'UPI',
-      p.referenceNo || p.notes || '-',
+      cleanPdfText(p.mode || 'UPI'),
+      cleanPdfText(p.referenceNo || p.notes || '-'),
       formatPdfCurrency(p.amount),
     ]);
   } else {
@@ -550,8 +620,8 @@ export async function generateHousePlanInvoicePDF({
     const visitRows = siteVisits.map((v, idx) => [
       `${idx + 1}.`,
       v.date ? formatDate(v.date) : '-',
-      v.purpose || 'Site Inspection & Supervision',
-      v.visitedBy || owner.engineerName || 'Supervising Engineer',
+      cleanPdfText(v.notes || v.purpose || 'Site Inspection & Supervision'),
+      cleanPdfText(v.visitedBy || owner.engineerName || 'Supervising Engineer'),
       formatPdfCurrency(v.amount),
     ]);
 
@@ -698,8 +768,8 @@ export async function generateHousePlanInvoicePDF({
     const statusText = isCompleted ? 'COMPLETED (RELEASED)' : p.status === 'in_progress' ? 'IN PROGRESS' : 'NOT STARTED';
     return [
       numDisplay,
-      `${numDisplay}-${cleanName}`,
-      p.category || 'Engineering',
+      cleanPdfText(`${numDisplay}-${cleanName}`),
+      cleanPdfText(p.category || 'Engineering'),
       statusText,
     ];
   });

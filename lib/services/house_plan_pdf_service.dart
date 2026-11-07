@@ -51,6 +51,78 @@ class HousePlanPdfService {
     return '-';
   }
 
+  /// Comprehensive text sanitization ensuring 100% printable ASCII compatibility
+  /// with standard PDF Helvetica font, preventing any tofu [?] or [+] glyph boxes.
+  static String _cleanPdfText(String? input) {
+    if (input == null || input.isEmpty) return '';
+
+    String text = input;
+
+    // 1. Bullets & list markers -> clean ASCII dash with space
+    text = text.replaceAll(
+      RegExp(r'[\u2022\u2023\u25E6\u2043\u204C\u204D\u2219\u25CF\u25CB\u25AA\u25AB\u25A0\u25A1\u25B8\u25BA\u27A4\u279C\u2794\u204B]\s*'),
+      '- ',
+    );
+
+    // 2. Checkmarks & status icons
+    text = text
+        .replaceAll(RegExp(r'[\u2713\u2714\u2611\u2705]'), '[OK] ')
+        .replaceAll(RegExp(r'[\u2716\u2718\u274C\u2612]'), '[X] ')
+        .replaceAll(RegExp(r'[\u26A0\u2757]'), '[!] ');
+
+    // 3. Smart double and single quotes
+    text = text
+        .replaceAll(RegExp(r'[\u201C\u201D\u201E\u201F\u00AB\u00BB]'), '"')
+        .replaceAll(RegExp(r'[\u2018\u2019\u201A\u201B\u00B4`]'), "'");
+
+    // 4. Dashes, hyphens & horizontal bars
+    text = text.replaceAll(RegExp(r'[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]'), '-');
+
+    // 5. Horizontal ellipsis
+    text = text.replaceAll('\u2026', '...');
+
+    // 6. Currency symbols
+    text = text.replaceAll('\u20B9', 'Rs. ').replaceAll('\u00A3', 'GBP ').replaceAll('\u20AC', 'EUR ');
+
+    // 7. Math & measurement symbols
+    text = text
+        .replaceAll('\u00D7', 'x')
+        .replaceAll('\u00F7', '/')
+        .replaceAll('\u00B1', '+/-')
+        .replaceAll('\u00B0', ' deg')
+        .replaceAll('\u00B2', '2')
+        .replaceAll('\u00B3', '3')
+        .replaceAll('\u00BD', '1/2')
+        .replaceAll('\u00BC', '1/4')
+        .replaceAll('\u00BE', '3/4')
+        .replaceAll('\u2248', '~')
+        .replaceAll('\u2260', '!=')
+        .replaceAll('\u2264', '<=')
+        .replaceAll('\u2265', '>=');
+
+    // 8. Arrows
+    text = text
+        .replaceAll(RegExp(r'[\u2192\u21D2\u2799]'), '->')
+        .replaceAll(RegExp(r'[\u2190\u21D0]'), '<-')
+        .replaceAll(RegExp(r'[\u2194\u21D4]'), '<->');
+
+    // 9. Zero-width spaces/formatters & non-breaking spaces & replacement chars
+    text = text
+        .replaceAll(RegExp(r'[\u200B\u200C\u200D\uFEFF\uFFFD]'), '')
+        .replaceAll(RegExp(r'[\u00A0\u2000-\u200A\u202F\u205F\u3000]'), ' ');
+
+    // 10. CR LF normalization
+    text = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+    // 11. Strictly remove any remaining non-ASCII characters that cannot be drawn by standard PDF fonts
+    text = text.replaceAll(RegExp(r'[^\x20-\x7E\n\t]'), ' ');
+
+    // 12. Normalize multiple spaces on the same line (preserve newlines)
+    text = text.split('\n').map((line) => line.replaceAll(RegExp(r'[ ]{2,}'), ' ').trim()).join('\n');
+
+    return text.trim();
+  }
+
   /// Generates the complete, high-fidelity bill PDF.
   static Future<File> generateBillPdf({
     required HousePlanOwner owner,
@@ -241,7 +313,7 @@ class HousePlanPdfService {
               ),
               pw.SizedBox(height: 3),
               pw.Text(
-                owner.ownerName.toUpperCase(),
+                _cleanPdfText(owner.ownerName.toUpperCase()),
                 style: pw.TextStyle(
                   fontSize: 11,
                   fontWeight: pw.FontWeight.bold,
@@ -251,13 +323,13 @@ class HousePlanPdfService {
               if (owner.ownerPhone.isNotEmpty) ...[
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  'Phone: ${owner.ownerPhone}',
+                  'Phone: ${_cleanPdfText(owner.ownerPhone)}',
                   style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
                 ),
               ],
               pw.SizedBox(height: 2),
               pw.Text(
-                'Location: $siteLocation',
+                'Location: ${_cleanPdfText(siteLocation)}',
                 style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
               ),
             ],
@@ -283,17 +355,17 @@ class HousePlanPdfService {
               pw.Row(
                 children: [
                   pw.Text('Built-up Area: ', style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
-                  pw.Text(areaText, style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
+                  pw.Text(_cleanPdfText(areaText), style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
                 ],
               ),
               pw.SizedBox(height: 2),
               pw.Row(
                 children: [
                   pw.Text('3D Ref: ', style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
-                  pw.Text(serial3D, style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
+                  pw.Text(_cleanPdfText(serial3D), style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
                   pw.SizedBox(width: 8),
                   pw.Text('Engineer: ', style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
-                  pw.Text(engineer, style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
+                  pw.Text(_cleanPdfText(engineer), style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
                 ],
               ),
               if (owner.ratePerSqFt > 0) ...[
@@ -306,7 +378,7 @@ class HousePlanPdfService {
               if (owner.bhk.isNotEmpty || owner.facing.isNotEmpty) ...[
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  'Configuration: ${owner.bhk} | ${owner.facing} Facing (${owner.floors})',
+                  _cleanPdfText('Configuration: ${owner.bhk} | ${owner.facing} Facing (${owner.floors})'),
                   style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
                 ),
               ],
@@ -672,11 +744,11 @@ class HousePlanPdfService {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text(
-                'Client: ${ownerName.toUpperCase()}',
+                'Client: ${_cleanPdfText(ownerName.toUpperCase())}',
                 style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate700),
               ),
               pw.Text(
-                'Plan Ref: #$planNumber | Site Visits & Billing Statement',
+                'Plan Ref: #${_cleanPdfText(planNumber)} | Site Visits & Billing Statement',
                 style: const pw.TextStyle(fontSize: 8, color: _cSlate500),
               ),
             ],
@@ -719,7 +791,7 @@ class HousePlanPdfService {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3.5),
       child: pw.Text(
-        text,
+        _cleanPdfText(text),
         textAlign: align,
         style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: _cSlate700),
       ),
@@ -735,7 +807,7 @@ class HousePlanPdfService {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2.8),
       child: pw.Text(
-        text,
+        _cleanPdfText(text),
         textAlign: align,
         style: pw.TextStyle(
           fontSize: 7.5,
