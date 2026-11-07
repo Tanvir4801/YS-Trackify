@@ -184,14 +184,14 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
 
   Widget _buildFilterTabs(HousePlansProvider provider, bool isDark) {
     final filters = [
-      {'id': 'all', 'label': 'All (${provider.totalClientsCount})'},
-      {'id': 'visit_due', 'label': '🚗 Visit Due (${provider.visitDueCount})'},
-      {'id': 'plan_pending', 'label': '⏳ Plan Due (${provider.planPendingCount})'},
-      {'id': 'cleared', 'label': '✓ Cleared (${provider.clearedCount})'},
+      {'id': 'all', 'label': 'All (${provider.totalClientsCount})', 'icon': Icons.layers_rounded},
+      {'id': 'visit_due', 'label': 'Visit Due (${provider.visitDueCount})', 'icon': Icons.directions_car_rounded},
+      {'id': 'plan_pending', 'label': 'Plan Due (${provider.planPendingCount})', 'icon': Icons.hourglass_top_rounded},
+      {'id': 'cleared', 'label': 'Cleared (${provider.clearedCount})', 'icon': Icons.check_circle_rounded},
     ];
 
     return Container(
-      height: 48,
+      height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
@@ -200,22 +200,79 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
         itemBuilder: (ctx, i) {
           final f = filters[i];
           final isSelected = provider.selectedFilter == f['id'];
-          return ChoiceChip(
-            label: Text(
-              f['label']!,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? Colors.black : (isDark ? Colors.white70 : Colors.black87),
+          final label = f['label'] as String;
+          final icon = f['icon'] as IconData;
+
+          return BouncyTap(
+            onTap: () {
+              HapticUtils.select();
+              provider.setFilter(f['id'] as String);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                gradient: isSelected
+                    ? const LinearGradient(
+                        colors: [Color(0xFFF5A623), Color(0xFFD97706)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                color: isSelected
+                    ? null
+                    : (isDark
+                        ? const Color(0xFF132238).withValues(alpha: 0.70)
+                        : Colors.white.withValues(alpha: 0.90)),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isSelected
+                      ? const Color(0xFFFFD54F).withValues(alpha: 0.6)
+                      : (isDark
+                          ? const Color(0xFF91AAC8).withValues(alpha: 0.16)
+                          : const Color(0xFF0F172A).withValues(alpha: 0.08)),
+                  width: 1,
+                ),
+                boxShadow: [
+                  if (isSelected)
+                    BoxShadow(
+                      color: const Color(0xFFF5A623).withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    )
+                  else
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: 13,
+                    color: isSelected
+                        ? const Color(0xFF1A1305)
+                        : (isDark ? const Color(0xFF91A7BE) : const Color(0xFF64748B)),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected
+                          ? const Color(0xFF1A1305)
+                          : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155)),
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
               ),
             ),
-            selected: isSelected,
-            selectedColor: AppColors.primaryColor(context),
-            backgroundColor: isDark ? const Color(0xFF132238) : const Color(0xFFF1F5F9),
-            onSelected: (_) {
-              HapticUtils.select();
-              provider.setFilter(f['id']!);
-            },
           );
         },
       ),
@@ -371,15 +428,8 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    // 1. Plan Fee Badge
-                                    _buildStatusBadge(
-                                      label: owner.isPlanFeeCleared
-                                          ? '✓ PLAN FEE CLEARED'
-                                          : (owner.planFeePaid >= owner.houseAmount * 0.5
-                                              ? 'HALF PAID (${(owner.planFeePaid / owner.houseAmount * 100).round()}%)'
-                                              : 'PLAN FEE PENDING'),
-                                      isSuccess: owner.isPlanFeeCleared,
-                                    ),
+                                    // 1. Plan Fee Badge (Accurate Partial Paid / Cleared)
+                                    _buildPlanFeeBadge(owner),
 
                                     // 2. Site Visit Badge (if visits exist)
                                     if (owner.siteVisits.isNotEmpty) ...[
@@ -623,6 +673,31 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPlanFeeBadge(HousePlanOwner owner) {
+    if (owner.isPlanFeeCleared) {
+      return _buildStatusBadge(
+        label: '✓ PLAN FEE CLEARED (100%)',
+        isSuccess: true,
+      );
+    }
+
+    if (owner.planFeePaid > 0 && owner.houseAmount > 0) {
+      final pct = ((owner.planFeePaid / owner.houseAmount) * 100).round();
+      final label = pct == 50 ? 'HALF PAID (50%)' : 'PARTIAL PAID ($pct%)';
+      return _buildStatusBadge(
+        label: label,
+        isSuccess: false,
+        isAmber: true,
+      );
+    }
+
+    return _buildStatusBadge(
+      label: 'PLAN FEE PENDING',
+      isSuccess: false,
+      isAmber: false,
     );
   }
 

@@ -192,11 +192,12 @@ export function getOwnerPaymentBadges(owner) {
       bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
       dot: 'bg-emerald-500',
     });
-  } else if (fin.baseFee > 0 && fin.planFeePaid >= fin.baseFee * 0.5) {
+  } else if (fin.baseFee > 0 && fin.planFeePaid > 0) {
     const pct = Math.round((fin.planFeePaid / fin.baseFee) * 100);
+    const label = pct === 50 ? 'HALF PAID (50%)' : `PARTIAL PAID (${pct}%)`;
     badges.push({
-      id: 'plan_half',
-      label: `HALF PAID (${pct}%)`,
+      id: 'plan_partial',
+      label,
       bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
       dot: 'bg-amber-500',
     });
@@ -254,18 +255,13 @@ function getPaymentStatusBadge(totalAmount, totalPaid) {
       dot: 'bg-emerald-500',
     };
   }
-  if (totalPaid >= totalAmount * 0.5) {
+  if (totalPaid > 0) {
+    const pct = Math.round((totalPaid / totalAmount) * 100);
+    const label = pct === 50 ? 'HALF PAID (50%)' : `PARTIAL PAID (${pct}%)`;
     return {
-      label: 'HALF PAID (50%+)',
+      label,
       bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
       dot: 'bg-amber-500',
-    };
-  }
-  if (totalPaid > 0) {
-    return {
-      label: 'ADVANCE RECEIVED',
-      bg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30',
-      dot: 'bg-sky-500',
     };
   }
   return {
