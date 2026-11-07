@@ -6,6 +6,7 @@ export const siteConfig = {
     'Manage workers across multiple sites, record tamper-proof attendance, automate advance deductions, and generate accurate weekly payroll in one connected platform.',
   heroBadge: 'NEW V1.0 · Built Specifically for the Modern Construction Site',
   founder: {
+    name: 'Tanvir Patel',
     title: 'Founder & Software Architect',
     education: '4th-Year B.Tech Information Technology Student',
   },

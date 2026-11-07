@@ -40,13 +40,16 @@ export default function FounderStory() {
           {/* Monogram Avatar & Core Credentials */}
           <div className="relative z-10 text-center mb-6">
             <div className="w-24 h-24 rounded-2xl bg-gradient-to-tr from-trackify-amber/25 via-trackify-amber/10 to-trackify-cyan/20 border-2 border-trackify-amber/50 mx-auto flex items-center justify-center shadow-xl mb-4">
-              <span className="font-heading font-black text-3xl text-trackify-amber">TA</span>
+              <span className="font-heading font-black text-3xl text-trackify-amber">TP</span>
             </div>
 
-            <h3 className="font-heading font-bold text-xl text-trackify-textMain">
-              {siteConfig.founder.title}
+            <h3 className="font-heading font-bold text-2xl text-trackify-textMain">
+              {siteConfig.founder.name}
             </h3>
-            <p className="font-mono text-xs text-trackify-amber mt-1">
+            <p className="font-heading font-medium text-sm text-trackify-amber mt-1">
+              {siteConfig.founder.title}
+            </p>
+            <p className="font-mono text-xs text-trackify-textMuted mt-1">
               {siteConfig.founder.education}
             </p>
 
@@ -83,7 +86,7 @@ export default function FounderStory() {
               <strong className="text-trackify-textMain font-heading">
                 Trackify wasn't born in a corporate marketing boardroom.
               </strong>{' '}
-              It was designed, architected, and coded by a 4th-year B.Tech Information Technology student who saw first-hand how construction sites still rely on soaked paper notebooks, mental math, and broken WhatsApp chains.
+              It was designed, architected, and coded by <strong className="text-trackify-textMain">Tanvir Patel</strong>, a 4th-year B.Tech Information Technology student who saw first-hand how construction sites still rely on soaked paper notebooks, mental math, and broken WhatsApp chains.
             </p>
 
             <p>
