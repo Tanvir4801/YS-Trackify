@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    scrollbar-width: thin;
+    scrollbar-color: #1E2D48 transparent;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 4.5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: rgba(245, 158, 11, 0.3);
+    color: #F8FAFC;
+  }
+}
+
+@layer components {
+  .blueprint-grid {
+    background-image:
+      linear-gradient(rgba(30, 45, 72, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30, 45, 72, 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .blueprint-grid-strong {
+    background-image:
+      linear-gradient(rgba(30, 45, 72, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30, 45, 72, 0.08) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .glass-card {
+    @apply backdrop-blur-md bg-white/[0.03] border border-white/[0.08] rounded-xl;
+  }
+
+  .glass-card-hover {
+    @apply glass-card hover:-translate-y-1 transition-all duration-300;
+  }
+
+  .hazard-stripe {
+    background: repeating-linear-gradient(
+      -45deg,
+      #F59E0B,
+      #F59E0B 10px,
+      #080E1A 10px,
+      #080E1A 20px
+    );
+    opacity: 0.6;
+  }
+
+  .hazard-stripe-thin {
+    height: 3px;
+  }
+
+  .crop-mark::before,
+  .crop-mark::after {
+    content: '+';
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgba(148, 163, 184, 0.2);
+  }
+
+  .crop-mark::before {
+    top: -8px;
+    left: -8px;
+  }
+
+  .crop-mark::after {
+    bottom: -8px;
+    right: -8px;
+  }
+
+  .survey-marker {
+    @apply text-trackify-textMuted/20 font-mono text-[10px] select-none;
+  }
+
+  .section-divider {
+    @apply relative flex items-center justify-center py-4;
+  }
+
+  .section-divider::before,
+  .section-divider::after {
+    content: '';
+    @apply flex-1 h-px bg-gradient-to-r from-transparent via-trackify-cardBorder to-transparent;
+  }
+}
+
+@layer utilities {
+  .text-gradient-amber {
+    @apply bg-gradient-to-r from-trackify-amber to-yellow-400 bg-clip-text text-transparent;
+  }
+
+  .animate-in {
+    animation: animateIn 0.6s ease-out both;
+  }
+
+  @keyframes animateIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
