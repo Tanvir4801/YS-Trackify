@@ -315,3 +315,4 @@ exports.seedDemoTenantEndpoint = functions.https.onCall(async (data, context) =>
   const result = await seedDemoTenantData(db);
   return result;
 });
+

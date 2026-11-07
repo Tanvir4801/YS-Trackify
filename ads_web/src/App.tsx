@@ -21,10 +21,17 @@ const SECTION_IDS = ['features', 'plans', 'how-it-works', 'solutions', 'about', 
 
 export default function App() {
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const [isDemoSuccess, setIsDemoSuccess] = useState(false);
   const { activeId, scrollToSection } = useScrollSpy(SECTION_IDS);
 
-  const handleOpenDemoModal = () => setIsDemoModalOpen(true);
-  const handleCloseDemoModal = () => setIsDemoModalOpen(false);
+  const handleOpenDemoModal = () => {
+    setIsDemoSuccess(false);
+    setIsDemoModalOpen(true);
+  };
+  const handleCloseDemoModal = () => {
+    setIsDemoModalOpen(false);
+    setIsDemoSuccess(false);
+  };
 
   return (
     <div className="min-h-screen bg-trackify-bg text-trackify-textMain selection:bg-trackify-amber/30 selection:text-white relative">
@@ -81,13 +88,19 @@ export default function App() {
       <Modal
         isOpen={isDemoModalOpen}
         onClose={handleCloseDemoModal}
-        title="Schedule Live Platform Demonstration"
+        title={isDemoSuccess ? undefined : "Schedule Live Platform Demonstration"}
       >
         <div className="pt-1">
-          <p className="text-xs text-trackify-textMuted mb-5 leading-relaxed">
-            Fill out your site requirements below. Our technical architect will review your active project scope and schedule an interactive screen-share or on-site walkthrough.
-          </p>
-          <DemoForm inModal onSuccessClose={handleCloseDemoModal} />
+          {!isDemoSuccess && (
+            <p className="text-xs text-trackify-textMuted mb-5 leading-relaxed">
+              Fill out your site requirements below to get instant access to the read-only Trackify Admin Sandbox with 3 active construction sites and 28 workers.
+            </p>
+          )}
+          <DemoForm
+            inModal
+            onSuccessClose={handleCloseDemoModal}
+            onSuccessStateChange={setIsDemoSuccess}
+          />
         </div>
       </Modal>
     </div>

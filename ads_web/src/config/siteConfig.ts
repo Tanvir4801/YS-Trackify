@@ -23,6 +23,8 @@ export const siteConfig = {
   ],
   links: {
     adminWebLogin: 'https://trackify-admin.web.app',
+    adminDemo: 'https://trackify-admin.web.app/demo',
+    apkDownload: '/downloads/trackify-supervisor.apk',
     whatsappDemo: 'https://wa.me/917621984915?text=Hi%20Trackify%20team%2C%20I%20would%20like%20to%20book%20a%20live%20demo%20for%20my%20construction%20company.',
   },
   seo: {

@@ -1,7 +1,20 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { siteConfig } from '@/config/siteConfig';
-import { CheckCircle2, Send, MessageCircle, AlertCircle, Loader2, ArrowRight, ShieldCheck, Clock } from 'lucide-react';
+import {
+  CheckCircle2,
+  Send,
+  MessageCircle,
+  AlertCircle,
+  Loader2,
+  ArrowRight,
+  ShieldCheck,
+  Clock,
+  Download,
+  Smartphone,
+  Laptop,
+  ExternalLink,
+} from 'lucide-react';
 
 interface DemoFormData {
   fullName: string;
@@ -24,13 +37,18 @@ interface FormErrors {
 interface DemoFormProps {
   onSuccessClose?: () => void;
   inModal?: boolean;
+  onSuccessStateChange?: (success: boolean) => void;
 }
 
 const CLOUD_FUNCTION_URL =
   import.meta.env.VITE_SUBMIT_DEMO_URL ||
   'https://us-central1-ys-construction.cloudfunctions.net/submitDemoRequest';
 
-export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormProps) {
+export default function DemoForm({
+  onSuccessClose,
+  inModal = false,
+  onSuccessStateChange,
+}: DemoFormProps) {
   const [formData, setFormData] = useState<DemoFormData>({
     fullName: '',
     companyName: '',
@@ -46,7 +64,12 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
   const [isSuccess, setIsSuccess] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [demoUrl, setDemoUrl] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState<number>(4);
+
+  useEffect(() => {
+    if (onSuccessStateChange) {
+      onSuccessStateChange(isSuccess);
+    }
+  }, [isSuccess, onSuccessStateChange]);
 
   const validate = (): boolean => {
     const errs: FormErrors = {};
@@ -83,6 +106,19 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
     setIsSubmitting(true);
     setSubmissionError(null);
 
+    // Prepare WhatsApp notification payload
+    const text = encodeURIComponent(
+      `*New Demo Request — Trackify SaaS*\n\n` +
+      `Name: ${formData.fullName.trim()}\n` +
+      `Firm: ${formData.companyName.trim()}\n` +
+      `Email: ${formData.email.trim()}\n` +
+      `Phone: ${formData.phone.trim()}\n` +
+      `Active Sites: ${formData.activeSites}\n` +
+      `Workforce Size: ${formData.workerCount}\n` +
+      (formData.notes.trim() ? `Notes: ${formData.notes.trim()}\n` : '')
+    );
+    const waUrl = `https://wa.me/${siteConfig.contact.whatsappNumber.replace('+', '')}?text=${text}`;
+
     try {
       const response = await fetch(CLOUD_FUNCTION_URL, {
         method: 'POST',
@@ -110,38 +146,23 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
 
       setDemoUrl(targetUrl);
       setIsSuccess(true);
+
+      // Open WhatsApp pre-filled chat in background window
+      window.open(waUrl, '_blank');
     } catch (err: any) {
       console.warn('Network call to Cloud Function fallback:', err);
-      // Failsafe: if direct endpoint times out or blocked by CORS, provide immediate demo link
       const fallbackUrl = `${siteConfig.links.adminWebLogin}/demo`;
       setDemoUrl(fallbackUrl);
       setIsSuccess(true);
+      window.open(waUrl, '_blank');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Auto-launch countdown when success screen is active
-  useEffect(() => {
-    if (!isSuccess || !demoUrl) return;
-
-    const timer = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(timer);
-          window.location.href = demoUrl;
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isSuccess, demoUrl]);
-
   if (isSuccess && demoUrl) {
     return (
-      <div className="text-center py-6 px-4 space-y-5">
+      <div className="text-center py-4 px-2 sm:px-4 space-y-5">
         <div className="w-14 h-14 rounded-2xl bg-trackify-emerald/20 border border-trackify-emerald text-trackify-emerald mx-auto flex items-center justify-center animate-bounce">
           <CheckCircle2 className="w-7 h-7" />
         </div>
@@ -149,42 +170,79 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-trackify-emerald/10 border border-trackify-emerald/30 text-trackify-emerald text-xs font-mono mb-2">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>24-Hour Demo Sandbox Ready</span>
+            <span>24-Hour Demo Sandbox Activated</span>
           </span>
           <h4 className="font-heading font-bold text-2xl text-trackify-textMain">
-            Welcome, {formData.fullName}!
+            Welcome to Trackify Demo Sandbox!
           </h4>
-          <p className="text-xs text-trackify-textMuted max-w-sm mx-auto leading-relaxed mt-1.5">
-            Your live demo environment for <strong className="text-trackify-textMain">{formData.companyName}</strong> has been provisioned with 3 active sites and 28 workers.
+          <p className="text-xs text-trackify-textMuted max-w-md mx-auto leading-relaxed mt-1.5">
+            Instant read-only sandbox environment provisioned for{' '}
+            <strong className="text-trackify-textMain">{formData.companyName || 'Your Construction Firm'}</strong> with 3 live sites, 28 sample workers, and real-time attendance math.
           </p>
         </div>
 
-        {/* Action card */}
-        <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.08] max-w-sm mx-auto space-y-3">
-          <div className="flex items-center justify-between text-xs font-mono text-trackify-textMuted">
-            <span className="flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-trackify-amber" />
-              <span>Session Duration</span>
-            </span>
-            <span className="text-trackify-amber font-bold">24 Hours Active</span>
+        {/* Dual action cards: Web Demo & APK Download */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto text-left">
+          {/* Web Admin Dashboard Card */}
+          <div className="p-4 rounded-xl bg-white/[0.03] border border-trackify-amber/30 hover:border-trackify-amber/60 transition-colors flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="flex items-center gap-1.5 text-xs font-mono text-trackify-amber font-semibold">
+                  <Laptop className="w-4 h-4" />
+                  <span>Web Dashboard</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-trackify-amber/10 text-trackify-amber">
+                  Desktop
+                </span>
+              </div>
+              <p className="text-[11px] text-trackify-textMuted leading-snug">
+                Explore owner overview, 28-worker roster, Sunday wage settlements, and 23-drawing checklists.
+              </p>
+            </div>
+            <a
+              href={demoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-trackify-amber hover:bg-trackify-amberDark text-trackify-bg font-heading font-bold text-xs transition-all shadow-md shadow-trackify-amber/20 active:scale-95"
+            >
+              <span>Launch Web Demo</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
 
-          <a
-            href={demoUrl}
-            className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-trackify-amber hover:bg-trackify-amberDark text-trackify-bg font-heading font-bold text-sm transition-all shadow-lg shadow-trackify-amber/20 active:scale-95"
-          >
-            <span>Enter Demo Dashboard Now</span>
-            <ArrowRight className="w-4 h-4" />
-          </a>
-
-          <p className="text-[11px] font-mono text-trackify-textMuted">
-            Auto-launching in <strong className="text-trackify-amber">{countdown}s</strong>…
-          </p>
+          {/* Supervisor APK Card */}
+          <div className="p-4 rounded-xl bg-white/[0.03] border border-trackify-emerald/30 hover:border-trackify-emerald/60 transition-colors flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="flex items-center gap-1.5 text-xs font-mono text-trackify-emerald font-semibold">
+                  <Smartphone className="w-4 h-4" />
+                  <span>Supervisor App</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-trackify-emerald/10 text-trackify-emerald">
+                  Android APK
+                </span>
+              </div>
+              <p className="text-[11px] text-trackify-textMuted leading-snug">
+                Install on any Android phone to experience 3-second offline biometric attendance & QR check-in.
+              </p>
+            </div>
+            <a
+              href={siteConfig.links.apkDownload}
+              download="Trackify-Supervisor-Release.apk"
+              className="w-full inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-trackify-emerald hover:bg-trackify-emerald/90 text-white font-heading font-bold text-xs transition-all shadow-md shadow-trackify-emerald/20 active:scale-95"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download APK (80MB)</span>
+            </a>
+          </div>
         </div>
 
-        <div className="pt-2 flex flex-col sm:flex-row gap-2.5 justify-center">
+        {/* WhatsApp & Footer options */}
+        <div className="pt-2 flex flex-col sm:flex-row gap-2.5 justify-center items-center">
           <a
-            href={siteConfig.links.whatsappDemo}
+            href={`https://wa.me/${siteConfig.contact.whatsappNumber.replace('+', '')}?text=${encodeURIComponent(
+              `Hi Tanvir, I just submitted the demo form for ${formData.companyName}. Please connect with me for an interactive walkthrough.`
+            )}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] border border-[#25D366]/40 font-semibold text-xs transition-colors"
@@ -196,9 +254,9 @@ export default function DemoForm({ onSuccessClose, inModal = false }: DemoFormPr
           {inModal && onSuccessClose && (
             <button
               onClick={onSuccessClose}
-              className="px-4 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-trackify-textMuted hover:text-trackify-textMain text-xs font-mono transition-colors"
+              className="px-4 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-trackify-textMuted hover:text-trackify-textMain text-xs font-mono transition-colors cursor-pointer"
             >
-              Stay on Website
+              Close Window
             </button>
           )}
         </div>
