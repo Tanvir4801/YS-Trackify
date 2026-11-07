@@ -297,61 +297,29 @@ export async function generateHousePlanInvoicePDF({
   // Use owner's plansList if populated; otherwise fallback to the exact 21 default engineering plans
   const rawPlans = Array.isArray(owner.plansList) && owner.plansList.length > 0 ? owner.plansList : DEFAULT_MASTER_PLANS;
 
-  // Determine payment status badge
-  let paymentBadgeText = 'PENDING';
-  let badgeBgColor = [220, 38, 38]; // Red
-  let badgeTextColor = [255, 255, 255];
-  if (totalPaid >= totalBillableAmount && totalBillableAmount > 0) {
-    paymentBadgeText = 'PAID IN FULL';
-    badgeBgColor = [16, 185, 129]; // Emerald Green
-  } else if (totalPaid >= totalBillableAmount * 0.5 && totalBillableAmount > 0) {
-    paymentBadgeText = '50%+ ADVANCE CLEARED';
-    badgeBgColor = [245, 166, 35]; // Gold/Amber
-  } else if (totalPaid > 0) {
-    paymentBadgeText = 'PARTIALLY PAID';
-    badgeBgColor = [14, 165, 233]; // Cyan/Sky
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
   // 1 & 2. PRE-PRINTED LETTERHEAD BLANK HEADER & BILL METADATA STRIP
   // ─────────────────────────────────────────────────────────────────────────
   // Top 44mm is left BLANK WHITE for the physical pre-printed colour letterhead
   const billTopY = 44;
 
-  // Bill Badge (Left)
-  doc.setFillColor(254, 243, 199); // amber-100
-  doc.setDrawColor(217, 119, 6); // amber-600
-  doc.setLineWidth(0.3);
-  doc.roundedRect(margin, billTopY - 4.5, 36, 5.5, 1.5, 1.5, 'FD');
+  // Title: Centered bold small title
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(180, 83, 9); // amber-700
-  doc.text('ENGINEERING BILL', margin + 18, billTopY - 1, { align: 'center' });
-
-  // Status Pill
-  doc.setFillColor(...badgeBgColor);
-  doc.roundedRect(margin + 39, billTopY - 4.5, 42, 5.5, 1.5, 1.5, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(...badgeTextColor);
-  doc.text(paymentBadgeText, margin + 60, billTopY - 1, { align: 'center' });
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text('HOUSE PLANNING BILL', pageWidth / 2, billTopY, { align: 'center' });
 
   // Right Header: Date & Plan Ref
   const rightX = pageWidth - margin;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Date: ${formatDate(new Date())}`, rightX, billTopY - 4.2, { align: 'right' });
+  doc.text(`Date: ${formatDate(new Date())}`, rightX, billTopY - 3.5, { align: 'right' });
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Plan Ref: #${planNumber}`, rightX, billTopY, { align: 'right' });
-
-  // Subtle grey divider line
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.3);
-  doc.line(margin, billTopY + 3.5, pageWidth - margin, billTopY + 3.5);
+  doc.text(`Plan Ref: #${planNumber}`, rightX, billTopY + 0.5, { align: 'right' });
 
   // ─────────────────────────────────────────────────────────────────────────
   // 3. CONTACT DETAILS & CLIENT INFORMATION CARDS (Auto-Wrapping & Dynamic Height)
@@ -801,10 +769,6 @@ export async function generateHousePlanInvoicePDF({
       doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
       doc.text(`Plan Ref: #${planNumber} | Site Visits & Billing Statement`, pageWidth - margin, 46.5, { align: 'right' });
-
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.3);
-      doc.line(margin, 48.5, pageWidth - margin, 48.5);
     }
 
     // Bottom footer line

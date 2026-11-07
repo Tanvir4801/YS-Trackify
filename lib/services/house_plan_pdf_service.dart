@@ -72,22 +72,6 @@ class HousePlanPdfService {
     final siteLoc = [owner.ownerAddress, owner.villageCity].where((s) => s.trim().isNotEmpty).join(', ');
     final effectiveSiteLoc = siteLoc.isNotEmpty ? siteLoc : (owner.villageCity.isNotEmpty ? owner.villageCity : 'Surat');
 
-    // Payment Status badge
-    String badgeText = 'PAYMENT PENDING';
-    PdfColor badgeBg = _cRed600;
-    if (totalBillableAmount > 0 && totalPaid >= totalBillableAmount) {
-      badgeText = 'PLAN FEE CLEARED (100%)';
-      badgeBg = _cEmerald600;
-    } else if (totalBillableAmount > 0 && totalPaid >= totalBillableAmount * 0.5) {
-      final pct = ((totalPaid / totalBillableAmount) * 100).round();
-      badgeText = 'PARTIAL PAID ($pct%)';
-      badgeBg = _cAmber600;
-    } else if (totalPaid > 0) {
-      final pct = ((totalPaid / totalBillableAmount) * 100).round();
-      badgeText = 'PARTIAL PAID ($pct%)';
-      badgeBg = _cCyan600;
-    }
-
     // Sorted drawings: Completed on top
     final sortedPlans = List<HousePlanDrawing>.from(owner.plansList)..sort((a, b) {
       final aDone = a.isCompleted ? 1 : 0;
@@ -117,8 +101,6 @@ class HousePlanPdfService {
           // ── 1. BILL METADATA BAR (Positioned directly under the pre-printed letterhead) ──
           _buildBillMetaStrip(
             planNumber: planNumber,
-            badgeText: badgeText,
-            badgeBg: badgeBg,
           ),
           pw.SizedBox(height: 6),
 
@@ -171,78 +153,54 @@ class HousePlanPdfService {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 1. BILL METADATA STRIP (Right below letterhead, directly above grey line)
+  // 1. BILL METADATA STRIP (Right below letterhead, centered title, date/ref on right)
   // ───────────────────────────────────────────────────────────────────────────
   static pw.Widget _buildBillMetaStrip({
     required String planNumber,
-    required String badgeText,
-    required PdfColor badgeBg,
   }) {
-    return pw.Column(
-      children: [
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: [
-            pw.Row(
-              children: [
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                  decoration: pw.BoxDecoration(
-                    color: _cAmber100,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
-                    border: pw.Border.all(color: _cAmber600, width: 0.8),
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 8),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Expanded(flex: 1, child: pw.SizedBox()),
+          pw.Text(
+            'HOUSE PLANNING BILL',
+            style: pw.TextStyle(
+              fontSize: 10,
+              fontWeight: pw.FontWeight.bold,
+              color: _cSlate900,
+              letterSpacing: 0.8,
+            ),
+          ),
+          pw.Expanded(
+            flex: 1,
+            child: pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                mainAxisSize: pw.MainAxisSize.min,
+                children: [
+                  pw.Text(
+                    'Date: ${_fmtDate(DateTime.now())}',
+                    style: const pw.TextStyle(fontSize: 8, color: _cSlate600),
                   ),
-                  child: pw.Text(
-                    'ENGINEERING BILL',
+                  pw.SizedBox(height: 1.5),
+                  pw.Text(
+                    'Plan Ref: #$planNumber',
                     style: pw.TextStyle(
                       fontSize: 8.5,
                       fontWeight: pw.FontWeight.bold,
-                      color: _cAmber700,
+                      color: _cSlate900,
                     ),
                   ),
-                ),
-                pw.SizedBox(width: 8),
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: pw.BoxDecoration(
-                    color: badgeBg.luminance > 0.5 ? _cSlate100 : badgeBg,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
-                  ),
-                  child: pw.Text(
-                    badgeText,
-                    style: pw.TextStyle(
-                      fontSize: 7.5,
-                      fontWeight: pw.FontWeight.bold,
-                      color: badgeBg.luminance > 0.5 ? _cSlate800 : PdfColors.white,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text(
-                  'Date: ${_fmtDate(DateTime.now())}',
-                  style: const pw.TextStyle(fontSize: 8.5, color: _cSlate700),
-                ),
-                pw.SizedBox(height: 1.5),
-                pw.Text(
-                  'Plan Ref: #$planNumber',
-                  style: pw.TextStyle(
-                    fontSize: 8.5,
-                    fontWeight: pw.FontWeight.bold,
-                    color: _cSlate900,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 5),
-        pw.Divider(color: _cSlate200, thickness: 0.8),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -710,9 +668,6 @@ class HousePlanPdfService {
         pw.Container(
           margin: const pw.EdgeInsets.only(bottom: 8),
           padding: const pw.EdgeInsets.only(bottom: 4),
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(bottom: pw.BorderSide(color: _cSlate200, width: 0.8)),
-          ),
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -804,7 +759,7 @@ class HousePlanPdfService {
     await Share.shareXFiles(
       [XFile(file.path)],
       text: text,
-      subject: 'Engineering Bill - ${owner.ownerName}',
+      subject: 'House Planning Bill - ${owner.ownerName}',
     );
   }
 }
