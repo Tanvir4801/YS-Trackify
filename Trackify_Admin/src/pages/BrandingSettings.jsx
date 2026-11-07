@@ -226,18 +226,7 @@ export default function BrandingSettings() {
                   className="w-full bg-bg-input border border-border-strong rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm text-text-secondary">GST Number</label>
-                <input
-                  type="text"
-                  name="gstNumber"
-                  value={formData.gstNumber}
-                  onChange={handleChange}
-                  placeholder="22AAAAA0000A1Z5"
-                  className="w-full bg-bg-input border border-border-strong rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold uppercase"
-                />
-              </div>
-            </div>
+            </div>    
           </div>
 
           {/* Logo Section */}

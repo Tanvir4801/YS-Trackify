@@ -13,7 +13,10 @@ import toast from 'react-hot-toast';
  */
 export function useDemoPermissions() {
   const role = useAuthStore((s) => s.role);
-  const isDemo = role === 'demo' || Boolean(useAuthStore((s) => s.isDemo));
+  const isDemoStore = Boolean(useAuthStore((s) => s.isDemo));
+  const isDemoStorage =
+    typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true';
+  const isDemo = role === 'demo' || isDemoStore || isDemoStorage;
 
   const canRead = true;
   const canWrite = !isDemo;

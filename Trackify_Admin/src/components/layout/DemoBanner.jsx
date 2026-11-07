@@ -18,23 +18,33 @@ export default function DemoBanner() {
     let timer;
     const fetchSessionExpiry = async () => {
       try {
-        const snap = await getDoc(doc(db, 'demoSessions', uid));
-        if (snap.exists()) {
-          const expiresAt = snap.data().expiresAt?.toDate?.();
-          if (expiresAt) {
-            const updateTimer = () => {
-              const diff = expiresAt.getTime() - Date.now();
-              if (diff <= 0) {
-                setTimeLeft('Expired');
-              } else {
-                const hours = Math.floor(diff / (1000 * 60 * 60));
-                const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                setTimeLeft(`${hours}h ${mins.toString().padStart(2, '0')}m`);
-              }
-            };
-            updateTimer();
-            timer = setInterval(updateTimer, 60000);
+        let expireMs = null;
+        const storedExpiresAt = sessionStorage.getItem('trackify_demo_expires_at');
+        if (storedExpiresAt) {
+          expireMs = Number(storedExpiresAt);
+        }
+
+        try {
+          const snap = await getDoc(doc(db, 'demoSessions', uid));
+          if (snap.exists()) {
+            const expiresAt = snap.data().expiresAt?.toDate?.();
+            if (expiresAt) expireMs = expiresAt.getTime();
           }
+        } catch (_) {}
+
+        if (expireMs) {
+          const updateTimer = () => {
+            const diff = expireMs - Date.now();
+            if (diff <= 0) {
+              setTimeLeft('Expired');
+            } else {
+              const hours = Math.floor(diff / (1000 * 60 * 60));
+              const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+              setTimeLeft(`${hours}h ${mins.toString().padStart(2, '0')}m`);
+            }
+          };
+          updateTimer();
+          timer = setInterval(updateTimer, 60000);
         }
       } catch (e) {
         console.warn('Could not read demo session timer:', e);
@@ -51,11 +61,16 @@ export default function DemoBanner() {
 
   const handleExitDemo = async () => {
     try {
+      sessionStorage.removeItem('trackify_demo_mode');
+      sessionStorage.removeItem('trackify_demo_expires_at');
+      sessionStorage.removeItem('trackify_demo_company');
+      useAuthStore.setState({ isDemo: false });
       await signOut(auth);
       clearUser();
       window.location.href = '/login';
     } catch (e) {
       console.error('Error signing out of demo:', e);
+      window.location.href = '/login';
     }
   };
 

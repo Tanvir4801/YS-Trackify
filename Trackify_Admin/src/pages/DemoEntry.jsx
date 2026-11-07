@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { signInWithCustomToken } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../lib/firebase';
+import { signInWithCustomToken, signInAnonymously } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { useAuthStore } from '../store/authStore';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import { ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
@@ -14,39 +13,64 @@ export default function DemoEntry() {
   const [statusText, setStatusText] = useState('Initializing demo environment...');
   const [error, setError] = useState(null);
 
+  const setUser = useAuthStore((s) => s.setUser);
+  const switchContractor = useAuthStore((s) => s.switchContractor);
+
   useEffect(() => {
     let isMounted = true;
 
     async function handleDemoLogin() {
       try {
+        if (isMounted) setStatusText('Configuring sandbox tenant (trackify_demo)...');
+
+        // Always set demo flags in storage
+        sessionStorage.setItem('trackify_demo_mode', 'true');
+        sessionStorage.setItem(
+          'trackify_demo_expires_at',
+          String(Date.now() + 24 * 60 * 60 * 1000)
+        );
+        sessionStorage.setItem('trackify_demo_company', 'Trackify Demo Construction Pvt. Ltd.');
+
+        // Attempt custom token if passed in query parameter
         if (token) {
-          if (isMounted) setStatusText('Verifying signed demo session token...');
-          await signInWithCustomToken(auth, token);
-          if (isMounted) {
-            setStatusText('Access granted. Entering dashboard...');
-            navigate('/dashboard', { replace: true });
+          try {
+            if (isMounted) setStatusText('Verifying signed demo session token...');
+            await signInWithCustomToken(auth, token);
+          } catch (tokenErr) {
+            console.warn('Custom token verify fallback to anonymous/local demo session:', tokenErr);
           }
-          return;
         }
 
-        // If no token in URL, request a direct demo session from Cloud Functions
-        if (isMounted) setStatusText('Provisioning instant demo sandbox...');
-        const createSessionFn = httpsCallable(functions, 'createDemoSession');
-        const res = await createSessionFn({ sessionType: 'web_admin', callerName: 'Direct Demo Visitor' });
-
-        if (res.data?.token) {
-          if (isMounted) setStatusText('Authenticating demo sandbox session...');
-          await signInWithCustomToken(auth, res.data.token);
-          if (isMounted) {
-            navigate('/dashboard', { replace: true });
+        // Ensure a valid Firebase Auth session via anonymous sign-in if not signed in
+        if (!auth.currentUser) {
+          try {
+            await signInAnonymously(auth);
+          } catch (anonErr) {
+            console.warn('Anonymous signin optional fallback:', anonErr);
           }
-        } else {
-          throw new Error('No session token received from demo engine.');
+        }
+
+        // Set global demo user context in authStore
+        setUser({
+          uid: auth.currentUser?.uid || 'demo_user_visitor',
+          role: 'contractor',
+          name: 'Demo Visitor',
+          email: 'demo@trackify.live',
+          contractorId: 'trackify_demo',
+        });
+        useAuthStore.setState({ isDemo: true });
+        switchContractor('trackify_demo', 'Trackify Demo Construction Pvt. Ltd.');
+
+        if (isMounted) {
+          setStatusText('Demo environment activated! Entering dashboard...');
+          setTimeout(() => {
+            navigate('/dashboard', { replace: true });
+          }, 350);
         }
       } catch (err) {
         console.error('DemoEntry error:', err);
         if (isMounted) {
-          setError(err.message || 'Failed to initialize demo session. Please try again.');
+          setError(err?.message || 'Failed to initialize demo session. Please try again.');
         }
       }
     }
@@ -56,7 +80,7 @@ export default function DemoEntry() {
     return () => {
       isMounted = false;
     };
-  }, [token, navigate]);
+  }, [token, navigate, setUser, switchContractor]);
 
   if (error) {
     return (

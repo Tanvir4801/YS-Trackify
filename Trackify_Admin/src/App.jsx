@@ -130,10 +130,32 @@ export default function App() {
       ]);
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Check for Demo Mode session
+      const isDemoSession =
+        typeof window !== 'undefined' &&
+        sessionStorage.getItem('trackify_demo_mode') === 'true';
+
+      if (isDemoSession || firebaseUser?.isAnonymous) {
+        setUser({
+          uid: firebaseUser?.uid || 'demo_user_visitor',
+          role: 'contractor',
+          name: 'Demo Visitor',
+          email: firebaseUser?.email || 'demo@trackify.live',
+          contractorId: 'trackify_demo',
+        });
+        useAuthStore.setState({ isDemo: true });
+        switchContractor('trackify_demo', 'Trackify Demo Construction Pvt. Ltd.');
+        clearTimeout(watchdogTimer);
+        setLoading(false);
+        return;
+      }
+
       if (!firebaseUser) {
         clearUser();
         clearTimeout(watchdogTimer);
-        if (window.location.pathname !== '/login') navigate('/login', { replace: true });
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/demo') {
+          navigate('/login', { replace: true });
+        }
         return;
       }
 
