@@ -34,7 +34,7 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
-      if (mounted) setState(() {});
+      if (_tabController.indexIsChanging && mounted) setState(() {});
     });
   }
 
@@ -638,56 +638,40 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 9),
       decoration: BoxDecoration(
+        color: isCompleted
+            ? (isDark ? const Color(0xFF0F261E) : const Color(0xFFF0FDF4))
+            : (isDark ? const Color(0xFF132238) : Colors.white),
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: drawing.isPendingAdminVerification
+              ? const Color(0xFFF59E0B)
+              : (isCompleted
+                  ? emerald.withValues(alpha: 0.45)
+                  : (isDark ? const Color(0xFF91AAC8).withValues(alpha: 0.16) : const Color(0xFFE2E8F0))),
+          width: drawing.isPendingAdminVerification ? 1.5 : 1,
+        ),
         boxShadow: [
-          if (isCompleted)
-            BoxShadow(
-              color: emerald.withValues(alpha: isDark ? 0.08 : 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => _confirmToggleDrawingStatus(
-                context: context,
-                drawing: drawing,
-                owner: owner,
-                provider: provider,
-                isCompleted: isCompleted,
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isCompleted
-                        ? [
-                            emerald.withValues(alpha: isDark ? 0.16 : 0.10),
-                            emerald.withValues(alpha: isDark ? 0.08 : 0.04),
-                          ]
-                        : [
-                            isDark ? const Color(0xFF16253D).withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.85),
-                            isDark ? const Color(0xFF0F1A2A).withValues(alpha: 0.75) : const Color(0xFFF8FAFC).withValues(alpha: 0.80),
-                          ],
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: drawing.isPendingAdminVerification
-                        ? const Color(0xFFF59E0B).withValues(alpha: 0.60)
-                        : (isCompleted
-                            ? emerald.withValues(alpha: 0.45)
-                            : (isDark ? const Color(0xFF91AAC8).withValues(alpha: 0.16) : Colors.white.withValues(alpha: 0.8))),
-                    width: drawing.isPendingAdminVerification ? 1.5 : 1,
-                  ),
-                ),
-                child: Row(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _confirmToggleDrawingStatus(
+            context: context,
+            drawing: drawing,
+            owner: owner,
+            provider: provider,
+            isCompleted: isCompleted,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
                   children: [
                     // High-contrast, non-clipping 2-digit number badge
                     Container(
@@ -824,45 +808,36 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                       ),
                     ],
 
-                    // Confirmation-guarded Toggle Action Button
-                    BouncyTap(
-                      onTap: () => _confirmToggleDrawingStatus(
-                        context: context,
-                        drawing: drawing,
-                        owner: owner,
-                        provider: provider,
-                        isCompleted: isCompleted,
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isCompleted
-                              ? emerald.withValues(alpha: 0.22)
-                              : warning.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isCompleted ? emerald.withValues(alpha: 0.55) : warning.withValues(alpha: 0.45),
-                          ),
+                    // Visual Toggle Status Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isCompleted
+                            ? emerald.withValues(alpha: 0.22)
+                            : warning.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isCompleted ? emerald.withValues(alpha: 0.55) : warning.withValues(alpha: 0.45),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                              size: 14,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                            size: 14,
+                            color: isCompleted ? emerald : warning,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isCompleted ? 'Done' : 'Mark Done',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
                               color: isCompleted ? emerald : warning,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isCompleted ? 'Done' : 'Mark Done',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isCompleted ? emerald : warning,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -871,8 +846,7 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   // ── TAB 2: SITE VISITS LEDGER ──

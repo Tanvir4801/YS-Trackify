@@ -210,6 +210,32 @@ class HouseSiteVisit {
       if (recordedByUid != null) 'recordedByUid': recordedByUid,
     };
   }
+
+  HouseSiteVisit copyWith({
+    String? id,
+    String? date,
+    double? amount,
+    String? purpose,
+    String? notes,
+    String? recordedAt,
+    String? verificationStatus,
+    String? recordedByRole,
+    String? recordedByName,
+    String? recordedByUid,
+  }) {
+    return HouseSiteVisit(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      amount: amount ?? this.amount,
+      purpose: purpose ?? this.purpose,
+      notes: notes ?? this.notes,
+      recordedAt: recordedAt ?? this.recordedAt,
+      verificationStatus: verificationStatus ?? this.verificationStatus,
+      recordedByRole: recordedByRole ?? this.recordedByRole,
+      recordedByName: recordedByName ?? this.recordedByName,
+      recordedByUid: recordedByUid ?? this.recordedByUid,
+    );
+  }
 }
 
 class HousePlanPayment {
@@ -319,6 +345,62 @@ class HousePlanOwner {
     this.createdAt,
     this.updatedAt,
   });
+
+  HousePlanOwner copyWith({
+    String? id,
+    String? contractorId,
+    String? ownerName,
+    String? ownerPhone,
+    String? villageCity,
+    String? ownerAddress,
+    String? plotArea,
+    double? totalSqFt,
+    double? plotAreaSqFt,
+    double? ratePerSqFt,
+    String? bhk,
+    String? floors,
+    String? facing,
+    String? planNo,
+    String? serial3D,
+    String? supervisingEngineer,
+    double? houseAmount,
+    double? directTotalPaid,
+    String? specsNotes,
+    String? status,
+    List<HousePlanDrawing>? plansList,
+    List<HouseSiteVisit>? siteVisits,
+    List<HousePlanPayment>? payments,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return HousePlanOwner(
+      id: id ?? this.id,
+      contractorId: contractorId ?? this.contractorId,
+      ownerName: ownerName ?? this.ownerName,
+      ownerPhone: ownerPhone ?? this.ownerPhone,
+      villageCity: villageCity ?? this.villageCity,
+      ownerAddress: ownerAddress ?? this.ownerAddress,
+      plotArea: plotArea ?? this.plotArea,
+      totalSqFt: totalSqFt ?? this.totalSqFt,
+      plotAreaSqFt: plotAreaSqFt ?? this.plotAreaSqFt,
+      ratePerSqFt: ratePerSqFt ?? this.ratePerSqFt,
+      bhk: bhk ?? this.bhk,
+      floors: floors ?? this.floors,
+      facing: facing ?? this.facing,
+      planNo: planNo ?? this.planNo,
+      serial3D: serial3D ?? this.serial3D,
+      supervisingEngineer: supervisingEngineer ?? this.supervisingEngineer,
+      houseAmount: houseAmount ?? this.houseAmount,
+      directTotalPaid: directTotalPaid ?? this.directTotalPaid,
+      specsNotes: specsNotes ?? this.specsNotes,
+      status: status ?? this.status,
+      plansList: plansList ?? this.plansList,
+      siteVisits: siteVisits ?? this.siteVisits,
+      payments: payments ?? this.payments,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 
   /// Formatted square footage string (e.g. "2,000 sq.ft") or empty string if zero/missing.
   String get displaySqFt {

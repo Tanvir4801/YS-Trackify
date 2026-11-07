@@ -501,49 +501,35 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [
+                    const Color(0xFF16253D).withValues(alpha: 0.88),
+                    const Color(0xFF0F1A2A).withValues(alpha: 0.94),
+                  ]
+                : [
+                    Colors.white.withValues(alpha: 0.96),
+                    const Color(0xFFF8FAFC).withValues(alpha: 0.90),
+                  ],
+          ),
           borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: isDark
+                ? const Color(0xFF91AAC8).withValues(alpha: 0.20)
+                : Colors.white.withValues(alpha: 0.85),
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
-              color: glowColor.withValues(alpha: isDark ? 0.12 : 0.08),
-              blurRadius: 28,
-              spreadRadius: 0,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.04),
-              blurRadius: 16,
+              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+              blurRadius: 12,
               offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: isDark
-                      ? [
-                          const Color(0xFF16253D).withValues(alpha: 0.82),
-                          const Color(0xFF0F1A2A).withValues(alpha: 0.90),
-                        ]
-                      : [
-                          Colors.white.withValues(alpha: 0.94),
-                          const Color(0xFFF8FAFC).withValues(alpha: 0.84),
-                        ],
-                ),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: isDark
-                      ? const Color(0xFF91AAC8).withValues(alpha: 0.20)
-                      : Colors.white.withValues(alpha: 0.85),
-                  width: 1.2,
-                ),
-              ),
-              child: Stack(
+        child: Stack(
                 children: [
                   // Luminous Top Gradient Accent Bar
                   Positioned(
@@ -866,10 +852,7 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
+          );
   }
 
   Widget _buildMiniAction({

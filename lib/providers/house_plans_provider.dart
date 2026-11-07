@@ -121,14 +121,42 @@ class HousePlansProvider extends ChangeNotifier {
     final name = userName ?? SessionService.instance.name ?? 'Supervisor';
     final uid = userUid ?? SessionService.instance.uid ?? '';
 
-    await _service.updateDrawingStatus(
-      ownerId: ownerId,
-      planId: planId,
-      newStatus: newStatus,
-      userRole: role,
-      userName: name,
-      userUid: uid,
-    );
+    // Optimistic in-memory update for 0ms instantaneous UI response
+    final ownerIdx = _allPlans.indexWhere((o) => o.id == ownerId);
+    if (ownerIdx != -1) {
+      final owner = _allPlans[ownerIdx];
+      final isSupervisor = role == 'supervisor';
+      final updatedPlans = owner.plansList.map((p) {
+        if (p.id == planId || p.name == planId) {
+          return p.copyWith(
+            status: newStatus,
+            completedDate: newStatus == 'completed' ? DateTime.now().toIso8601String().split('T')[0] : null,
+            verificationStatus: isSupervisor ? 'pending_admin_verification' : 'verified',
+            modifiedByRole: role,
+            modifiedByName: name,
+            modifiedByUid: uid,
+            modifiedAt: DateTime.now().toIso8601String(),
+          );
+        }
+        return p;
+      }).toList();
+
+      _allPlans[ownerIdx] = owner.copyWith(plansList: updatedPlans);
+      notifyListeners();
+    }
+
+    try {
+      await _service.updateDrawingStatus(
+        ownerId: ownerId,
+        planId: planId,
+        newStatus: newStatus,
+        userRole: role,
+        userName: name,
+        userUid: uid,
+      );
+    } catch (e) {
+      debugPrint('[HousePlansProvider] updateDrawingStatus error: $e');
+    }
   }
 
   Future<void> addSiteVisit({
@@ -155,6 +183,15 @@ class HousePlansProvider extends ChangeNotifier {
     required String ownerId,
     required String visitId,
   }) async {
+    // Optimistic deletion
+    final ownerIdx = _allPlans.indexWhere((o) => o.id == ownerId);
+    if (ownerIdx != -1) {
+      final owner = _allPlans[ownerIdx];
+      final updatedVisits = owner.siteVisits.where((v) => v.id != visitId).toList();
+      _allPlans[ownerIdx] = owner.copyWith(siteVisits: updatedVisits);
+      notifyListeners();
+    }
+
     await _service.deleteSiteVisit(
       ownerId: ownerId,
       visitId: visitId,
@@ -168,6 +205,21 @@ class HousePlansProvider extends ChangeNotifier {
   }) async {
     final uid = SessionService.instance.uid ?? '';
     final name = SessionService.instance.name ?? 'Admin';
+
+    // Optimistic approval
+    final ownerIdx = _allPlans.indexWhere((o) => o.id == ownerId);
+    if (ownerIdx != -1) {
+      final owner = _allPlans[ownerIdx];
+      final updatedPlans = owner.plansList.map((p) {
+        if (p.id == planId || p.name == planId) {
+          return p.copyWith(verificationStatus: 'verified');
+        }
+        return p;
+      }).toList();
+      _allPlans[ownerIdx] = owner.copyWith(plansList: updatedPlans);
+      notifyListeners();
+    }
+
     await _service.verifyDrawingChange(
       ownerId: ownerId,
       planId: planId,
@@ -183,6 +235,21 @@ class HousePlansProvider extends ChangeNotifier {
   }) async {
     final uid = SessionService.instance.uid ?? '';
     final name = SessionService.instance.name ?? 'Admin';
+
+    // Optimistic approval
+    final ownerIdx = _allPlans.indexWhere((o) => o.id == ownerId);
+    if (ownerIdx != -1) {
+      final owner = _allPlans[ownerIdx];
+      final updatedVisits = owner.siteVisits.map((v) {
+        if (v.id == visitId) {
+          return v.copyWith(verificationStatus: 'verified');
+        }
+        return v;
+      }).toList();
+      _allPlans[ownerIdx] = owner.copyWith(siteVisits: updatedVisits);
+      notifyListeners();
+    }
+
     await _service.verifySiteVisit(
       ownerId: ownerId,
       visitId: visitId,
