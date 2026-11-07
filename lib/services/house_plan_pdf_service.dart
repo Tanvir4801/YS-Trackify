@@ -1,35 +1,37 @@
 import 'dart:io';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:share_plus/share_plus.dart';
 
 import '../models/house_plan_model.dart';
 import '../providers/branding_provider.dart';
 
-/// Generates an official, architecturally styled PDF Bill / Invoice for a House Planning client,
-/// identical in design, layout, typography, colors, and structure to the Trackify Admin Web PDF.
+/// Generates an official, architecturally styled PDF Bill / Statement for a House Planning client.
+/// Tailored specifically for physical pre-printed letterhead paper:
+/// 1. Top 45mm on Page 1 is left BLANK WHITE so the pre-printed color logo/partner details show through.
+/// 2. Body starts cleanly with Bill Metadata, Client Details, and Drawings Scope.
+/// 3. Site Inspection & Supervision visits always appear on a SEPARATE PAGE with proper spacing.
+/// 4. Signature blocks are completely removed — displaying clean financial amounts and summary only.
 class HousePlanPdfService {
-  // ── Executive Brand Color Palette (Identical to Admin Web) ──
+  // ── Executive Architectural Color Palette ──
   static const PdfColor _cSlate900 = PdfColor.fromInt(0xFF0F172A);
   static const PdfColor _cSlate800 = PdfColor.fromInt(0xFF1E293B);
   static const PdfColor _cSlate700 = PdfColor.fromInt(0xFF334155);
   static const PdfColor _cSlate600 = PdfColor.fromInt(0xFF475569);
+  static const PdfColor _cSlate500 = PdfColor.fromInt(0xFF64748B);
   static const PdfColor _cSlate400 = PdfColor.fromInt(0xFF94A3B8);
   static const PdfColor _cSlate200 = PdfColor.fromInt(0xFFE2E8F0);
   static const PdfColor _cSlate100 = PdfColor.fromInt(0xFFF1F5F9);
   static const PdfColor _cSlate50  = PdfColor.fromInt(0xFFF8FAFC);
 
-  static const PdfColor _cGold     = PdfColor.fromInt(0xFFF5A623); // Primary theme gold
   static const PdfColor _cAmber600 = PdfColor.fromInt(0xFFD97706); // Warm gold accent
   static const PdfColor _cAmber700 = PdfColor.fromInt(0xFFB45309);
   static const PdfColor _cAmber50  = PdfColor.fromInt(0xFFFFFBEB);
   static const PdfColor _cAmber100 = PdfColor.fromInt(0xFFFEF3C7);
 
   static const PdfColor _cEmerald600 = PdfColor.fromInt(0xFF059669);
-  static const PdfColor _cEmerald100 = PdfColor.fromInt(0xFFD1FAE5);
+  static const PdfColor _cEmerald50  = PdfColor.fromInt(0xFFECFDF5);
   static const PdfColor _cCyan600    = PdfColor.fromInt(0xFF0EA5E9);
   static const PdfColor _cRed600     = PdfColor.fromInt(0xFFDC2626);
 
@@ -48,23 +50,12 @@ class HousePlanPdfService {
     return '-';
   }
 
-  /// Attempts to load the authentic high-resolution YS Construction logo from assets.
-  static Future<pw.MemoryImage?> _loadLogoImage() async {
-    try {
-      final byteData = await rootBundle.load('lib/assets/ys.png');
-      return pw.MemoryImage(byteData.buffer.asUint8List());
-    } catch (_) {
-      return null;
-    }
-  }
-
   /// Generates the complete, high-fidelity bill PDF.
   static Future<File> generateBillPdf({
     required HousePlanOwner owner,
     required BrandingData branding,
   }) async {
     final pdf = pw.Document();
-    final logoImage = await _loadLogoImage();
 
     // Financial calculations
     final totalPlanFee = owner.houseAmount;
@@ -73,37 +64,26 @@ class HousePlanPdfService {
     final totalPaid = owner.calculatedTotalPaid;
     final pendingBalance = owner.netPending;
 
-    // Company & Partner details
-    final companyName = (branding.companyName.isNotEmpty && branding.companyName.toLowerCase() != 'trackify')
-        ? branding.companyName.replaceAll('_', ' ').trim()
-        : 'YS Construction';
-    final tagline = branding.tagline.isNotEmpty
-        ? branding.tagline
-        : 'Architecture, Planner, Consultant, Interior Designer';
-    final companyAddress = branding.address.isNotEmpty
-        ? branding.address
-        : 'Gokuldham Complex, Opp. Doodh Dairy, ANGALDHARA, Ta. Mahuva, Dist. Surat';
-    final companyPhone = branding.phone.isNotEmpty ? branding.phone : '+91 80003 40720, +91 99044 45077';
-    final companyEmail = branding.email.isNotEmpty ? branding.email : 'ysconstruction24@gmail.com';
-
     // Client & Reference details
-    final planNumber = owner.planNo.isNotEmpty ? owner.planNo : 'PLN-2026-001';
+    final planNumber = owner.planNo.isNotEmpty ? owner.planNo : '345';
     final cleanBillRef = 'INV-${planNumber.replaceFirst(RegExp(r'^PLN-?', caseSensitive: false), '')}';
-    final serial3D = owner.serial3D.isNotEmpty ? owner.serial3D : '-';
+    final serial3D = owner.serial3D.isNotEmpty ? owner.serial3D : '3D-$planNumber';
     final siteLoc = [owner.ownerAddress, owner.villageCity].where((s) => s.trim().isNotEmpty).join(', ');
-    final effectiveSiteLoc = siteLoc.isNotEmpty ? siteLoc : (owner.villageCity.isNotEmpty ? owner.villageCity : 'Anaval');
+    final effectiveSiteLoc = siteLoc.isNotEmpty ? siteLoc : (owner.villageCity.isNotEmpty ? owner.villageCity : 'Surat');
 
     // Payment Status badge
-    String badgeText = 'PENDING';
+    String badgeText = 'PAYMENT PENDING';
     PdfColor badgeBg = _cRed600;
     if (totalBillableAmount > 0 && totalPaid >= totalBillableAmount) {
-      badgeText = 'PAID IN FULL';
+      badgeText = 'PLAN FEE CLEARED (100%)';
       badgeBg = _cEmerald600;
     } else if (totalBillableAmount > 0 && totalPaid >= totalBillableAmount * 0.5) {
-      badgeText = '50%+ ADVANCE CLEARED';
-      badgeBg = _cGold;
+      final pct = ((totalPaid / totalBillableAmount) * 100).round();
+      badgeText = 'PARTIAL PAID ($pct%)';
+      badgeBg = _cAmber600;
     } else if (totalPaid > 0) {
-      badgeText = 'PARTIALLY PAID';
+      final pct = ((totalPaid / totalBillableAmount) * 100).round();
+      badgeText = 'PARTIAL PAID ($pct%)';
       badgeBg = _cCyan600;
     }
 
@@ -119,7 +99,6 @@ class HousePlanPdfService {
     });
 
     final hasSiteVisits = owner.siteVisits.isNotEmpty;
-    final int scopeSectionNum = hasSiteVisits ? 3 : 2;
 
     pdf.addPage(
       pw.MultiPage(
@@ -127,54 +106,48 @@ class HousePlanPdfService {
         margin: const pw.EdgeInsets.symmetric(horizontal: 14 * PdfPageFormat.mm, vertical: 0),
         header: (context) {
           if (context.pageNumber > 1) {
-            return _buildContinuationHeader(companyName, cleanBillRef, owner.ownerName);
+            return _buildContinuationHeader(owner.ownerName, planNumber);
           }
-          return _buildFirstPageTopBar(companyName);
+          // PAGE 1: 45mm BLANK WHITE SPACE reserved for pre-printed colour letterhead paper
+          return pw.SizedBox(height: 44 * PdfPageFormat.mm);
         },
-        footer: (context) => _buildPageFooter(companyName, context.pageNumber, context.pagesCount),
+        footer: (context) => _buildPageFooter(context.pageNumber, context.pagesCount),
         build: (context) => [
-          // ── 2. MAIN BRAND HEADER BLOCK ──
-          pw.SizedBox(height: 6),
-          _buildBrandHeaderBlock(
-            logoImage: logoImage,
-            companyName: companyName,
-            tagline: tagline,
-            billInvoiceNo: cleanBillRef,
+          // ── 1. BILL METADATA BAR (Positioned directly under the pre-printed letterhead) ──
+          _buildBillMetaStrip(
+            planNumber: planNumber,
             badgeText: badgeText,
             badgeBg: badgeBg,
           ),
           pw.SizedBox(height: 6),
 
-          // ── 3. ISSUED BY & BILLED TO CARDS (2 Balanced Side-by-Side Boxes) ──
-          _buildClientAndConsultantCards(
-            companyName: companyName,
-            companyAddress: companyAddress,
-            companyEmail: companyEmail,
-            companyPhone: companyPhone,
-            ownerName: owner.ownerName,
-            ownerPhone: owner.ownerPhone,
+          // ── 2. CLIENT / OWNER DETAILS & PROJECT SPECIFICATIONS (Side-by-Side) ──
+          _buildClientAndProjectGrid(
+            owner: owner,
             siteLocation: effectiveSiteLoc,
             planNumber: planNumber,
             serial3D: serial3D,
-            engineerName: owner.supervisingEngineer,
           ),
-          pw.SizedBox(height: 5),
+          pw.SizedBox(height: 10),
 
-          // ── 4. PROJECT & ARCHITECTURE SPECIFICATIONS BAR ──
-          _buildProjectSpecificationsBar(owner, totalPlanFee),
+          // ── 3. SCOPE OF ENGINEERING DRAWINGS CHECKLIST TABLE ──
+          _buildDrawingsScopeSection(sortedPlans),
           pw.SizedBox(height: 8),
 
-          // ── 5. PAYMENT INSTALLMENTS & ADVANCE LEDGER ──
-          _buildPaymentsLedgerSection(owner.payments),
-          pw.SizedBox(height: 7),
-
-          // ── 6. SITE INSPECTION & SUPERVISION VISITS (IF RECORDED) ──
+          // ── 4. SITE INSPECTION & SUPERVISION VISITS (ON A SEPARATE PAGE) ──
           if (hasSiteVisits) ...[
-            _buildSiteVisitsSection(owner.siteVisits, owner.supervisingEngineer),
-            pw.SizedBox(height: 7),
+            pw.NewPage(),
+            _buildSiteVisitsSection(owner.siteVisits, totalVisitsAmount),
+            pw.SizedBox(height: 12),
           ],
 
-          // ── 7. FINANCIAL BILLING SUMMARY BOX (ALIGNED RIGHT) ──
+          // ── 5. PAYMENT INSTALLMENTS & ADVANCE LEDGER (IF ANY RECORDED) ──
+          if (owner.payments.isNotEmpty) ...[
+            _buildPaymentsLedgerSection(owner.payments),
+            pw.SizedBox(height: 12),
+          ],
+
+          // ── 6. FINANCIAL BILLING SUMMARY BOX (AMOUNT ONLY, NO SIGNATURES) ──
           _buildFinancialSummaryBox(
             totalPlanFee: totalPlanFee,
             totalVisitsAmount: totalVisitsAmount,
@@ -184,19 +157,11 @@ class HousePlanPdfService {
             hasSiteVisits: hasSiteVisits,
             visitsCount: owner.siteVisits.length,
           ),
-          pw.SizedBox(height: 9),
+          pw.SizedBox(height: 12),
 
-          // ── 8. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES CHECKLIST ──
-          _buildDrawingsScopeSection(sortedPlans, scopeSectionNum),
-          pw.SizedBox(height: 8),
-
-          // ── 9. TERMS & CONDITIONS BOX ──
-          _buildTermsAndConditionsBox(),
-          pw.SizedBox(height: 8),
-
-          // ── 10. AUTHORIZED SIGNATURE BLOCKS ──
-          _buildSignaturesBlock(owner.ownerName, companyName),
-          pw.SizedBox(height: 14),
+          // ── 7. COMPACT LEGAL NOTE ──
+          _buildTermsNote(),
+          pw.SizedBox(height: 24),
         ],
       ),
     );
@@ -209,499 +174,265 @@ class HousePlanPdfService {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 1. TOP EXECUTIVE PARTNER RIBBON (Directly from YS Business Card)
+  // 1. BILL METADATA STRIP (Right below letterhead, directly above grey line)
   // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildFirstPageTopBar(String companyName) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.symmetric(horizontal: -14 * PdfPageFormat.mm),
-      child: pw.Column(
-        children: [
-          pw.Container(
-            height: 7 * PdfPageFormat.mm,
-            color: _cSlate900,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 14 * PdfPageFormat.mm),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Row(
-                  children: [
-                    pw.Text(
-                      'YOGESHWAR S. PATEL',
-                      style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: _cGold),
-                    ),
-                    pw.SizedBox(width: 8),
-                    pw.Text(
-                      '•   Mo. 80003 40720',
-                      style: const pw.TextStyle(fontSize: 7, color: PdfColors.white),
-                    ),
-                  ],
-                ),
-                pw.Row(
-                  children: [
-                    pw.Text(
-                      'SHIRISH D. PATEL',
-                      style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: _cGold),
-                    ),
-                    pw.SizedBox(width: 8),
-                    pw.Text(
-                      '•   Mo. 99044 45077',
-                      style: const pw.TextStyle(fontSize: 7, color: PdfColors.white),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          pw.Container(height: 0.4 * PdfPageFormat.mm, color: _cGold),
-        ],
-      ),
-    );
-  }
-
-  // Continuation Header for Page 2+
-  static pw.Widget _buildContinuationHeader(String companyName, String billRef, String ownerName) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.symmetric(horizontal: -14 * PdfPageFormat.mm),
-      padding: const pw.EdgeInsets.only(bottom: 8),
-      child: pw.Column(
-        children: [
-          pw.Container(
-            height: 5.5 * PdfPageFormat.mm,
-            color: _cSlate900,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 14 * PdfPageFormat.mm),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Text(
-                  '${companyName.toUpperCase()} — PLANNING INVOICE & DELIVERABLES (Ref: $billRef)',
-                  style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                ),
-                pw.Text(
-                  'Client: $ownerName',
-                  style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: _cGold),
-                ),
-              ],
-            ),
-          ),
-          pw.Container(height: 0.4 * PdfPageFormat.mm, color: _cGold),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 2. MAIN BRAND HEADER BLOCK
-  // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildBrandHeaderBlock({
-    required pw.MemoryImage? logoImage,
-    required String companyName,
-    required String tagline,
-    required String billInvoiceNo,
+  static pw.Widget _buildBillMetaStrip({
+    required String planNumber,
     required String badgeText,
     required PdfColor badgeBg,
   }) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 7),
-      decoration: const pw.BoxDecoration(
-        border: pw.Border(bottom: pw.BorderSide(color: _cSlate200, width: 0.6)),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              // Authentic Logo container
-              pw.Container(
-                width: 24 * PdfPageFormat.mm,
-                height: 24 * PdfPageFormat.mm,
-                padding: const pw.EdgeInsets.all(2),
-                decoration: pw.BoxDecoration(
-                  color: PdfColors.white,
-                  borderRadius: pw.BorderRadius.circular(4),
-                  border: pw.Border.all(color: _cSlate200, width: 0.5),
-                ),
-                child: logoImage != null
-                    ? pw.Image(logoImage, fit: pw.BoxFit.contain)
-                    : _buildVectorEmblem(),
-              ),
-              pw.SizedBox(width: 10),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    companyName.toUpperCase(),
-                    style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold, color: _cSlate900),
+    return pw.Column(
+      children: [
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Row(
+              children: [
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                  decoration: pw.BoxDecoration(
+                    color: _cAmber100,
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+                    border: pw.Border.all(color: _cAmber600, width: 0.8),
                   ),
-                  pw.SizedBox(height: 2),
-                  pw.Text(
-                    tagline.toUpperCase(),
-                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cAmber600),
+                  child: pw.Text(
+                    'ENGINEERING BILL',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                      color: _cAmber700,
+                    ),
                   ),
-                ],
-              ),
-            ],
-          ),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(
-                'PLANNING INVOICE / BILL',
-                style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold, color: _cSlate900),
-              ),
-              pw.SizedBox(height: 2),
-              pw.Text(
-                'Bill Ref: $billInvoiceNo',
-                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cAmber600),
-              ),
-              pw.SizedBox(height: 2),
-              pw.Text(
-                'Date: ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
-                style: const pw.TextStyle(fontSize: 7.5, color: _cSlate600),
-              ),
-              pw.SizedBox(height: 4),
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 2.5),
-                decoration: pw.BoxDecoration(
-                  color: badgeBg,
-                  borderRadius: pw.BorderRadius.circular(3),
                 ),
-                child: pw.Text(
-                  badgeText,
-                  style: pw.TextStyle(fontSize: 6.8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                pw.SizedBox(width: 8),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: pw.BoxDecoration(
+                    color: badgeBg.luminance > 0.5 ? _cSlate100 : badgeBg,
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+                  ),
+                  child: pw.Text(
+                    badgeText,
+                    style: pw.TextStyle(
+                      fontSize: 7.5,
+                      fontWeight: pw.FontWeight.bold,
+                      color: badgeBg.luminance > 0.5 ? _cSlate800 : PdfColors.white,
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Clean vector fallback architectural logo if asset image is not bundled.
-  static pw.Widget _buildVectorEmblem() {
-    return pw.Center(
-      child: pw.Column(
-        mainAxisAlignment: pw.MainAxisAlignment.center,
-        children: [
-          pw.Text('YS', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: _cGold)),
-          pw.Text('CONSTRUCTION', style: pw.TextStyle(fontSize: 4.5, fontWeight: pw.FontWeight.bold, color: _cSlate600)),
-        ],
-      ),
+              ],
+            ),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text(
+                  'Date: ${_fmtDate(DateTime.now())}',
+                  style: const pw.TextStyle(fontSize: 8.5, color: _cSlate700),
+                ),
+                pw.SizedBox(height: 1.5),
+                pw.Text(
+                  'Plan Ref: #$planNumber',
+                  style: pw.TextStyle(
+                    fontSize: 8.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: _cSlate900,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 5),
+        pw.Divider(color: _cSlate200, thickness: 0.8),
+      ],
     );
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 3. CONTACT DETAILS & CLIENT INFORMATION CARDS (Side-by-Side Boxes)
+  // 2. CLIENT / OWNER DETAILS & PROJECT SPECIFICATIONS
   // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildClientAndConsultantCards({
-    required String companyName,
-    required String companyAddress,
-    required String companyEmail,
-    required String companyPhone,
-    required String ownerName,
-    required String ownerPhone,
+  static pw.Widget _buildClientAndProjectGrid({
+    required HousePlanOwner owner,
     required String siteLocation,
     required String planNumber,
     required String serial3D,
-    required String engineerName,
   }) {
+    final areaText = owner.totalSqFt > 0
+        ? '${NumberFormat('#,##0').format(owner.totalSqFt)} sq.ft'
+        : (owner.plotArea.isNotEmpty ? owner.plotArea : '-');
+
+    final engineer = owner.supervisingEngineer.isNotEmpty
+        ? owner.supervisingEngineer
+        : 'YS_Construction';
+
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // --- LEFT BOX: ISSUED BY (PLANNING CONSULTANT) ---
+        // CLIENT / OWNER DETAILS
         pw.Expanded(
-          child: pw.Container(
-            padding: const pw.EdgeInsets.all(8),
-            decoration: pw.BoxDecoration(
-              color: _cSlate50,
-              borderRadius: pw.BorderRadius.circular(4),
-              border: pw.Border.all(color: _cSlate200, width: 0.5),
-            ),
-            child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Container(width: 2.5, height: 50, color: _cGold),
-                pw.SizedBox(width: 6),
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'ISSUED BY (PLANNING CONSULTANT):',
-                        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: _cSlate400),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        companyName,
-                        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _cSlate900),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'Principals: Yogeshwar S. Patel & Shirish D. Patel',
-                        style: pw.TextStyle(fontSize: 6.8, fontWeight: pw.FontWeight.bold, color: _cAmber600),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'Office: $companyAddress',
-                        style: const pw.TextStyle(fontSize: 6.8, color: _cSlate600),
-                      ),
-                      pw.SizedBox(height: 1.5),
-                      pw.Text(
-                        'Phone: 80003 40720, 99044 45077',
-                        style: const pw.TextStyle(fontSize: 6.8, color: _cSlate600),
-                      ),
-                      pw.SizedBox(height: 1.5),
-                      pw.Text(
-                        'Email: $companyEmail',
-                        style: const pw.TextStyle(fontSize: 6.8, color: _cSlate600),
-                      ),
-                    ],
-                  ),
+          flex: 5,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'CLIENT / OWNER DETAILS',
+                style: pw.TextStyle(
+                  fontSize: 7.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _cSlate500,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              pw.SizedBox(height: 3),
+              pw.Text(
+                owner.ownerName.toUpperCase(),
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _cSlate900,
+                ),
+              ),
+              if (owner.ownerPhone.isNotEmpty) ...[
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  'Phone: ${owner.ownerPhone}',
+                  style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
                 ),
               ],
-            ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Location: $siteLocation',
+                style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
+              ),
+            ],
           ),
         ),
-        pw.SizedBox(width: 8),
-
-        // --- RIGHT BOX: BILLED TO (HOUSE OWNER / CLIENT) ---
+        pw.SizedBox(width: 16),
+        // PROJECT SPECIFICATIONS
         pw.Expanded(
-          child: pw.Container(
-            padding: const pw.EdgeInsets.all(8),
-            decoration: pw.BoxDecoration(
-              color: _cSlate50,
-              borderRadius: pw.BorderRadius.circular(4),
-              border: pw.Border.all(color: _cSlate200, width: 0.5),
-            ),
-            child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Container(width: 2.5, height: 50, color: _cGold),
-                pw.SizedBox(width: 6),
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'BILLED TO (HOUSE OWNER / CLIENT):',
-                        style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: _cSlate400),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        ownerName.toUpperCase(),
-                        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _cSlate900),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'Phone: ${ownerPhone.isNotEmpty ? ownerPhone : "N/A"}',
-                        style: const pw.TextStyle(fontSize: 7, color: _cSlate600),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'Site Location: $siteLocation',
-                        style: const pw.TextStyle(fontSize: 6.8, color: _cSlate600),
-                      ),
-                      pw.SizedBox(height: 1.5),
-                      pw.Text(
-                        'Plan Serial No: #$planNumber  •  3D Model Ref: $serial3D',
-                        style: const pw.TextStyle(fontSize: 6.8, color: _cSlate600),
-                      ),
-                      pw.SizedBox(height: 1.5),
-                      pw.Text(
-                        'Supervising Engineer: ${engineerName.isNotEmpty ? engineerName : "Er. YS_Construction"}',
-                        style: const pw.TextStyle(fontSize: 6.8, color: _cSlate600),
-                      ),
-                    ],
-                  ),
+          flex: 5,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'PROJECT SPECIFICATIONS',
+                style: pw.TextStyle(
+                  fontSize: 7.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _cSlate500,
+                  letterSpacing: 0.5,
                 ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 4. PROJECT & ARCHITECTURE SPECIFICATIONS BAR
-  // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildProjectSpecificationsBar(HousePlanOwner owner, double totalPlanFee) {
-    final rateDisplay = owner.ratePerSqFt > 0
-        ? 'Rs. ${owner.ratePerSqFt.round()}/sq.ft'
-        : (totalPlanFee > 0 && owner.totalSqFt > 0
-            ? 'Rs. ${(totalPlanFee / owner.totalSqFt).round()}/sq.ft'
-            : 'Fixed Fee');
-
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: pw.BoxDecoration(
-        color: _cSlate100,
-        borderRadius: pw.BorderRadius.circular(3),
-        border: pw.Border.all(color: _cSlate200, width: 0.5),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('TOTAL BUILT-UP AREA:', style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: _cSlate400)),
-                pw.SizedBox(height: 1),
-                pw.Text(owner.displaySqFt.isNotEmpty ? owner.displaySqFt : 'N/A', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
-              ],
-            ),
-          ),
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('PLANNING RATE:', style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: _cSlate400)),
-                pw.SizedBox(height: 1),
-                pw.Text(rateDisplay, style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
-              ],
-            ),
-          ),
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('CONFIGURATION & FACING:', style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: _cSlate400)),
-                pw.SizedBox(height: 1),
-                pw.Text('${owner.floors} • ${owner.bhk} • ${owner.facing} Facing', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
-              ],
-            ),
-          ),
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('PROJECT ENGINEER:', style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: _cSlate400)),
-                pw.SizedBox(height: 1),
-                pw.Text(owner.supervisingEngineer.isNotEmpty ? owner.supervisingEngineer : 'Er. YS_Construction', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cAmber600)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 5. PAYMENT INSTALLMENTS & ADVANCE LEDGER TABLE
-  // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildPaymentsLedgerSection(List<HousePlanPayment> payments) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
-          '1. PAYMENT INSTALLMENTS & ADVANCE LEDGER',
-          style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: _cSlate900),
-        ),
-        pw.SizedBox(height: 3),
-        pw.Table(
-          border: pw.TableBorder.all(color: _cSlate200, width: 0.4),
-          columnWidths: {
-            0: const pw.FlexColumnWidth(3.0),
-            1: const pw.FlexColumnWidth(1.2),
-            2: const pw.FlexColumnWidth(1.0),
-            3: const pw.FlexColumnWidth(1.6),
-            4: const pw.FlexColumnWidth(1.3),
-          },
-          children: [
-            // Gold Header
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(color: _cGold),
-              children: [
-                _th('Installment / Milestone Description'),
-                _th('Date', align: pw.TextAlign.center),
-                _th('Mode', align: pw.TextAlign.center),
-                _th('Reference / UTR'),
-                _th('Amount Received', align: pw.TextAlign.right),
-              ],
-            ),
-            if (payments.isNotEmpty)
-              ...payments.asMap().entries.map((entry) {
-                final idx = entry.key + 1;
-                final p = entry.value;
-                final isEven = idx % 2 == 0;
-                return pw.TableRow(
-                  decoration: pw.BoxDecoration(color: isEven ? _cSlate50 : PdfColors.white),
-                  children: [
-                    _td('$idx. ${p.installmentName.isNotEmpty ? p.installmentName : p.type}', bold: true),
-                    _td(_fmtDate(p.date), align: pw.TextAlign.center),
-                    _td(p.mode.isNotEmpty ? p.mode : 'UPI', align: pw.TextAlign.center),
-                    _td(p.notes.isNotEmpty ? p.notes : '-', color: _cSlate600),
-                    _td(_fmtCurrency(p.amount), align: pw.TextAlign.right, bold: true),
-                  ],
-                );
-              })
-            else
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.white),
+              ),
+              pw.SizedBox(height: 3),
+              pw.Row(
                 children: [
-                  _td('No installments recorded yet. Advance payment pending.', color: _cSlate600),
-                  _td('-', align: pw.TextAlign.center),
-                  _td('-', align: pw.TextAlign.center),
-                  _td('-', align: pw.TextAlign.center),
-                  _td(_fmtCurrency(0), align: pw.TextAlign.right, bold: true),
+                  pw.Text('Built-up Area: ', style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
+                  pw.Text(areaText, style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
                 ],
               ),
-          ],
+              pw.SizedBox(height: 2),
+              pw.Row(
+                children: [
+                  pw.Text('3D Ref: ', style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
+                  pw.Text(serial3D, style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
+                  pw.SizedBox(width: 8),
+                  pw.Text('Engineer: ', style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
+                  pw.Text(engineer, style: const pw.TextStyle(fontSize: 8, color: _cSlate700)),
+                ],
+              ),
+              if (owner.ratePerSqFt > 0) ...[
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  'Consultancy Rate: Rs. ${owner.ratePerSqFt.toStringAsFixed(0)} / sq.ft',
+                  style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
+                ),
+              ],
+              if (owner.bhk.isNotEmpty || owner.facing.isNotEmpty) ...[
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  'Configuration: ${owner.bhk} • ${owner.facing} Facing (${owner.floors})',
+                  style: const pw.TextStyle(fontSize: 8, color: _cSlate700),
+                ),
+              ],
+            ],
+          ),
         ),
       ],
     );
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 6. SITE INSPECTION & SUPERVISION VISITS TABLE
+  // 3. SCOPE OF ENGINEERING DRAWINGS CHECKLIST TABLE
   // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildSiteVisitsSection(List<HouseSiteVisit> visits, String engineerName) {
+  static pw.Widget _buildDrawingsScopeSection(List<HousePlanDrawing> plans) {
+    final completedCount = plans.where((p) => p.isCompleted).length;
+    final totalCount = plans.length;
+    final percent = totalCount > 0 ? ((completedCount / totalCount) * 100).round() : 0;
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(
-          '2. SITE INSPECTION & SUPERVISION VISITS (${visits.length} VISITS)',
-          style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: _cSlate900),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              'ENGINEERING DRAWINGS SCOPE ($completedCount of $totalCount COMPLETED)',
+              style: pw.TextStyle(
+                fontSize: 8.5,
+                fontWeight: pw.FontWeight.bold,
+                color: _cSlate900,
+              ),
+            ),
+            pw.Text(
+              '$percent% Completed',
+              style: pw.TextStyle(
+                fontSize: 8.5,
+                fontWeight: pw.FontWeight.bold,
+                color: percent == 100 ? _cEmerald600 : _cAmber600,
+              ),
+            ),
+          ],
         ),
-        pw.SizedBox(height: 3),
+        pw.SizedBox(height: 4),
         pw.Table(
-          border: pw.TableBorder.all(color: _cSlate200, width: 0.4),
-          columnWidths: {
-            0: const pw.FixedColumnWidth(20),
-            1: const pw.FlexColumnWidth(1.2),
-            2: const pw.FlexColumnWidth(3.2),
-            3: const pw.FlexColumnWidth(1.6),
-            4: const pw.FlexColumnWidth(1.2),
+          border: pw.TableBorder.all(color: _cSlate200, width: 0.5),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(28),
+            1: pw.FlexColumnWidth(5),
+            2: pw.FlexColumnWidth(3),
+            3: pw.FixedColumnWidth(85),
           },
           children: [
-            // Amber-600 Gold Header
             pw.TableRow(
-              decoration: const pw.BoxDecoration(color: _cAmber600),
+              decoration: const pw.BoxDecoration(color: _cSlate100),
               children: [
                 _th('#', align: pw.TextAlign.center),
-                _th('Visit Date', align: pw.TextAlign.center),
-                _th('Inspection Purpose / Scope of Work Inspected'),
-                _th('Supervising Engineer'),
-                _th('Visit Charge', align: pw.TextAlign.right),
+                _th('Drawing Name'),
+                _th('Category'),
+                _th('Status', align: pw.TextAlign.center),
               ],
             ),
-            ...visits.asMap().entries.map((entry) {
+            ...plans.asMap().entries.map((entry) {
               final idx = entry.key + 1;
-              final v = entry.value;
+              final p = entry.value;
               final isEven = idx % 2 == 0;
+              final numDisplay = p.num.isNotEmpty ? p.num : idx.toString().padLeft(2, '0');
+              final isCompleted = p.isCompleted;
+              final statusText = isCompleted
+                  ? 'COMPLETED'
+                  : (p.status == 'in_progress' ? 'IN PROGRESS' : 'PENDING');
+              final statusColor = isCompleted
+                  ? _cEmerald600
+                  : (p.status == 'in_progress' ? const PdfColor.fromInt(0xFF2563EB) : _cSlate400);
+
               return pw.TableRow(
-                decoration: pw.BoxDecoration(color: isEven ? _cAmber50 : PdfColors.white),
+                decoration: pw.BoxDecoration(color: isEven ? _cSlate50 : PdfColors.white),
                 children: [
-                  _td('$idx.', align: pw.TextAlign.center, bold: true, color: _cAmber600),
-                  _td(_fmtDate(v.date), align: pw.TextAlign.center),
-                  _td(v.purpose.isNotEmpty ? v.purpose : 'Site Inspection & Supervision', bold: true),
-                  _td(engineerName.isNotEmpty ? engineerName : 'Supervising Engineer', color: _cSlate600),
-                  _td(_fmtCurrency(v.amount), align: pw.TextAlign.right, bold: true),
+                  _td(numDisplay, align: pw.TextAlign.center, bold: true, color: _cSlate600),
+                  _td('$numDisplay-${p.displayName.toUpperCase()}', bold: true),
+                  _td(p.category.isNotEmpty ? p.category : 'Architectural', color: _cSlate600),
+                  _td(statusText, align: pw.TextAlign.center, bold: true, color: statusColor),
                 ],
               );
             }),
@@ -712,7 +443,143 @@ class HousePlanPdfService {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 7. FINANCIAL BILLING SUMMARY BOX (Aligned Right)
+  // 4. SITE INSPECTION & SUPERVISION VISITS (Rendered on a separate page)
+  // ───────────────────────────────────────────────────────────────────────────
+  static pw.Widget _buildSiteVisitsSection(List<HouseSiteVisit> visits, double totalVisitsAmount) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              'SITE INSPECTION & SUPERVISION VISITS (${visits.length} VISITS RECORDED)',
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: _cSlate900,
+              ),
+            ),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+              decoration: pw.BoxDecoration(
+                color: _cAmber50,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+                border: pw.Border.all(color: _cAmber600, width: 0.6),
+              ),
+              child: pw.Text(
+                'Total Visits Fee: ${_fmtCurrency(totalVisitsAmount)}',
+                style: pw.TextStyle(
+                  fontSize: 8,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _cAmber700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 5),
+        pw.Table(
+          border: pw.TableBorder.all(color: _cSlate200, width: 0.5),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(28),
+            1: pw.FixedColumnWidth(75),
+            2: pw.FlexColumnWidth(5),
+            3: pw.FixedColumnWidth(80),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _cAmber100),
+              children: [
+                _th('#', align: pw.TextAlign.center),
+                _th('Date'),
+                _th('Site Inspection Purpose & Structural Notes'),
+                _th('Fee Charged', align: pw.TextAlign.right),
+              ],
+            ),
+            ...visits.asMap().entries.map((entry) {
+              final idx = entry.key + 1;
+              final v = entry.value;
+              final isEven = idx % 2 == 0;
+              final feeText = v.amount > 0 ? _fmtCurrency(v.amount) : 'Complimentary';
+              final feeColor = v.amount > 0 ? _cSlate900 : _cEmerald600;
+
+              return pw.TableRow(
+                decoration: pw.BoxDecoration(color: isEven ? _cSlate50 : PdfColors.white),
+                children: [
+                  _td(idx.toString().padLeft(2, '0'), align: pw.TextAlign.center, bold: true, color: _cAmber700),
+                  _td(_fmtDate(v.date), bold: true),
+                  _td(v.notes.isNotEmpty ? v.notes : 'On-site structural & architectural verification'),
+                  _td(feeText, align: pw.TextAlign.right, bold: true, color: feeColor),
+                ],
+              );
+            }),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 5. PAYMENT INSTALLMENTS & ADVANCE LEDGER
+  // ───────────────────────────────────────────────────────────────────────────
+  static pw.Widget _buildPaymentsLedgerSection(List<HousePlanPayment> payments) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          'PAYMENT & ADVANCE INSTALLMENTS LEDGER (${payments.length} RECORDED)',
+          style: pw.TextStyle(
+            fontSize: 9,
+            fontWeight: pw.FontWeight.bold,
+            color: _cSlate900,
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Table(
+          border: pw.TableBorder.all(color: _cSlate200, width: 0.5),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(28),
+            1: pw.FixedColumnWidth(75),
+            2: pw.FlexColumnWidth(4),
+            3: pw.FixedColumnWidth(75),
+            4: pw.FixedColumnWidth(80),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _cSlate100),
+              children: [
+                _th('#', align: pw.TextAlign.center),
+                _th('Date'),
+                _th('Stage / Description'),
+                _th('Mode', align: pw.TextAlign.center),
+                _th('Amount', align: pw.TextAlign.right),
+              ],
+            ),
+            ...payments.asMap().entries.map((entry) {
+              final idx = entry.key + 1;
+              final p = entry.value;
+              final isEven = idx % 2 == 0;
+
+              return pw.TableRow(
+                decoration: pw.BoxDecoration(color: isEven ? _cSlate50 : PdfColors.white),
+                children: [
+                  _td(idx.toString().padLeft(2, '0'), align: pw.TextAlign.center, color: _cSlate600),
+                  _td(_fmtDate(p.date)),
+                  _td(p.description.isNotEmpty ? p.description : 'Advance consultancy payment'),
+                  _td(p.mode.toUpperCase(), align: pw.TextAlign.center, color: _cSlate600),
+                  _td(_fmtCurrency(p.amount), align: pw.TextAlign.right, bold: true, color: _cEmerald600),
+                ],
+              );
+            }),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 6. FINANCIAL BILLING SUMMARY BOX (Amounts only, no signatures)
   // ───────────────────────────────────────────────────────────────────────────
   static pw.Widget _buildFinancialSummaryBox({
     required double totalPlanFee,
@@ -728,279 +595,216 @@ class HousePlanPdfService {
       child: pw.Container(
         width: 250,
         decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: _cSlate200, width: 0.5),
-          borderRadius: pw.BorderRadius.circular(3),
+          color: PdfColors.white,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+          border: pw.Border.all(color: _cSlate200, width: 0.8),
         ),
+        padding: const pw.EdgeInsets.all(10),
         child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            _summaryRow('Base Plan Drawing Fee:', _fmtCurrency(totalPlanFee)),
+            pw.Text(
+              'FINANCIAL BILLING SUMMARY',
+              style: pw.TextStyle(
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+                color: _cSlate500,
+                letterSpacing: 0.5,
+              ),
+            ),
+            pw.SizedBox(height: 6),
+            _summaryRow('House Planning Fee:', _fmtCurrency(totalPlanFee)),
             if (hasSiteVisits) ...[
-              _summaryRow('Site Visits Charges ($visitsCount visits):', _fmtCurrency(totalVisitsAmount)),
-              _summaryRow('Gross Total Billable Amount:', _fmtCurrency(totalBillableAmount), isBold: true, bg: _cSlate100),
+              pw.SizedBox(height: 3),
+              _summaryRow('Site Supervision ($visitsCount visits):', _fmtCurrency(totalVisitsAmount)),
             ],
-            _summaryRow('Total Amount Received:', _fmtCurrency(totalPaid), isBold: true, valueColor: _cEmerald600),
+            pw.SizedBox(height: 4),
+            pw.Divider(color: _cSlate200, thickness: 0.5),
+            pw.SizedBox(height: 2),
             _summaryRow(
-              hasSiteVisits ? 'Net Remaining Balance Due:' : 'Net Remaining Balance:',
-              _fmtCurrency(pendingBalance),
-              isBold: true,
-              bg: pendingBalance > 0 ? _cAmber100 : _cEmerald100,
-              valueColor: pendingBalance > 0 ? _cAmber700 : _cEmerald600,
+              'Gross Total Amount:',
+              _fmtCurrency(totalBillableAmount),
+              bold: true,
+              valueColor: _cSlate900,
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static pw.Widget _summaryRow(String label, String value, {bool isBold = false, PdfColor? bg, PdfColor? valueColor}) {
-    return pw.Container(
-      color: bg ?? PdfColors.white,
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              fontSize: 7.5,
-              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-              color: isBold ? _cSlate900 : _cSlate600,
+            pw.SizedBox(height: 3),
+            _summaryRow(
+              'Total Advance Received:',
+              '- ${_fmtCurrency(totalPaid)}',
+              bold: true,
+              valueColor: _cEmerald600,
             ),
-          ),
-          pw.Text(
-            value,
-            style: pw.TextStyle(
-              fontSize: 7.5,
-              fontWeight: pw.FontWeight.bold,
-              color: valueColor ?? _cSlate900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 8. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES CHECKLIST
-  // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildDrawingsScopeSection(List<HousePlanDrawing> plans, int sectionNum) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
-          '$sectionNum. SCOPE OF ENGINEERING DRAWINGS & DELIVERABLES (${plans.length} DELIVERABLES)',
-          style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: _cSlate900),
-        ),
-        pw.SizedBox(height: 3),
-        pw.Table(
-          border: pw.TableBorder.all(color: _cSlate200, width: 0.4),
-          columnWidths: {
-            0: const pw.FixedColumnWidth(20),
-            1: const pw.FlexColumnWidth(3.8),
-            2: const pw.FlexColumnWidth(1.5),
-            3: const pw.FlexColumnWidth(1.6),
-          },
-          children: [
-            // Dark Executive Slate Header
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(color: _cSlate800),
-              children: [
-                _th('#', align: pw.TextAlign.center),
-                _th('Engineering Plan / Drawing Deliverable'),
-                _th('Discipline'),
-                _th('Status / Release', align: pw.TextAlign.center),
-              ],
-            ),
-            ...plans.asMap().entries.map((entry) {
-              final idx = entry.key + 1;
-              final p = entry.value;
-              final isEven = idx % 2 == 0;
-              final numDisplay = p.num.isNotEmpty ? p.num : idx.toString().padLeft(2, '0');
-              final isCompleted = p.isCompleted;
-              final statusText = isCompleted
-                  ? 'COMPLETED (RELEASED)'
-                  : (p.status == 'in_progress' ? 'IN PROGRESS' : 'NOT STARTED');
-              final statusColor = isCompleted
-                  ? _cEmerald600
-                  : (p.status == 'in_progress' ? const PdfColor.fromInt(0xFF2563EB) : _cSlate400);
-
-              return pw.TableRow(
-                decoration: pw.BoxDecoration(color: isEven ? _cSlate50 : PdfColors.white),
+            pw.SizedBox(height: 6),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: pw.BoxDecoration(
+                color: pendingBalance <= 0 ? _cEmerald50 : _cAmber50,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+                border: pw.Border.all(
+                  color: pendingBalance <= 0 ? _cEmerald600 : _cAmber600,
+                  width: 0.8,
+                ),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  _td(numDisplay, align: pw.TextAlign.center, bold: true, color: _cAmber600),
-                  _td('$numDisplay-${p.displayName}', bold: true),
-                  _td(p.category.isNotEmpty ? p.category : 'Architectural', color: _cSlate600),
-                  _td(statusText, align: pw.TextAlign.center, bold: true, color: statusColor),
+                  pw.Text(
+                    pendingBalance <= 0 ? 'NET BALANCE DUE' : 'NET BALANCE DUE',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                      color: pendingBalance <= 0 ? _cEmerald600 : _cAmber700,
+                    ),
+                  ),
+                  pw.Text(
+                    pendingBalance <= 0 ? 'Rs. 0 (CLEARED)' : _fmtCurrency(pendingBalance),
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                      color: pendingBalance <= 0 ? _cEmerald600 : _cAmber700,
+                    ),
+                  ),
                 ],
-              );
-            }),
+              ),
+            ),
           ],
         ),
-      ],
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 9. TERMS & CONDITIONS BOX
-  // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildTermsAndConditionsBox() {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: pw.BoxDecoration(
-        color: _cSlate50,
-        borderRadius: pw.BorderRadius.circular(3),
-        border: pw.Border.all(color: _cSlate200, width: 0.5),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'TERMS & CONDITIONS:',
-            style: pw.TextStyle(fontSize: 6.8, fontWeight: pw.FontWeight.bold, color: _cSlate900),
-          ),
-          pw.SizedBox(height: 3),
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('1. Structural drawings designed per IS 456 / NBC loading & soil standards.',
-                        style: const pw.TextStyle(fontSize: 6.2, color: _cSlate600)),
-                    pw.SizedBox(height: 1.5),
-                    pw.Text('2. Sanction plans & loan estimates certified for municipal & banking valuation.',
-                        style: const pw.TextStyle(fontSize: 6.2, color: _cSlate600)),
-                  ],
-                ),
-              ),
-              pw.SizedBox(width: 8),
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('3. Any revisions beyond agreed architectural draft will be charged as per schedule.',
-                        style: const pw.TextStyle(fontSize: 6.2, color: _cSlate600)),
-                    pw.SizedBox(height: 1.5),
-                    pw.Text('4. Complete drawing set & CAD soft copies released upon full plan fee settlement.',
-                        style: const pw.TextStyle(fontSize: 6.2, color: _cSlate600)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 10. AUTHORIZED SIGNATURE BLOCKS (2 Columns)
-  // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildSignaturesBlock(String ownerName, String companyName) {
+  static pw.Widget _summaryRow(
+    String label,
+    String value, {
+    bool bold = false,
+    PdfColor? valueColor,
+  }) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: pw.CrossAxisAlignment.end,
       children: [
-        // Client Acceptance (Left)
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Container(width: 140, height: 0.6, color: _cSlate400),
-            pw.SizedBox(height: 3),
-            pw.Text('Client Acceptance Signature', style: const pw.TextStyle(fontSize: 6.8, color: _cSlate600)),
-            pw.SizedBox(height: 1),
-            pw.Text('Client: $ownerName', style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
-            pw.SizedBox(height: 1),
-            pw.Text('Date: _______________', style: const pw.TextStyle(fontSize: 6.2, color: _cSlate400)),
-          ],
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            fontSize: 8,
+            color: bold ? _cSlate800 : _cSlate600,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          ),
         ),
-        // Consultant Signatory (Right)
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: [
-            pw.Container(width: 160, height: 0.6, color: _cSlate400),
-            pw.SizedBox(height: 3),
-            pw.Text('For $companyName', style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: _cAmber600)),
-            pw.SizedBox(height: 1),
-            pw.Text('Authorized Signatory & Consultant', style: pw.TextStyle(fontSize: 6.8, fontWeight: pw.FontWeight.bold, color: _cSlate900)),
-            pw.SizedBox(height: 1),
-            pw.Text('(Yogeshwar S. Patel / Shirish D. Patel)', style: const pw.TextStyle(fontSize: 6.2, color: _cSlate600)),
-          ],
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: 8,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: valueColor ?? (bold ? _cSlate900 : _cSlate700),
+          ),
         ),
       ],
     );
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 11. CLEAN FOOTER ON ALL PAGES
+  // 7. COMPACT LEGAL NOTE (Replaces signature block)
   // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildPageFooter(String companyName, int pageNumber, int pagesCount) {
+  static pw.Widget _buildTermsNote() {
     return pw.Container(
-      margin: const pw.EdgeInsets.only(top: 6),
-      padding: const pw.EdgeInsets.only(top: 4),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: const pw.BoxDecoration(
-        border: pw.Border(top: pw.BorderSide(color: _cSlate200, width: 0.4)),
+        color: _cSlate50,
+        borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+      ),
+      child: pw.Text(
+        '* This is a computer-generated architectural consultancy billing statement. Dimensions must be verified on site prior to structural execution. Site visit charges apply per inspection as logged.',
+        style: const pw.TextStyle(
+          fontSize: 7,
+          color: _cSlate500,
+        ),
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CONTINUATION HEADER (Page 2+)
+  // ───────────────────────────────────────────────────────────────────────────
+  static pw.Widget _buildContinuationHeader(String ownerName, String planNumber) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(top: 10, bottom: 8),
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(bottom: pw.BorderSide(color: _cSlate200, width: 0.8)),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            '$companyName • Architecture, Planner, Consultant, Interior Designer • Thank you for your business!',
-            style: const pw.TextStyle(fontSize: 6.5, color: _cSlate400),
+            'Client: ${ownerName.toUpperCase()}',
+            style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate700),
+          ),
+          pw.Text(
+            'Plan Ref: #$planNumber • Site Visits & Billing Statement',
+            style: const pw.TextStyle(fontSize: 8, color: _cSlate500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PAGE FOOTER
+  // ───────────────────────────────────────────────────────────────────────────
+  static pw.Widget _buildPageFooter(int pageNumber, int pagesCount) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.symmetric(vertical: 8),
+      padding: const pw.EdgeInsets.only(top: 4),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(top: pw.BorderSide(color: _cSlate200, width: 0.5)),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            'Generated via YS Trackify',
+            style: const pw.TextStyle(fontSize: 7, color: _cSlate400),
           ),
           pw.Text(
             'Page $pageNumber of $pagesCount',
-            style: const pw.TextStyle(fontSize: 6.5, color: _cSlate400),
+            style: const pw.TextStyle(fontSize: 7, color: _cSlate400),
           ),
         ],
       ),
     );
   }
 
-  // ── Table Cell Helpers ──
+  // ───────────────────────────────────────────────────────────────────────────
+  // TABLE CELL HELPERS
+  // ───────────────────────────────────────────────────────────────────────────
   static pw.Widget _th(String text, {pw.TextAlign align = pw.TextAlign.left}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3.5),
       child: pw.Text(
         text,
         textAlign: align,
-        style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+        style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: _cSlate700),
       ),
     );
   }
 
   static pw.Widget _td(
     String text, {
+    pw.TextAlign align = pw.TextAlign.left,
     bool bold = false,
     PdfColor? color,
-    pw.TextAlign align = pw.TextAlign.left,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3.0),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2.8),
       child: pw.Text(
         text,
         textAlign: align,
         style: pw.TextStyle(
-          fontSize: 7.2,
+          fontSize: 7.5,
           fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
-          color: color ?? _cSlate900,
+          color: color ?? _cSlate800,
         ),
       ),
-    );
-  }
-
-  /// Share bill PDF via WhatsApp or other system share sheet.
-  static Future<void> shareBillPdf({
-    required HousePlanOwner owner,
-    required BrandingData branding,
-  }) async {
-    final file = await generateBillPdf(owner: owner, branding: branding);
-    final text = 'Hello ${owner.ownerName}, please find attached your Official Planning Invoice & Deliverables Bill from ${branding.companyName.isNotEmpty ? branding.companyName : "YS Construction"}.';
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: text,
-      subject: 'Planning Invoice & Bill - ${owner.ownerName}',
     );
   }
 }

@@ -313,135 +313,50 @@ export async function generateHousePlanInvoicePDF({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 1. TOP EXECUTIVE PARTNER RIBBON (Directly from Business Card)
+  // 1 & 2. PRE-PRINTED LETTERHEAD BLANK HEADER & BILL METADATA STRIP
   // ─────────────────────────────────────────────────────────────────────────
-  // Deep dark executive slate strip (y = 0 to 7mm)
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(0, 0, pageWidth, 7, 'F');
+  // Top 44mm is left BLANK WHITE for the physical pre-printed colour letterhead
+  const billTopY = 44;
 
-  // Subtle bottom gold accent line (0.4mm)
-  doc.setFillColor(245, 166, 35);
-  doc.rect(0, 6.6, pageWidth, 0.4, 'F');
-
-  // Left Partner: Yogeshwar S. Patel
-  const p1Name = 'YOGESHWAR S. PATEL';
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(245, 166, 35); // Crisp Bright Gold
-  doc.text(p1Name, margin, 4.8);
-  const p1Width = doc.getTextWidth(p1Name);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(255, 255, 255); // Crisp White
-  doc.text('•    Mo. 80003 40720', margin + p1Width + 6, 4.8);
-
-  // Right Partner: Shirish D. Patel
-  const rightPartnerX = pageWidth - margin;
-  const p2PhoneText = '•    Mo. 99044 45077';
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(255, 255, 255); // Crisp White
-  const phoneW = doc.getTextWidth(p2PhoneText);
-  doc.text(p2PhoneText, rightPartnerX, 4.8, { align: 'right' });
-
-  const p2Name = 'SHIRISH D. PATEL';
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(245, 166, 35); // Crisp Bright Gold
-  doc.text(p2Name, rightPartnerX - phoneW - 6, 4.8, { align: 'right' });
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // 2. MAIN BRAND HEADER BLOCK (Modern Clean Luxury Layout)
-  // ─────────────────────────────────────────────────────────────────────────
-  // White header canvas (y = 7mm to 39mm)
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 7, pageWidth, 32, 'F');
-  doc.setDrawColor(226, 232, 240); // slate-200
+  // Bill Badge (Left)
+  doc.setFillColor(254, 243, 199); // amber-100
+  doc.setDrawColor(217, 119, 6); // amber-600
   doc.setLineWidth(0.3);
-  doc.line(margin, 39, pageWidth - margin, 39);
-
-  // Load logo from branding screen (logoDataUrl or logoUrl)
-  const logoInfo = await loadLogoDataUrl(effectiveBranding?.logoUrl, effectiveBranding?.logoDataUrl);
-  const logoBoxX = margin;
-  const logoBoxY = 10;
-  const logoBoxSize = 25;
-
-  if (logoInfo) {
-    try {
-      const padding = 2;
-      const maxW = logoBoxSize - padding * 2;
-      const maxH = logoBoxSize - padding * 2;
-      const ratio = Math.min(maxW / logoInfo.width, maxH / logoInfo.height);
-      const renderW = logoInfo.width * ratio;
-      const renderH = logoInfo.height * ratio;
-      const renderX = logoBoxX + (logoBoxSize - renderW) / 2;
-      const renderY = logoBoxY + (logoBoxSize - renderH) / 2;
-
-      // Rounded container card
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.3);
-      doc.roundedRect(logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, 2, 2, 'FD');
-
-      let imgFormat = 'PNG';
-      if (logoInfo.dataUrl.startsWith('data:image/jpeg') || logoInfo.dataUrl.startsWith('data:image/jpg')) {
-        imgFormat = 'JPEG';
-      } else if (logoInfo.dataUrl.startsWith('data:image/webp')) {
-        imgFormat = 'WEBP';
-      }
-      doc.addImage(logoInfo.dataUrl, imgFormat, renderX, renderY, renderW, renderH);
-    } catch (e) {
-      console.warn('Logo draw fallback, rendering vector emblem:', e);
-      drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
-    }
-  } else {
-    // Exact architectural house & curved foundation arc logo from business card
-    drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
-  }
-
-  // Company Information: ONLY Title and Tagline (Clean & Executive)
-  const brandTextX = margin + logoBoxSize + 6;
+  doc.roundedRect(margin, billTopY - 4.5, 36, 5.5, 1.5, 1.5, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(companyName.toUpperCase(), brandTextX, 20.5);
-
-  // Tagline / Nature of Business in Warm Amber Gold
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(217, 119, 6); // amber-600 / gold
-  doc.text(tagline.toUpperCase(), brandTextX, 26.5);
-
-  // Right Header: Invoice Title & Meta
-  const rightX = pageWidth - margin;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(15, 23, 42);
-  doc.text('PLANNING INVOICE / BILL', rightX, 15, { align: 'right' });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(217, 119, 6);
-  doc.text(`Bill Ref: ${billInvoiceNo}`, rightX, 20.5, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.8);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`Date: ${formatDate(new Date())}`, rightX, 25.5, { align: 'right' });
+  doc.setFontSize(7.5);
+  doc.setTextColor(180, 83, 9); // amber-700
+  doc.text('ENGINEERING BILL', margin + 18, billTopY - 1, { align: 'center' });
 
   // Status Pill
   doc.setFillColor(...badgeBgColor);
-  doc.roundedRect(rightX - 44, 28.5, 44, 5.5, 2, 2, 'F');
+  doc.roundedRect(margin + 39, billTopY - 4.5, 42, 5.5, 1.5, 1.5, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...badgeTextColor);
-  doc.text(paymentBadgeText, rightX - 22, 32.5, { align: 'center' });
+  doc.text(paymentBadgeText, margin + 60, billTopY - 1, { align: 'center' });
+
+  // Right Header: Date & Plan Ref
+  const rightX = pageWidth - margin;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Date: ${formatDate(new Date())}`, rightX, billTopY - 4.2, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Plan Ref: #${planNumber}`, rightX, billTopY, { align: 'right' });
+
+  // Subtle grey divider line
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.line(margin, billTopY + 3.5, pageWidth - margin, billTopY + 3.5);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 3. CONTACT DETAILS & CLIENT INFORMATION CARDS (Auto-Wrapping & Dynamic Height)
   // ─────────────────────────────────────────────────────────────────────────
-  const infoTopY = 42.5;
+  const infoTopY = billTopY + 6;
   const colWidth = (pageWidth - margin * 2 - 6) / 2; // 88mm
   const innerPad = 6;
   const maxTextW = colWidth - innerPad - 4; // 78mm inner text width
@@ -656,7 +571,8 @@ export async function generateHousePlanInvoicePDF({
   let nextSectionNum = 2;
 
   if (siteVisits.length > 0) {
-    const visitsSectionY = doc.lastAutoTable.finalY + 4;
+    doc.addPage();
+    const visitsSectionY = 20;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
@@ -917,54 +833,6 @@ export async function generateHousePlanInvoicePDF({
   const termsRightX = margin + termsColW + 6;
   doc.text('3. Any revisions beyond agreed architectural draft will be charged as per schedule.', termsRightX, signY + 7.2);
   doc.text('4. Complete drawing set & CAD soft copies released upon full plan fee settlement.', termsRightX, signY + 10.6);
-
-  // --- Signatures Section (Clean 2-Column: Client Left & Consultant Right) ---
-  const sigSectionY = signY + termsBoxH + 5;
-  const sigLineY = sigSectionY + 11;
-
-  // 1. Client Acceptance (Left)
-  const clientSigX = margin;
-  const clientLineW = 55;
-
-  doc.setDrawColor(156, 163, 175);
-  doc.setLineWidth(0.3);
-  doc.line(clientSigX, sigLineY, clientSigX + clientLineW, sigLineY);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.8);
-  doc.setTextColor(71, 85, 105);
-  doc.text('Client Acceptance Signature', clientSigX, sigLineY + 3.8);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.2);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`Client: ${ownerName}`, clientSigX, sigLineY + 7.2);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.2);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Date: _______________', clientSigX, sigLineY + 10.5);
-
-  // 2. Consultant Authorized Signatory (Right)
-  const authSigW = 60;
-  const authSigX = pageWidth - margin - authSigW;
-
-  doc.setDrawColor(156, 163, 175);
-  doc.setLineWidth(0.3);
-  doc.line(authSigX, sigLineY, authSigX + authSigW, sigLineY);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(217, 119, 6); // amber/gold
-  doc.text(`For ${companyName}`, authSigX, sigLineY + 3.8);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.8);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Authorized Signatory & Consultant', authSigX, sigLineY + 7.2);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.2);
-  doc.setTextColor(71, 85, 105);
-  doc.text('(Yogeshwar S. Patel / Shirish D. Patel)', authSigX, sigLineY + 10.5);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 9. CLEAN FOOTER & MULTI-PAGE NUMBERING (NO WATERMARK)
