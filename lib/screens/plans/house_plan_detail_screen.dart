@@ -843,7 +843,6 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
                   ],
                 ),
               ),
-            ),
           ),
         ),
       );
