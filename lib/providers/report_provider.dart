@@ -221,7 +221,7 @@ class ReportsProvider extends ChangeNotifier {
           labourName: labour.name,
           phone: labour.phone,
           dailyWage: labour.dailyWage,
-          isTemp: labour.isTemporary || labour.type == 'temporary',
+          isTemp: labour.isTemporary,
           totalDays: totalShiftDays,
           totalWage: totalWage,
           totalOTPay: totalOTPay,

@@ -102,18 +102,20 @@ exports.validateAndMarkAttendance = functions.https.onCall(
 
     const { token, supervisorId, date, status, offlineSync } = data;
 
-    // Scalable rate limit: max 1 request per 3 seconds per supervisor
-    try {
-      await enforceFirestoreRateLimit(`attendance_${supervisorId}`, 3000);
-    } catch (err) {
-      // Log api abuse asynchronously
-      db.collection('security_events').add({
-          type: 'api_abuse',
-          uid: supervisorId,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          reason: 'validateAndMarkAttendance rate limit exceeded'
-      }).catch(console.error);
-      throw err;
+    // Scalable rate limit: max 1 request per 500ms per supervisor (bypassed during offline bulk sync)
+    if (!offlineSync) {
+      try {
+        await enforceFirestoreRateLimit(`attendance_${supervisorId}`, 500);
+      } catch (err) {
+        // Log api abuse asynchronously
+        db.collection('security_events').add({
+            type: 'api_abuse',
+            uid: supervisorId,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            reason: 'validateAndMarkAttendance rate limit exceeded'
+        }).catch(console.error);
+        throw err;
+      }
     }
 
     if (context.auth.uid !== supervisorId) {
@@ -296,20 +298,23 @@ exports.cleanupOldLogs = functions.pubsub
     const batchSize = 500;
     
     async function deleteCollectionOld(collectionPath) {
-      const query = db.collection(collectionPath)
-        .where('timestamp', '<', ninetyDaysAgo)
-        .limit(batchSize);
+      let totalDeleted = 0;
+      const maxDeletions = 5000;
+      while (totalDeleted < maxDeletions) {
+        const snapshot = await db.collection(collectionPath)
+          .where('timestamp', '<', ninetyDaysAgo)
+          .limit(batchSize)
+          .get();
+        if (snapshot.size === 0) break;
 
-      const snapshot = await query.get();
-      if (snapshot.size === 0) return;
-
-      const batch = db.batch();
-      snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-      await batch.commit();
-      
-      // If there are more, they will be deleted in the next run tomorrow.
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+        totalDeleted += snapshot.size;
+        if (snapshot.size < batchSize) break;
+      }
     }
 
     await deleteCollectionOld('security_events');

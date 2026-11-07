@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -44,6 +45,17 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
     final uri = Uri.parse('tel:$clean');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
+    } else {
+      if (mounted) {
+        await Clipboard.setData(ClipboardData(text: clean));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Phone number $clean copied to clipboard'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF1E293B),
+          ),
+        );
+      }
     }
   }
 
@@ -54,8 +66,21 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
         ? 'Hello $name, from YS Construction. This is regarding your house plan & site visit pending balance of ${_currencyFmt.format(pendingDue)}.'
         : 'Hello $name, from YS Construction regarding your house plan drawing updates.';
     final uri = Uri.parse('https://wa.me/$formattedPhone?text=${Uri.encodeComponent(message)}');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open WhatsApp. Please check if app is installed.'),
+            backgroundColor: Color(0xFF1E293B),
+          ),
+        );
+      }
     }
   }
 

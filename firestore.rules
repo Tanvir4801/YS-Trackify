@@ -298,6 +298,43 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    // ── materialPurchases/ (multi-tenant subcollection) ───────────────────────
+    // Path structure: materialPurchases/{contractorId}/purchases/{purchaseId}
+    match /materialPurchases/{contractorId}/{rest=**} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin() || (isSignedIn() && canManageTenant(contractorId));
+    }
+
+    // ── siteExpenses/ (multi-tenant subcollection) ────────────────────────────
+    // Path structure: siteExpenses/{contractorId}/expenses/{expenseId}
+    match /siteExpenses/{contractorId}/{rest=**} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin() || (isSignedIn() && canManageTenant(contractorId));
+    }
+
+    // ── suppliers/ (multi-tenant subcollection) ───────────────────────────────
+    // Path structure: suppliers/{contractorId}/records/{supplierId}
+    match /suppliers/{contractorId}/{rest=**} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin() || (isSignedIn() && canManageTenant(contractorId));
+    }
+
+    // ── closingReports/ (multi-tenant subcollection) ──────────────────────────
+    // Path structure: closingReports/{contractorId}/reports/{reportId}
+    match /closingReports/{contractorId}/{rest=**} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin() || (isSignedIn() && canManageTenant(contractorId));
+    }
+
+    // ── siteAllowances/ ───────────────────────────────────────────────────────
+    // Audit collection for daily site allowances applied by supervisors
+    match /siteAllowances/{allowanceId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && isInTenant(resource.data.contractorId));
+      allow create: if isSuperAdmin() || (isSignedIn() && canManageTenant(request.resource.data.contractorId));
+      allow update: if isSuperAdmin() || (isSignedIn() && canManageTenant(resource.data.contractorId));
+      allow delete: if isSuperAdmin() || (isSignedIn() && isContractorAdmin(resource.data.contractorId));
+    }
+
 
     // ── support_tickets/ ─────────────────────────────────────────────────────
 
@@ -421,6 +458,50 @@ service cloud.firestore {
     // ── trackops_broadcasts/ ─────────────────────────────────────────────────
     // Admin broadcast notifications
     match /trackops_broadcasts/{broadcastId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── TrackOps SaaS & Tenant Management Collections ────────────────────────
+
+    // Tenant subscription plans and status
+    match /subscriptions/{contractorId} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin();
+    }
+
+    // Tenant feature flag entitlements
+    match /feature_flags/{contractorId} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin();
+    }
+
+    // Tenant health and adoption scores calculated by TrackOps
+    match /health_scores/{contractorId} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin();
+    }
+
+    // Tenant telemetry and feature usage metrics
+    match /feature_usage/{contractorId} {
+      allow read: if isSuperAdmin() || isInTenant(contractorId);
+      allow write: if isSuperAdmin() || isInTenant(contractorId);
+    }
+
+    // ── SaaS Analytics & Financial Collections (Super Admin only) ────────────
+
+    match /revenue_transactions/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /churned_customers/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /mrr_trend/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /daily_stats/{docId} {
       allow read, write: if isSuperAdmin();
     }
 
