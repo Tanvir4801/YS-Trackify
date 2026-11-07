@@ -5,6 +5,7 @@ import { Plus, Ban, RotateCcw, Users as UsersIcon, Shield, Briefcase, UserCheck 
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { useUsers } from '../hooks/useUsers';
+import { useDemoPermissions } from '../hooks/useDemoPermissions';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
@@ -49,6 +50,7 @@ export default function Users() {
   const role = useAuthStore((s) => s.role);
   const activeContractorId = useAuthStore((s) => s.activeContractorId);
   const queryClient = useQueryClient();
+  const { isDemo, guardAction } = useDemoPermissions();
 
   const { data: users = [], isLoading } = useUsers();
 
@@ -60,8 +62,13 @@ export default function Users() {
     ? [{ value: 'contractor', label: 'Contractor' }, { value: 'supervisor', label: 'Supervisor' }]
     : [{ value: 'supervisor', label: 'Supervisor' }];
 
-  const openAdd = () => { setForm({ ...EMPTY_FORM, role: roleOptions[0].value }); setDialogOpen(true); };
+  const openAdd = () => {
+    if (!guardAction(() => {}, 'Adding new users')) return;
+    setForm({ ...EMPTY_FORM, role: roleOptions[0].value });
+    setDialogOpen(true);
+  };
   const openEdit = (user) => {
+    if (!guardAction(() => {}, 'Editing user details')) return;
     setForm({
       id: user.id,
       name: user.name || '',
@@ -76,6 +83,7 @@ export default function Users() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['users'] });
 
   const handleSubmit = async () => {
+    if (!guardAction(() => {}, 'Saving user details')) return;
     if (!form.name.trim()) return toast.error('Name is required');
     if (!form.id && !form.email.trim()) return toast.error('Email is required');
     if (!form.id && form.password.length < 6) return toast.error('Password must be at least 6 characters');
@@ -133,11 +141,13 @@ export default function Users() {
   };
 
   const handleDeactivate = async (user) => {
+    if (!guardAction(() => {}, 'Deactivating users')) return;
     try { await deactivateUser(user.id); toast.success(`${user.name} deactivated`); invalidate(); }
     catch (err) { console.error(err); toast.error('Failed to deactivate'); }
   };
 
   const handleActivate = async (user) => {
+    if (!guardAction(() => {}, 'Activating users')) return;
     try { await activateUser(user.id); toast.success(`${user.name} reactivated`); invalidate(); }
     catch (err) { console.error(err); toast.error('Failed to activate'); }
   };

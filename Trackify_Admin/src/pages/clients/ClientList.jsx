@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore, useScopeId } from '../../store/authStore';
 import { useClients } from '../../hooks/useClients';
 import { useProjects } from '../../hooks/useProjects';
+import { useDemoPermissions } from '../../hooks/useDemoPermissions';
 import { addClient, updateClient, deleteClient } from '../../lib/services/clients.service';
 import { formatCurrency } from '../../lib/utils';
 
@@ -34,6 +35,7 @@ export default function ClientList() {
   const { data: clients, isLoading: clientsLoading, error: clientsError } = useClients();
   const { data: projects, isLoading: projectsLoading, error: projectsError } = useProjects();
 
+  const { guardAction } = useDemoPermissions();
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -125,6 +127,7 @@ export default function ClientList() {
   };
 
   const openAdd = () => {
+    if (!guardAction(() => {}, 'Adding new client accounts')) return;
     setForm(EMPTY_FORM);
     setEditingId(null);
     setDialogOpen(true);
@@ -132,6 +135,7 @@ export default function ClientList() {
 
   const openEdit = (e, client) => {
     e.stopPropagation();
+    if (!guardAction(() => {}, 'Editing client details')) return;
     setForm({
       name: client.name || '',
       phone: client.phone || '',

@@ -176,6 +176,7 @@ export default function Labours() {
       );
       return;
     }
+    if (!guardAction(() => {}, 'Adding a new worker')) return;
     setEditing(null);
     // FIX: Do NOT pre-fill supervisorId with contractor uid
     // Always start empty so user must select a real supervisor

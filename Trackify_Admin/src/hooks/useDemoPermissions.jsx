@@ -27,7 +27,7 @@ export function useDemoPermissions() {
    * Guards any user mutation attempt. If in demo mode, blocks execution
    * and displays a professional informative toast notification.
    */
-  const guardAction = (callback, actionDescription = 'This operation') => {
+  const guardAction = (callback, actionDescription = 'This feature') => {
     if (isDemo) {
       toast(
         (t) => (
@@ -36,7 +36,7 @@ export function useDemoPermissions() {
               <span>🔒</span> Action Disabled in Demo Mode
             </span>
             <span className="text-xs text-slate-300 leading-relaxed">
-              {actionDescription} is restricted in demo mode. Contact our team to activate full company operations.
+              This feature is available in the full Trackify platform. Contact our team to get started.
             </span>
           </div>
         ),
