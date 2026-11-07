@@ -233,6 +233,9 @@ class HousePlanPayment {
     required this.recordedAt,
   });
 
+  String get description =>
+      installmentName.isNotEmpty ? installmentName : (notes.isNotEmpty ? notes : 'Advance consultancy payment');
+
   factory HousePlanPayment.fromMap(Map<String, dynamic> map, [String? fallbackId]) {
     final rawAmt = map['amount'];
     final parsedAmt = rawAmt is num ? rawAmt.toDouble() : double.tryParse(rawAmt?.toString() ?? '0') ?? 0.0;

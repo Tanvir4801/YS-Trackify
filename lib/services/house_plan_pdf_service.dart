@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
 
 import '../models/house_plan_model.dart';
 import '../providers/branding_provider.dart';
@@ -805,6 +806,23 @@ class HousePlanPdfService {
           color: color ?? _cSlate800,
         ),
       ),
+    );
+  }
+
+  /// Exports the generated Bill PDF and presents the native share/save dialog.
+  static Future<void> shareBillPdf({
+    required HousePlanOwner owner,
+    required BrandingData branding,
+  }) async {
+    final file = await generateBillPdf(owner: owner, branding: branding);
+    final company = branding.companyName.isNotEmpty && branding.companyName.toLowerCase() != 'trackify'
+        ? branding.companyName.replaceAll('_', ' ').trim()
+        : 'YS Construction';
+    final text = 'Hello ${owner.ownerName}, please find attached your Engineering Plans & Site Visits Statement from $company.';
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      text: text,
+      subject: 'Engineering Bill - ${owner.ownerName}',
     );
   }
 }
