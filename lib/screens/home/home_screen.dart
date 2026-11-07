@@ -17,6 +17,7 @@ import '../../models/site_model.dart';
 import '../../providers/attendance_provider.dart';
 import '../../providers/branding_provider.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../providers/house_plans_provider.dart';
 import '../../providers/site_data_provider.dart';
 import '../../providers/sites_provider.dart';
 import '../../services/attendance_session_service.dart';
@@ -124,6 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .read<DashboardProvider>()
         .startListening(contractorId: contractorId);
     context.read<SiteDataProvider>().startLabourStream(contractorId);
+    context.read<HousePlansProvider>().startListening(contractorId);
 
     _sessionsSub?.cancel();
     _sessionsSub = _sessionSvc.streamSessionsForToday().listen((sessions) {
@@ -744,21 +746,33 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               Expanded(
-                child: ModuleCard(
-                  icon: Icons.architecture_rounded,
-                  label: 'House Plans',
-                  subtitle: 'Drawings & visits',
-                  color: AppColors.primaryColor(context),
-                  bgColor: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF1E1A11)
-                      : const Color(0xFFFFF9EB),
-                  onTap: () {
-                    HapticUtils.light();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const HousePlansListScreen(),
-                      ),
+                child: Consumer<HousePlansProvider>(
+                  builder: (ctx, hpProv, _) {
+                    final pendingPlans = hpProv.planPendingCount;
+                    final pendingDrawings = hpProv.pendingDrawingsCount;
+                    final totalPending = pendingPlans + pendingDrawings;
+
+                    return ModuleCard(
+                      icon: Icons.architecture_rounded,
+                      label: 'House Plans',
+                      subtitle: totalPending > 0
+                          ? '$totalPending pending review'
+                          : 'Drawings & visits',
+                      badgeText: totalPending > 0 ? '$totalPending Due' : null,
+                      badgeColor: const Color(0xFFF5A623),
+                      color: AppColors.primaryColor(context),
+                      bgColor: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF1E1A11)
+                          : const Color(0xFFFFF9EB),
+                      onTap: () {
+                        HapticUtils.light();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const HousePlansListScreen(),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

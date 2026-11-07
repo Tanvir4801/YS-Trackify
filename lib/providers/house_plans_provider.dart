@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/house_plan_model.dart';
 import '../services/house_plans_service.dart';
+import '../services/notification_service.dart';
 
 class HousePlansProvider extends ChangeNotifier {
   final HousePlansService _service;
@@ -26,6 +27,9 @@ class HousePlansProvider extends ChangeNotifier {
   int get visitDueCount => _allPlans.where((o) => o.siteVisits.isNotEmpty && !o.isVisitsCleared).length;
   int get planPendingCount => _allPlans.where((o) => !o.isPlanFeeCleared).length;
   int get clearedCount => _allPlans.where((o) => o.isFullyCleared).length;
+  int get totalDrawingsCount => _allPlans.fold(0, (acc, o) => acc + o.totalPlansCount);
+  int get pendingDrawingsCount => _allPlans.fold(0, (acc, o) => acc + o.inProgressDrawings.length);
+  int get completedDrawingsCount => _allPlans.fold(0, (acc, o) => acc + o.completedDrawings.length);
 
   List<HousePlanOwner> get filteredPlans {
     var list = _allPlans;
@@ -76,6 +80,15 @@ class HousePlansProvider extends ChangeNotifier {
         _allPlans = plans;
         _isLoading = false;
         notifyListeners();
+
+        // Check and trigger reminder alert for the engineer
+        if (planPendingCount > 0 || pendingDrawingsCount > 0 || visitDueCount > 0) {
+          NotificationService.instance.checkAndTriggerPlansReminder(
+            pendingPlansCount: planPendingCount,
+            pendingDrawingsCount: pendingDrawingsCount,
+            visitDueCount: visitDueCount,
+          );
+        }
       },
       onError: (err) {
         debugPrint('[HousePlansProvider] Stream error: $err');

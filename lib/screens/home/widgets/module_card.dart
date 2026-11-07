@@ -11,6 +11,8 @@ class ModuleCard extends StatelessWidget {
     required this.color,
     this.bgColor,
     this.iconBgColor,
+    this.badgeText,
+    this.badgeColor,
     required this.onTap,
   });
 
@@ -20,6 +22,8 @@ class ModuleCard extends StatelessWidget {
   final Color color;
   final Color? bgColor;
   final Color? iconBgColor;
+  final String? badgeText;
+  final Color? badgeColor;
   final VoidCallback onTap;
 
   @override
@@ -51,13 +55,43 @@ class ModuleCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context).brightness == Brightness.dark ? Colors.white : AppColors.textPrimaryColor(context),
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.white : AppColors.textPrimaryColor(context),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (badgeText != null && badgeText!.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: (badgeColor ?? const Color(0xFFF59E0B)).withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: (badgeColor ?? const Color(0xFFF59E0B)).withValues(alpha: 0.5),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          badgeText!,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: badgeColor ?? const Color(0xFFF59E0B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(

@@ -11,6 +11,7 @@ import '../../models/house_plan_model.dart';
 import '../../providers/branding_provider.dart';
 import '../../providers/house_plans_provider.dart';
 import '../../services/house_plan_pdf_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/session_service.dart';
 import '../../widgets/animations/bouncy_tap.dart';
 import '../../widgets/animations/staggered_list.dart';
@@ -164,6 +165,42 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
               });
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.notifications_active_outlined, size: 21),
+            tooltip: 'Remind Engineer',
+            color: provider.planPendingCount > 0 ? const Color(0xFFF5A623) : textPrimary,
+            onPressed: () async {
+              HapticUtils.select();
+              await NotificationService.instance.checkAndTriggerPlansReminder(
+                pendingPlansCount: provider.planPendingCount,
+                pendingDrawingsCount: provider.pendingDrawingsCount,
+                visitDueCount: provider.visitDueCount,
+                force: true,
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Engineer alert sent: ${provider.planPendingCount} plans & ${provider.pendingDrawingsCount} drawings pending',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: const Color(0xFF1E293B),
+                    duration: const Duration(seconds: 3),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                );
+              }
+            },
+          ),
           const SizedBox(width: 4),
         ],
       ),
@@ -171,6 +208,9 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
         children: [
           // Filter Tabs
           _buildFilterTabs(provider, isDark),
+
+          // Engineer Reminder Alert Banner
+          _buildEngineerReminderBanner(provider, isDark),
 
           // Content List
           Expanded(
@@ -300,6 +340,136 @@ class _HousePlansListScreenState extends State<HousePlansListScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildEngineerReminderBanner(HousePlansProvider provider, bool isDark) {
+    final pendingPlans = provider.planPendingCount;
+    final pendingDrawings = provider.pendingDrawingsCount;
+    final visitDue = provider.visitDueCount;
+
+    if (pendingPlans == 0 && pendingDrawings == 0 && visitDue == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF1E2638), const Color(0xFF121B2A)]
+              : [const Color(0xFFFFFBEB), const Color(0xFFFEF3C7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFF5A623).withValues(alpha: isDark ? 0.35 : 0.45),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF5A623).withValues(alpha: isDark ? 0.12 : 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5A623).withValues(alpha: 0.20),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.engineering_rounded,
+              color: Color(0xFFF5A623),
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Engineer Pending Alert',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFF5A623),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5A623).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '$pendingPlans Plans Pending',
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFF5A623),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  pendingDrawings > 0
+                      ? '$pendingPlans clients have plan dues & $pendingDrawings drawings are in-progress.'
+                      : '$pendingPlans clients have pending house plan payments.',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          BouncyTap(
+            onTap: () {
+              HapticUtils.select();
+              provider.setFilter('plan_pending');
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFF5A623), Color(0xFFD97706)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFF5A623).withValues(alpha: 0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Text(
+                'Review',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1305),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
