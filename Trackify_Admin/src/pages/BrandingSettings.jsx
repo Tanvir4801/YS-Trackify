@@ -233,12 +233,12 @@ export default function BrandingSettings() {
           <div className="bg-bg-card p-6 rounded-xl border border-border">
             <h2 className="text-lg font-medium text-text-primary mb-4">Logo</h2>
             <div className="flex items-start gap-6">
-              {branding.logoUrl ? (
+              {branding?.logoUrl ? (
                 <div className="flex flex-col items-center gap-3">
                   <img
                     src={branding.logoUrl}
                     alt="Company Logo"
-                    className="w-[120px] h-[120px] rounded-lg object-contain bg-white"
+                    className="w-[120px] h-[120px] rounded-xl object-cover bg-[#0B1220] border border-amber-500/30 shadow-lg"
                   />
                   <div className="flex gap-2">
                     <label className="text-sm text-gold hover:underline cursor-pointer">
@@ -348,8 +348,8 @@ export default function BrandingSettings() {
             <div className="p-6">
               <div className="flex justify-between items-start mb-8">
                 <div className="flex items-start gap-4">
-                  {branding.logoUrl ? (
-                    <img src={branding.logoUrl} alt="Logo" className="w-12 h-12 object-contain" />
+                  {branding?.logoUrl ? (
+                    <img src={branding.logoUrl} alt="Logo" className="w-12 h-12 object-cover rounded-lg border border-border" />
                   ) : (
                     <div
                       className="w-12 h-12 rounded flex items-center justify-center text-white text-xl font-bold"

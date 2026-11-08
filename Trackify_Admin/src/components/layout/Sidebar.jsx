@@ -184,7 +184,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* Brand Area */}
       <div className={`flex items-center gap-3 shrink-0 border-b border-border h-[72px] ${collapsed ? 'px-3 justify-center' : 'px-5'}`}>
         {branding?.logoUrl ? (
-          <img src={branding.logoUrl} alt={branding.companyName || 'Logo'} className="h-10 w-10 shrink-0 rounded-xl object-contain bg-white border border-border" />
+          <img src={branding.logoUrl} alt={branding.companyName || 'Logo'} className="h-10 w-10 shrink-0 rounded-xl object-cover border border-amber-500/30 shadow-md" />
         ) : (
           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-[0_4px_16px_rgba(139,92,246,0.2)] ${isSuperAdmin ? 'bg-gradient-to-br from-violet-600 to-purple-700 border-violet-500/40' : 'bg-gradient-to-br from-bg-secondary to-bg-card border-gold/40 shadow-[0_4px_16px_rgba(245,166,35,0.15)]'}`}>
             {isSuperAdmin ? <Zap className="h-5 w-5 text-white" /> : <Compass className="h-5 w-5 text-gold" />}

@@ -13,7 +13,7 @@ export const DEMO_BRANDING = {
   phone: '+91 98765 00000',
   email: 'contact@xyz-construction.demo',
   gstNumber: '24AAAAA0000A1Z5',
-  logoUrl: null, // Uses clean gold Compass icon
+  logoUrl: '/trackify_logo.png', // Official modern Trackify gold emblem
   logoDataUrl: null,
   logoStoragePath: null,
   themeColor: '#F5A623',

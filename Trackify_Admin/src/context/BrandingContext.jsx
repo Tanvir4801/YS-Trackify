@@ -13,7 +13,7 @@ export const DEFAULT_BRANDING = {
   phone:          '+91 98765 00000',
   email:          'contact@xyz-construction.demo',
   gstNumber:      '24AAAAA0000A1Z5',
-  logoUrl:        null,
+  logoUrl:        '/trackify_logo.png',
   logoDataUrl:    null,
   logoStoragePath:null,
   themeColor:     '#F5A623',

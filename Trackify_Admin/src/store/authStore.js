@@ -1,15 +1,21 @@
 import { create } from 'zustand';
 import { useSubscriptionStore } from './subscriptionStore';
-export const useAuthStore = create((set) => ({
-  uid: null,
-  role: null,
-  name: null,
-  email: null,
-  isLoading: true,
 
-  userContractorId: null,
-  activeContractorId: null,
-  activeContractorName: null,
+const isDemoInit =
+  typeof window !== 'undefined' &&
+  sessionStorage.getItem('trackify_demo_mode') === 'true';
+
+export const useAuthStore = create((set) => ({
+  uid: isDemoInit ? 'demo_user_visitor' : null,
+  role: isDemoInit ? 'contractor' : null,
+  name: isDemoInit ? 'Demo Admin' : null,
+  email: isDemoInit ? 'demo@xyz.com' : null,
+  isLoading: !isDemoInit,
+  isDemo: isDemoInit,
+
+  userContractorId: isDemoInit ? 'trackify_demo' : null,
+  activeContractorId: isDemoInit ? 'trackify_demo' : null,
+  activeContractorName: isDemoInit ? 'XYZ Construction' : null,
 
   contractorsList: [],
 

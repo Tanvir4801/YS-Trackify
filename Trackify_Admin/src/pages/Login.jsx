@@ -89,9 +89,7 @@ const Login = () => {
 
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-12">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-bg-secondary to-bg-card border border-gold/40 shadow-[0_4px_16px_rgba(245,166,35,0.15)]">
-              <Compass className="h-6 w-6 text-gold" />
-            </div>
+            <img src="/trackify_logo.png" alt="Trackify Logo" className="h-12 w-12 rounded-xl object-cover border border-amber-500/40 shadow-[0_4px_16px_rgba(245,166,35,0.25)]" />
             <div>
               <p className="text-gold font-bold text-[14px] tracking-[0.2em] uppercase">TRACKIFY</p>
               <p className="text-text-muted text-[10px] tracking-widest uppercase mt-0.5">Civil Engineering Console</p>
@@ -132,9 +130,7 @@ const Login = () => {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-bg-secondary to-bg-card border border-gold/40 shadow-[0_4px_16px_rgba(245,166,35,0.15)]">
-              <Compass className="h-5 w-5 text-gold" />
-            </div>
+            <img src="/trackify_logo.png" alt="Trackify Logo" className="h-10 w-10 rounded-xl object-cover border border-amber-500/40 shadow-[0_4px_16px_rgba(245,166,35,0.25)]" />
             <span className="text-gold font-bold text-lg tracking-widest uppercase">Trackify</span>
           </div>
 

@@ -10,76 +10,49 @@ export default function DemoEntry() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
-  const [statusText, setStatusText] = useState('Initializing demo environment...');
   const [error, setError] = useState(null);
 
   const setUser = useAuthStore((s) => s.setUser);
   const switchContractor = useAuthStore((s) => s.switchContractor);
 
   useEffect(() => {
-    let isMounted = true;
+    try {
+      // 1. Immediately store demo mode keys for zero-latency instant access
+      sessionStorage.setItem('trackify_demo_mode', 'true');
+      sessionStorage.setItem(
+        'trackify_demo_expires_at',
+        String(Date.now() + 24 * 60 * 60 * 1000)
+      );
+      sessionStorage.setItem('trackify_demo_company', 'XYZ Construction');
 
-    async function handleDemoLogin() {
-      try {
-        if (isMounted) setStatusText('Configuring sandbox tenant (trackify_demo)...');
+      // 2. Set global demo state immediately (instant rendering)
+      setUser({
+        uid: auth.currentUser?.uid || 'demo_user_visitor',
+        role: 'contractor',
+        name: 'Demo Admin',
+        email: 'demo@xyz.com',
+        contractorId: 'trackify_demo',
+      });
+      useAuthStore.setState({ isDemo: true, isLoading: false });
+      switchContractor('trackify_demo', 'XYZ Construction');
 
-        // Always set demo flags in storage
-        sessionStorage.setItem('trackify_demo_mode', 'true');
-        sessionStorage.setItem(
-          'trackify_demo_expires_at',
-          String(Date.now() + 24 * 60 * 60 * 1000)
+      // 3. Background non-blocking authentication
+      if (token) {
+        signInWithCustomToken(auth, token).catch((e) =>
+          console.warn('Custom token fallback:', e)
         );
-        sessionStorage.setItem('trackify_demo_company', 'XYZ Construction');
-
-        // Attempt custom token if passed in query parameter
-        if (token) {
-          try {
-            if (isMounted) setStatusText('Verifying signed demo session token...');
-            await signInWithCustomToken(auth, token);
-          } catch (tokenErr) {
-            console.warn('Custom token verify fallback to anonymous/local demo session:', tokenErr);
-          }
-        }
-
-        // Ensure a valid Firebase Auth session via anonymous sign-in if not signed in
-        if (!auth.currentUser) {
-          try {
-            await signInAnonymously(auth);
-          } catch (anonErr) {
-            console.warn('Anonymous signin optional fallback:', anonErr);
-          }
-        }
-
-        // Set global demo user context in authStore
-        setUser({
-          uid: auth.currentUser?.uid || 'demo_user_visitor',
-          role: 'contractor',
-          name: 'Demo Admin',
-          email: 'demo@xyz.com',
-          contractorId: 'trackify_demo',
-        });
-        useAuthStore.setState({ isDemo: true });
-        switchContractor('trackify_demo', 'XYZ Construction');
-
-        if (isMounted) {
-          setStatusText('Demo environment activated! Entering dashboard...');
-          setTimeout(() => {
-            navigate('/dashboard', { replace: true });
-          }, 350);
-        }
-      } catch (err) {
-        console.error('DemoEntry error:', err);
-        if (isMounted) {
-          setError(err?.message || 'Failed to initialize demo session. Please try again.');
-        }
+      } else if (!auth.currentUser) {
+        signInAnonymously(auth).catch((e) =>
+          console.warn('Anonymous fallback:', e)
+        );
       }
+
+      // 4. Instantly enter the dashboard without artificial delay
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      console.error('DemoEntry error:', err);
+      setError(err?.message || 'Failed to initialize demo session. Please try again.');
     }
-
-    handleDemoLogin();
-
-    return () => {
-      isMounted = false;
-    };
   }, [token, navigate, setUser, switchContractor]);
 
   if (error) {

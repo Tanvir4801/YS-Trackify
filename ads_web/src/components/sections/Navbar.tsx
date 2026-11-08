@@ -83,26 +83,11 @@ export default function Navbar({ onDemoClick, activeSection, onNavigate }: Navba
               className="flex items-center gap-2.5 group"
               aria-label="Scroll to top"
             >
-              {/* Geometric "T" built from grid squares */}
-              <svg
-                width="32"
-                height="32"
-                viewBox="0 0 32 32"
-                fill="none"
-                aria-hidden="true"
-                className="flex-shrink-0"
-              >
-                {/* Top row – 5 squares forming the crossbar */}
-                <rect x="2" y="4" width="6" height="6" rx="1" fill="#F59E0B" opacity="0.9" />
-                <rect x="9" y="4" width="6" height="6" rx="1" fill="#F59E0B" />
-                <rect x="16" y="4" width="6" height="6" rx="1" fill="#F59E0B" opacity="0.9" />
-                {/* Stem – 3 stacked squares in the center */}
-                <rect x="9" y="11" width="6" height="6" rx="1" fill="#F59E0B" opacity="0.7" />
-                <rect x="9" y="18" width="6" height="6" rx="1" fill="#F59E0B" opacity="0.55" />
-                <rect x="9" y="25" width="6" height="5" rx="1" fill="#F59E0B" opacity="0.4" />
-                {/* Extra accent squares */}
-                <rect x="23" y="4" width="5" height="6" rx="1" fill="#F59E0B" opacity="0.5" />
-              </svg>
+              <img
+                src="/trackify_logo.png"
+                alt="Trackify"
+                className="w-8 h-8 rounded-lg object-cover border border-amber-500/30 flex-shrink-0 shadow-sm"
+              />
               <span className="font-heading font-bold text-xl text-trackify-textMain group-hover:text-trackify-amber transition-colors">
                 {siteConfig.productName}
               </span>

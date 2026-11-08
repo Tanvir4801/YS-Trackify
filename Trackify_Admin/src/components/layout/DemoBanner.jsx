@@ -86,9 +86,9 @@ export default function DemoBanner() {
       <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
         {/* Left: Indicator */}
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-400 font-mono text-[11px] font-bold tracking-wide">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            XYZ CONSTRUCTION · LIVE DEMO PREVIEW
+          <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-400 font-mono text-[11px] font-bold tracking-wide">
+            <img src="/trackify_logo.png" alt="Logo" className="w-4 h-4 rounded-sm object-cover" />
+            <span>XYZ CONSTRUCTION · LIVE DEMO PREVIEW</span>
           </span>
         </div>
 

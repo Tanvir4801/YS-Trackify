@@ -18,6 +18,7 @@ import { useSites } from '../hooks/useSites';
 import { getAttendanceRange, subscribeAttendanceByDate } from '../lib/services/attendance.service';
 import { subscribePayments } from '../lib/services/payments.service';
 import { useSupervisors } from '../hooks/useSupervisors';
+import { DEMO_ATTENDANCE, DEMO_PAYMENTS } from '../lib/demoData';
 
 import { todayKey, toDateKey, formatCurrency, exportExcel } from '../lib/utils';
 import { Button } from '../components/ui/button';
@@ -144,20 +145,31 @@ export default function Dashboard() {
   const days7 = useMemo(() => buildLast7(), []);
   const days7Start = days7[0].date;
 
+  const isDemo =
+    scopeId === 'trackify_demo' ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('trackify_demo_mode') === 'true');
+
   const { data: labours = [], isLoading: loadingLabours } = useLabours();
   const { data: supervisors = [] } = useSupervisors();
   const { data: sites = [] } = useSites();
 
-  const [attendanceToday, setAttendanceToday] = useState([]);
-  const [loadingToday, setLoadingToday] = useState(true);
-  const [trend7, setTrend7] = useState([]);
-  const [loadingTrend, setLoadingTrend] = useState(true);
-  const [monthPayments, setMonthPayments] = useState([]);
-  const [loadingPay, setLoadingPay] = useState(true);
+  const [attendanceToday, setAttendanceToday] = useState(isDemo ? DEMO_ATTENDANCE : []);
+  const [loadingToday, setLoadingToday] = useState(!isDemo);
+  const [trend7, setTrend7] = useState(() => (
+    isDemo ? days7.map((d) => ({ label: d.label, present: 22, half: 2, absent: 2, three_quarter: 0, quarter: 0, pending: 0 })) : []
+  ));
+  const [loadingTrend, setLoadingTrend] = useState(!isDemo);
+  const [monthPayments, setMonthPayments] = useState(isDemo ? DEMO_PAYMENTS : []);
+  const [loadingPay, setLoadingPay] = useState(!isDemo);
   const [alerts, setAlerts] = useState([]);
   const [dismissed, setDismissed] = useState(new Set());
 
   useEffect(() => {
+    if (isDemo) {
+      setAttendanceToday(DEMO_ATTENDANCE);
+      setLoadingToday(false);
+      return undefined;
+    }
     if (!scopeId && role !== 'super_admin') {
       setAttendanceToday([]);
       setLoadingToday(false);
@@ -169,9 +181,14 @@ export default function Dashboard() {
       setLoadingToday(false);
     });
     return () => unsub();
-  }, [scopeId, today, role]);
+  }, [scopeId, today, role, isDemo]);
 
   useEffect(() => {
+    if (isDemo) {
+      setTrend7(days7.map((d) => ({ label: d.label, present: 22, half: 2, absent: 2, three_quarter: 0, quarter: 0, pending: 0 })));
+      setLoadingTrend(false);
+      return;
+    }
     if (!scopeId) return;
     
     // Defer heavy history loading by 500ms so main UI renders instantly
@@ -200,9 +217,14 @@ export default function Dashboard() {
       .finally(() => setLoadingTrend(false));
     }, 500);
     return () => clearTimeout(timer);
-  }, [scopeId, days7Start, today, days7]);
+  }, [scopeId, days7Start, today, days7, isDemo]);
 
   useEffect(() => {
+    if (isDemo) {
+      setMonthPayments(DEMO_PAYMENTS);
+      setLoadingPay(false);
+      return undefined;
+    }
     if (!scopeId && role !== 'super_admin') {
       setMonthPayments([]);
       setLoadingPay(false);
@@ -218,7 +240,7 @@ export default function Dashboard() {
       { startDate: monthStart, endDate: today },
     );
     return () => unsub();
-  }, [scopeId, monthStart, today, role]);
+  }, [scopeId, monthStart, today, role, isDemo]);
 
   const todayCounts = useMemo(() => {
     // 'pending' = admin-reset state (labour had a record but was cleared back to neutral).
