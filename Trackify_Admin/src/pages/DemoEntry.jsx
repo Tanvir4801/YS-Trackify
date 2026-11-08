@@ -91,7 +91,7 @@ export default function DemoEntry() {
           <ShieldCheck className="w-6 h-6" />
         </div>
         <h3 className="text-lg font-heading font-bold text-white">Trackify Demo Sandbox</h3>
-        <p className="text-xs font-mono text-amber-400/90">{statusText}</p>
+        <p className="text-xs font-mono text-amber-400/90">Entering sandbox workspace...</p>
         <div className="pt-2">
           <LoadingSpinner label="" />
         </div>
