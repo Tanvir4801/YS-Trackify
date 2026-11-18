@@ -179,7 +179,13 @@ class _SplashScreenState extends State<SplashScreen>
                                   blurRadius: 24, offset: const Offset(0, 8)),
                               ],
                             ),
-                            child: const Icon(Icons.architecture_rounded, size: 52, color: AppColors.gold),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(26),
+                              child: Image.asset(
+                                'lib/assets/trackify_logo.png',
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -239,7 +245,7 @@ class _SplashScreenState extends State<SplashScreen>
                     opacity: _footerOpacity.value,
                     child: Padding(
                       padding: const EdgeInsets.only(bottom: 20),
-                      child: Text('YS Construction · Developed by Tanvir Patel',
+                      child: Text('Trackify · Developed by Tanvir Patel',
                         style: TextStyle(color: Colors.white.withValues(alpha: 0.28),
                           fontSize: 11, letterSpacing: 0.4)),
                     ),

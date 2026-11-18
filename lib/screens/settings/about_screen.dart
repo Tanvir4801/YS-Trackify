@@ -87,7 +87,10 @@ class _AboutTrackifyScreenState extends State<AboutTrackifyScreen> {
               ),
               child: logoUrl != null && logoUrl.isNotEmpty
                   ? Image.network(logoUrl, height: 64, width: 64, fit: BoxFit.contain)
-                  : Icon(Icons.domain_rounded, size: 64, color: AppColors.primaryColor(context)),
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset('lib/assets/trackify_logo.png', height: 64, width: 64, fit: BoxFit.cover),
+                    ),
             ),
             const SizedBox(height: 24),
             Text(

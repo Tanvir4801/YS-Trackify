@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -9,11 +11,11 @@ import '../models/house_plan_model.dart';
 import '../providers/branding_provider.dart';
 
 /// Generates an official, architecturally styled PDF Bill / Statement for a House Planning client.
-/// Tailored specifically for physical pre-printed letterhead paper:
-/// 1. Top 45mm on Page 1 is left BLANK WHITE so the pre-printed color logo/partner details show through.
-/// 2. Body starts cleanly with Bill Metadata, Client Details, and Drawings Scope.
-/// 3. Site Inspection & Supervision visits always appear on a SEPARATE PAGE with proper spacing.
-/// 4. Signature blocks are completely removed — displaying clean financial amounts and summary only.
+/// Features a full executive branded header matching the Web Admin PDF layout:
+/// 1. Top executive slate ribbon with gold accent + dynamic contractor logo, company name, tagline & contact details.
+/// 2. Body starts immediately with Client Details, Project Specifications, and Drawings Scope.
+/// 3. Site Inspection & Supervision visits appear cleanly with proper spacing.
+/// 4. Clean financial amounts and summary box.
 class HousePlanPdfService {
   // ── Executive Architectural Color Palette ──
   static const PdfColor _cSlate900 = PdfColor.fromInt(0xFF0F172A);
@@ -123,12 +125,53 @@ class HousePlanPdfService {
     return text.trim();
   }
 
-  /// Generates the complete, high-fidelity bill PDF.
+  /// Loads company logo bytes from branding.logoUrl (with timeout), falling back to bundled Trackify emblem.
+  static Future<Uint8List?> _loadLogoBytes(BrandingData branding) async {
+    if (branding.logoUrl != null && branding.logoUrl!.trim().isNotEmpty) {
+      try {
+        final uri = Uri.tryParse(branding.logoUrl!.trim());
+        if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+          final httpClient = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+          final request = await httpClient.getUrl(uri);
+          final response = await request.close().timeout(const Duration(seconds: 4));
+          if (response.statusCode == 200) {
+            final bytes = await consolidateHttpClientResponseBytes(response);
+            if (bytes.isNotEmpty) return bytes;
+          }
+        }
+      } catch (e) {
+        debugPrint('HousePlanPdfService: logo network fetch fallback: $e');
+      }
+    }
+    try {
+      final data = await rootBundle.load('lib/assets/trackify_logo.png');
+      return data.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('HousePlanPdfService: asset logo fallback error: $e');
+      return null;
+    }
+  }
+
+  /// Generates the complete, high-fidelity bill PDF with full branded header.
   static Future<File> generateBillPdf({
     required HousePlanOwner owner,
     required BrandingData branding,
   }) async {
     final pdf = pw.Document();
+    final logoBytes = await _loadLogoBytes(branding);
+
+    // Company branding details (with safe fallbacks)
+    final rawCo = branding.companyName.trim().replaceAll('_', ' ');
+    final companyName = (rawCo.isNotEmpty && rawCo.toLowerCase() != 'my company')
+        ? rawCo
+        : 'Trackify Construction';
+    final tagline = branding.tagline.trim().isNotEmpty
+        ? branding.tagline.trim()
+        : 'Architecture, Planning & Structural Consultancy';
+    final companyAddress = branding.address.trim();
+    final companyPhone = branding.phone.trim();
+    final companyEmail = branding.email.trim();
+    final gstNumber = branding.gstNumber.trim();
 
     // Financial calculations
     final totalPlanFee = owner.houseAmount;
@@ -137,12 +180,30 @@ class HousePlanPdfService {
     final totalPaid = owner.calculatedTotalPaid;
     final pendingBalance = owner.netPending;
 
+    // Payment status badge
+    final String paymentStatusText;
+    final PdfColor statusBg;
+    final PdfColor statusFg;
+    if (totalBillableAmount > 0 && pendingBalance <= 0) {
+      paymentStatusText = 'FULLY PAID';
+      statusBg = _cEmerald50;
+      statusFg = _cEmerald600;
+    } else if (totalPaid > 0) {
+      paymentStatusText = 'PARTIAL PAID';
+      statusBg = _cAmber100;
+      statusFg = _cAmber700;
+    } else {
+      paymentStatusText = 'PAYMENT PENDING';
+      statusBg = const PdfColor.fromInt(0xFFFEE2E2);
+      statusFg = _cRed600;
+    }
+
     // Client & Reference details
     final planNumber = owner.planNo.isNotEmpty ? owner.planNo : '345';
     final cleanBillRef = 'INV-${planNumber.replaceFirst(RegExp(r'^PLN-?', caseSensitive: false), '')}';
     final serial3D = owner.serial3D.isNotEmpty ? owner.serial3D : '3D-$planNumber';
     final siteLoc = [owner.ownerAddress, owner.villageCity].where((s) => s.trim().isNotEmpty).join(', ');
-    final effectiveSiteLoc = siteLoc.isNotEmpty ? siteLoc : (owner.villageCity.isNotEmpty ? owner.villageCity : 'Surat');
+    final effectiveSiteLoc = siteLoc.isNotEmpty ? siteLoc : (owner.villageCity.isNotEmpty ? owner.villageCity : '-');
 
     // Sorted drawings: Completed on top
     final sortedPlans = List<HousePlanDrawing>.from(owner.plansList)..sort((a, b) {
@@ -160,21 +221,36 @@ class HousePlanPdfService {
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.symmetric(horizontal: 14 * PdfPageFormat.mm, vertical: 0),
+        margin: const pw.EdgeInsets.fromLTRB(
+          14 * PdfPageFormat.mm,
+          10 * PdfPageFormat.mm,
+          14 * PdfPageFormat.mm,
+          10 * PdfPageFormat.mm,
+        ),
         header: (context) {
           if (context.pageNumber > 1) {
-            return _buildContinuationHeader(owner.ownerName, planNumber);
+            return _buildContinuationHeader(companyName, owner.ownerName, planNumber);
           }
-          // PAGE 1: 45mm BLANK WHITE SPACE reserved for pre-printed colour letterhead paper
-          return pw.SizedBox(height: 44 * PdfPageFormat.mm);
+          return pw.SizedBox.shrink();
         },
-        footer: (context) => _buildPageFooter(context.pageNumber, context.pagesCount),
+        footer: (context) => _buildPageFooter(companyName, context.pageNumber, context.pagesCount),
         build: (context) => [
-          // ── 1. BILL METADATA BAR (Positioned directly under the pre-printed letterhead) ──
-          _buildBillMetaStrip(
+          // ── 1. FULL EXECUTIVE BRAND HEADER (Same layout as Web Admin, no blank top gap) ──
+          _buildBrandedHeader(
+            companyName: companyName,
+            tagline: tagline,
+            address: companyAddress,
+            phone: companyPhone,
+            email: companyEmail,
+            gstNumber: gstNumber,
+            logoBytes: logoBytes,
+            billRef: cleanBillRef,
             planNumber: planNumber,
+            paymentStatusText: paymentStatusText,
+            statusBg: statusBg,
+            statusFg: statusFg,
           ),
-          pw.SizedBox(height: 6),
+          pw.SizedBox(height: 10),
 
           // ── 2. CLIENT / OWNER DETAILS & PROJECT SPECIFICATIONS (Side-by-Side) ──
           _buildClientAndProjectGrid(
@@ -212,67 +288,222 @@ class HousePlanPdfService {
             hasSiteVisits: hasSiteVisits,
             visitsCount: owner.siteVisits.length,
           ),
-          pw.SizedBox(height: 20),
+          pw.SizedBox(height: 14),
         ],
       ),
     );
 
     final outputDir = await getTemporaryDirectory();
     final sanitizedOwner = owner.ownerName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-    final file = File('${outputDir.path}/YS_Construction_Bill_${sanitizedOwner}_$planNumber.pdf');
+    final sanitizedCo = companyName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    final file = File('${outputDir.path}/${sanitizedCo}_Bill_${sanitizedOwner}_$planNumber.pdf');
     await file.writeAsBytes(await pdf.save());
     return file;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 1. BILL METADATA STRIP (Right below letterhead, centered title, date/ref on right)
+  // 1. FULL EXECUTIVE BRANDED HEADER (Matches Web Admin PDF Header)
   // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildBillMetaStrip({
+  static pw.Widget _buildBrandedHeader({
+    required String companyName,
+    required String tagline,
+    required String address,
+    required String phone,
+    required String email,
+    required String gstNumber,
+    required Uint8List? logoBytes,
+    required String billRef,
     required String planNumber,
+    required String paymentStatusText,
+    required PdfColor statusBg,
+    required PdfColor statusFg,
   }) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 8),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          pw.Expanded(flex: 1, child: pw.SizedBox()),
-          pw.Text(
-            'HOUSE PLANNING BILL',
-            style: pw.TextStyle(
-              fontSize: 10,
-              fontWeight: pw.FontWeight.bold,
-              color: _cSlate900,
-              letterSpacing: 0.8,
+    final contactParts = <String>[
+      if (phone.isNotEmpty) 'Ph: ${_cleanPdfText(phone)}',
+      if (email.isNotEmpty) _cleanPdfText(email),
+      if (gstNumber.isNotEmpty) 'GSTIN: ${_cleanPdfText(gstNumber)}',
+    ];
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        // Top Executive Slate Ribbon with Gold Bottom Accent
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: const pw.BoxDecoration(
+            color: _cSlate900,
+            borderRadius: pw.BorderRadius.only(
+              topLeft: pw.Radius.circular(4),
+              topRight: pw.Radius.circular(4),
+            ),
+            border: pw.Border(
+              bottom: pw.BorderSide(color: _cAmber600, width: 1.8),
             ),
           ),
-          pw.Expanded(
-            flex: 1,
-            child: pw.Align(
-              alignment: pw.Alignment.centerRight,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                mainAxisSize: pw.MainAxisSize.min,
-                children: [
-                  pw.Text(
-                    'Date: ${_fmtDate(DateTime.now())}',
-                    style: const pw.TextStyle(fontSize: 8, color: _cSlate600),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                _cleanPdfText(companyName.toUpperCase()),
+                style: pw.TextStyle(
+                  fontSize: 7.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: const PdfColor.fromInt(0xFFF5A623),
+                  letterSpacing: 1.0,
+                ),
+              ),
+              if (contactParts.isNotEmpty)
+                pw.Text(
+                  contactParts.join('  |  '),
+                  style: const pw.TextStyle(
+                    fontSize: 7,
+                    color: PdfColors.white,
                   ),
-                  pw.SizedBox(height: 1.5),
-                  pw.Text(
-                    'Plan Ref: #$planNumber',
-                    style: pw.TextStyle(
-                      fontSize: 8.5,
-                      fontWeight: pw.FontWeight.bold,
-                      color: _cSlate900,
+                ),
+            ],
+          ),
+        ),
+
+        // Main Brand Identity & Invoice Meta Card
+        pw.Container(
+          padding: const pw.EdgeInsets.fromLTRB(10, 10, 10, 10),
+          decoration: const pw.BoxDecoration(
+            color: PdfColors.white,
+            border: pw.Border(
+              left: pw.BorderSide(color: _cSlate200, width: 0.5),
+              right: pw.BorderSide(color: _cSlate200, width: 0.5),
+              bottom: pw.BorderSide(color: _cSlate200, width: 0.8),
+            ),
+            borderRadius: pw.BorderRadius.only(
+              bottomLeft: pw.Radius.circular(4),
+              bottomRight: pw.Radius.circular(4),
+            ),
+          ),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              // Left: Company Logo Box
+              if (logoBytes != null) ...[
+                pw.Container(
+                  width: 48,
+                  height: 48,
+                  padding: const pw.EdgeInsets.all(2),
+                  decoration: pw.BoxDecoration(
+                    color: _cSlate50,
+                    borderRadius: pw.BorderRadius.circular(6),
+                    border: pw.Border.all(color: _cSlate200, width: 0.6),
+                  ),
+                  child: pw.ClipRRect(
+                    horizontalRadius: 4,
+                    verticalRadius: 4,
+                    child: pw.Image(
+                      pw.MemoryImage(logoBytes),
+                      fit: pw.BoxFit.contain,
                     ),
                   ),
-                ],
+                ),
+                pw.SizedBox(width: 10),
+              ],
+
+              // Center: Company Name, Tagline, Address
+              pw.Expanded(
+                flex: 6,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  mainAxisSize: pw.MainAxisSize.min,
+                  children: [
+                    pw.Text(
+                      _cleanPdfText(companyName.toUpperCase()),
+                      style: pw.TextStyle(
+                        fontSize: 15,
+                        fontWeight: pw.FontWeight.bold,
+                        color: _cSlate900,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      _cleanPdfText(tagline.toUpperCase()),
+                      style: pw.TextStyle(
+                        fontSize: 7.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: _cAmber600,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    if (address.isNotEmpty) ...[
+                      pw.SizedBox(height: 3),
+                      pw.Text(
+                        _cleanPdfText(address),
+                        style: const pw.TextStyle(
+                          fontSize: 7,
+                          color: _cSlate600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
+
+              pw.SizedBox(width: 8),
+
+              // Right: Invoice Title, Ref, Date & Status Pill
+              pw.Expanded(
+                flex: 4,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  mainAxisSize: pw.MainAxisSize.min,
+                  children: [
+                    pw.Text(
+                      'HOUSE PLANNING BILL',
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        fontWeight: pw.FontWeight.bold,
+                        color: _cSlate900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2.5),
+                    pw.Text(
+                      'Bill Ref: ${_cleanPdfText(billRef)}',
+                      style: pw.TextStyle(
+                        fontSize: 8,
+                        fontWeight: pw.FontWeight.bold,
+                        color: _cAmber600,
+                      ),
+                    ),
+                    pw.SizedBox(height: 1.5),
+                    pw.Text(
+                      'Plan Ref: #${_cleanPdfText(planNumber)}  |  Date: ${_fmtDate(DateTime.now())}',
+                      style: const pw.TextStyle(
+                        fontSize: 7.2,
+                        color: _cSlate600,
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                      decoration: pw.BoxDecoration(
+                        color: statusBg,
+                        borderRadius: pw.BorderRadius.circular(3),
+                      ),
+                      child: pw.Text(
+                        paymentStatusText,
+                        style: pw.TextStyle(
+                          fontSize: 6.8,
+                          fontWeight: pw.FontWeight.bold,
+                          color: statusFg,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -291,7 +522,7 @@ class HousePlanPdfService {
 
     final engineer = owner.supervisingEngineer.isNotEmpty
         ? owner.supervisingEngineer
-        : 'YS_Construction';
+        : 'Structural Consultant';
 
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -730,40 +961,37 @@ class HousePlanPdfService {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // CONTINUATION HEADER (Page 2+): Same 44mm top blank space as Page 1
+  // CONTINUATION HEADER (Page 2+): Compact branded strip (no blank letterhead gap)
   // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildContinuationHeader(String ownerName, String planNumber) {
-    return pw.Column(
-      children: [
-        // Exactly same 44mm blank white space as Page 1 for physical pre-printed letterhead
-        pw.SizedBox(height: 44 * PdfPageFormat.mm),
-        pw.Container(
-          margin: const pw.EdgeInsets.only(bottom: 8),
-          padding: const pw.EdgeInsets.only(bottom: 4),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                'Client: ${_cleanPdfText(ownerName.toUpperCase())}',
-                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _cSlate700),
-              ),
-              pw.Text(
-                'Plan Ref: #${_cleanPdfText(planNumber)} | Site Visits & Billing Statement',
-                style: const pw.TextStyle(fontSize: 8, color: _cSlate500),
-              ),
-            ],
+  static pw.Widget _buildContinuationHeader(String companyName, String ownerName, String planNumber) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 10),
+      padding: const pw.EdgeInsets.only(bottom: 5),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(bottom: pw.BorderSide(color: _cSlate200, width: 0.6)),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            '${_cleanPdfText(companyName.toUpperCase())}  |  Client: ${_cleanPdfText(ownerName.toUpperCase())}',
+            style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: _cSlate700),
           ),
-        ),
-      ],
+          pw.Text(
+            'Plan Ref: #${_cleanPdfText(planNumber)} | Billing Statement',
+            style: const pw.TextStyle(fontSize: 7.5, color: _cSlate500),
+          ),
+        ],
+      ),
     );
   }
 
   // ───────────────────────────────────────────────────────────────────────────
   // PAGE FOOTER
   // ───────────────────────────────────────────────────────────────────────────
-  static pw.Widget _buildPageFooter(int pageNumber, int pagesCount) {
+  static pw.Widget _buildPageFooter(String companyName, int pageNumber, int pagesCount) {
     return pw.Container(
-      margin: const pw.EdgeInsets.symmetric(vertical: 8),
+      margin: const pw.EdgeInsets.only(top: 8),
       padding: const pw.EdgeInsets.only(top: 4),
       decoration: const pw.BoxDecoration(
         border: pw.Border(top: pw.BorderSide(color: _cSlate200, width: 0.5)),
@@ -772,7 +1000,7 @@ class HousePlanPdfService {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'Generated via YS Trackify',
+            '${_cleanPdfText(companyName)} | Powered by Trackify',
             style: const pw.TextStyle(fontSize: 7, color: _cSlate400),
           ),
           pw.Text(
@@ -824,9 +1052,9 @@ class HousePlanPdfService {
     required BrandingData branding,
   }) async {
     final file = await generateBillPdf(owner: owner, branding: branding);
-    final company = branding.companyName.isNotEmpty && branding.companyName.toLowerCase() != 'trackify'
+    final company = branding.companyName.isNotEmpty && branding.companyName.toLowerCase() != 'my company'
         ? branding.companyName.replaceAll('_', ' ').trim()
-        : 'YS Construction';
+        : 'Trackify';
     final text = 'Hello ${owner.ownerName}, please find attached your Engineering Plans & Site Visits Statement from $company.';
     await Share.shareXFiles(
       [XFile(file.path)],

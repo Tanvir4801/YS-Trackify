@@ -147,11 +147,11 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final demoUser = AppUser(
         uid: 'demo_supervisor_uid',
-        name: 'Anil Sharma (Demo)',
+        name: 'Supervisor X (Demo)',
         role: 'demo',
         contractorId: 'trackify_demo',
         supervisorId: 'demo_supervisor_uid',
-        phone: '+919876543211',
+        phone: '+919876500001',
         isActive: true,
       );
 
@@ -219,7 +219,13 @@ class _LoginScreenState extends State<LoginScreen>
                 blurRadius: 16, offset: const Offset(0, 4)),
             ],
           ),
-          child: const Icon(Icons.architecture_rounded, color: AppColors.gold, size: 52),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: Image.asset(
+              'lib/assets/trackify_logo.png',
+              fit: BoxFit.cover,
+            ),
+          ),
         ),
         const SizedBox(height: 24),
         const Text(

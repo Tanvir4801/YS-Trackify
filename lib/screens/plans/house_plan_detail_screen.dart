@@ -66,9 +66,11 @@ class _HousePlanDetailScreenState extends State<HousePlanDetailScreen>
   Future<void> _openWhatsApp(String phone, String name, double pendingDue) async {
     final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
     final formattedPhone = clean.length == 10 ? '91$clean' : clean;
+    final company = context.read<BrandingProvider>().branding.companyName;
+    final coName = company.isNotEmpty ? company : 'Trackify';
     final message = pendingDue > 0
-        ? 'Hello $name, from YS Construction. This is regarding your house plan & site visit pending balance of ${_currencyFmt.format(pendingDue)}.'
-        : 'Hello $name, from YS Construction regarding your house plan drawing updates.';
+        ? 'Hello $name, from $coName. This is regarding your house plan & site visit pending balance of ${_currencyFmt.format(pendingDue)}.'
+        : 'Hello $name, from $coName regarding your house plan drawing updates.';
     final uri = Uri.parse('https://wa.me/$formattedPhone?text=${Uri.encodeComponent(message)}');
     try {
       if (await canLaunchUrl(uri)) {

@@ -216,10 +216,22 @@ async function loadLogoDataUrl(url, dataUrlFallback) {
     }
   }
 
-  // Layer 5: Authentic Official YS Construction Brand Logo (High-Res)
-  if (OFFICIAL_YS_LOGO_DATA_URL) {
-    const parsed = await parseDataUrlDimensions(OFFICIAL_YS_LOGO_DATA_URL);
-    if (parsed) return parsed;
+  // Layer 5: Fallback to official Trackify emblem (/trackify_logo.png)
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/trackify_logo.png');
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        const parsed = await parseDataUrlDimensions(dataUrl);
+        if (parsed) return parsed;
+      }
+    } catch (_) {}
   }
 
   return null;
@@ -367,34 +379,138 @@ export async function generateHousePlanInvoicePDF({
   // Use owner's plansList if populated; otherwise fallback to the exact 21 default engineering plans
   const rawPlans = Array.isArray(owner.plansList) && owner.plansList.length > 0 ? owner.plansList : DEFAULT_MASTER_PLANS;
 
+  // Payment status badge calculation
+  let paymentBadgeText = 'PAYMENT PENDING';
+  let badgeBgColor = [254, 226, 226];
+  let badgeTextColor = [220, 38, 38];
+  if (totalBillableAmount > 0 && pendingBalance <= 0) {
+    paymentBadgeText = 'FULLY PAID';
+    badgeBgColor = [236, 253, 245];
+    badgeTextColor = [5, 150, 105];
+  } else if (totalPaid > 0) {
+    paymentBadgeText = 'PARTIAL PAID';
+    badgeBgColor = [254, 243, 199];
+    badgeTextColor = [180, 83, 9];
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
-  // 1 & 2. PRE-PRINTED LETTERHEAD BLANK HEADER & BILL METADATA STRIP
+  // 1. TOP EXECUTIVE BRAND RIBBON (No blank letterhead space)
   // ─────────────────────────────────────────────────────────────────────────
-  // Top 44mm is left BLANK WHITE for the physical pre-printed colour letterhead
-  const billTopY = 44;
-
-  // Title: Centered bold small title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(15, 23, 42); // slate-900
-  doc.text('HOUSE PLANNING BILL', pageWidth / 2, billTopY, { align: 'center' });
-
-  // Right Header: Date & Plan Ref
-  const rightX = pageWidth - margin;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`Date: ${formatDate(new Date())}`, rightX, billTopY - 3.5, { align: 'right' });
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.rect(0, 0, pageWidth, 7.5, 'F');
+  doc.setFillColor(...rgbTheme);
+  doc.rect(0, 7.1, pageWidth, 0.5, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.5);
+  doc.setTextColor(245, 166, 35);
+  doc.text(cleanPdfText(companyName.toUpperCase()), margin, 5);
+
+  const ribbonContact = [
+    companyPhone ? `Ph: ${cleanPdfText(companyPhone)}` : '',
+    companyEmail ? cleanPdfText(companyEmail) : '',
+    gstNumber ? `GSTIN: ${cleanPdfText(gstNumber)}` : '',
+  ].filter(Boolean).join('  |  ');
+
+  if (ribbonContact) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text(ribbonContact, pageWidth - margin, 5, { align: 'right' });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 2. MAIN BRAND HEADER BLOCK (Logo + Company Identity + Invoice Meta)
+  // ─────────────────────────────────────────────────────────────────────────
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 7.6, pageWidth, 30, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.line(margin, 37.5, pageWidth - margin, 37.5);
+
+  const logoInfo = await loadLogoDataUrl(effectiveBranding?.logoUrl, effectiveBranding?.logoDataUrl);
+  const logoBoxX = margin;
+  const logoBoxY = 11;
+  const logoBoxSize = 23;
+
+  if (logoInfo) {
+    try {
+      const padding = 1.5;
+      const maxW = logoBoxSize - padding * 2;
+      const maxH = logoBoxSize - padding * 2;
+      const ratio = Math.min(maxW / logoInfo.width, maxH / logoInfo.height);
+      const renderW = logoInfo.width * ratio;
+      const renderH = logoInfo.height * ratio;
+      const renderX = logoBoxX + (logoBoxSize - renderW) / 2;
+      const renderY = logoBoxY + (logoBoxSize - renderH) / 2;
+
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, 2, 2, 'FD');
+
+      let imgFormat = 'PNG';
+      if (logoInfo.dataUrl.startsWith('data:image/jpeg') || logoInfo.dataUrl.startsWith('data:image/jpg')) {
+        imgFormat = 'JPEG';
+      } else if (logoInfo.dataUrl.startsWith('data:image/webp')) {
+        imgFormat = 'WEBP';
+      }
+      doc.addImage(logoInfo.dataUrl, imgFormat, renderX, renderY, renderW, renderH);
+    } catch (e) {
+      drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
+    }
+  } else {
+    drawBusinessCardVectorLogo(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
+  }
+
+  // Center-Left: Company Name & Tagline
+  const brandTextX = margin + logoBoxSize + 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Plan Ref: #${planNumber}`, rightX, billTopY + 0.5, { align: 'right' });
+  doc.text(cleanPdfText(companyName.toUpperCase()), brandTextX, 19.5);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.8);
+  doc.setTextColor(217, 119, 6);
+  doc.text(cleanPdfText(tagline.toUpperCase()), brandTextX, 24.5);
+
+  if (companyAddress) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    const headerAddrLines = doc.splitTextToSize(cleanPdfText(companyAddress), 95);
+    doc.text(headerAddrLines.slice(0, 2), brandTextX, 29.2);
+  }
+
+  // Right Header: Title, Bill Ref, Date & Status Pill
+  const rightX = pageWidth - margin;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42);
+  doc.text('HOUSE PLANNING BILL', rightX, 15.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.2);
+  doc.setTextColor(217, 119, 6);
+  doc.text(`Bill Ref: ${billInvoiceNo}`, rightX, 20.5, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Plan Ref: #${planNumber}  |  Date: ${formatDate(new Date())}`, rightX, 25, { align: 'right' });
+
+  doc.setFillColor(...badgeBgColor);
+  doc.roundedRect(rightX - 38, 28, 38, 5.5, 1.5, 1.5, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
+  doc.setTextColor(...badgeTextColor);
+  doc.text(paymentBadgeText, rightX - 19, 31.8, { align: 'center' });
 
   // ─────────────────────────────────────────────────────────────────────────
   // 3. CONTACT DETAILS & CLIENT INFORMATION CARDS (Auto-Wrapping & Dynamic Height)
   // ─────────────────────────────────────────────────────────────────────────
-  const infoTopY = billTopY + 6;
+  const infoTopY = 41.5;
   const colWidth = (pageWidth - margin * 2 - 6) / 2; // 88mm
   const innerPad = 6;
   const maxTextW = colWidth - innerPad - 4; // 78mm inner text width
@@ -408,7 +524,7 @@ export async function generateHousePlanInvoicePDF({
   const clientFullAddr = [
     owner.ownerAddress,
     owner.city || owner.town,
-  ].filter(Boolean).join(', ') || owner.city || owner.town || owner.ownerAddress || 'Anaval';
+  ].filter(Boolean).join(', ') || owner.city || owner.town || owner.ownerAddress || '-';
   const rightSiteLines = doc.splitTextToSize(`Site Location: ${clientFullAddr}`, maxTextW);
 
   // Dynamic box height calculation: ensures text NEVER spills out of container
@@ -442,7 +558,7 @@ export async function generateHousePlanInvoicePDF({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.2);
   doc.setTextColor(217, 119, 6); // amber/gold
-  doc.text('Principals: Yogeshwar S. Patel & Shirish D. Patel', margin + innerPad, curLeftY);
+  doc.text(cleanPdfText(tagline), margin + innerPad, curLeftY);
 
   curLeftY += 4.2;
   doc.setFont('helvetica', 'normal');
@@ -453,9 +569,9 @@ export async function generateHousePlanInvoicePDF({
     curLeftY += 3.8;
   });
 
-  doc.text(`Phone: 80003 40720, 99044 45077`, margin + innerPad, curLeftY);
+  doc.text(`Phone: ${cleanPdfText(companyPhone)}`, margin + innerPad, curLeftY);
   curLeftY += 3.8;
-  doc.text(`Email: ${companyEmail}`, margin + innerPad, curLeftY);
+  doc.text(`Email: ${cleanPdfText(companyEmail)}`, margin + innerPad, curLeftY);
 
   // --- DRAW RIGHT BOX: BILLED TO (HOUSE OWNER / CLIENT) ---
   const clientBoxX = margin + colWidth + 6;
@@ -829,16 +945,19 @@ export async function generateHousePlanInvoicePDF({
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
 
-    // Top Header Mini-strip on continuation pages (Page 2+) placed below 44mm letterhead space
+    // Compact top Header Mini-strip on continuation pages (Page 2+)
     if (i > 1) {
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(51, 65, 85);
-      doc.text(`Client: ${ownerName.toUpperCase()}`, margin, 46.5);
+      doc.text(`${cleanPdfText(companyName.toUpperCase())}  |  Client: ${cleanPdfText(ownerName.toUpperCase())}`, margin, 10.5);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Plan Ref: #${planNumber} | Site Visits & Billing Statement`, pageWidth - margin, 46.5, { align: 'right' });
+      doc.text(`Plan Ref: #${planNumber} | Billing Statement`, pageWidth - margin, 10.5, { align: 'right' });
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(margin, 12.5, pageWidth - margin, 12.5);
     }
 
     // Bottom footer line
@@ -850,7 +969,7 @@ export async function generateHousePlanInvoicePDF({
     doc.setTextColor(148, 163, 184); // slate-400
     doc.setFont('helvetica', 'normal');
     doc.text(
-      `${companyName} | Architecture, Planner, Consultant, Interior Designer | Thank you for your business!`,
+      `${cleanPdfText(companyName)} | ${cleanPdfText(tagline)} | Powered by Trackify`,
       margin,
       pageHeight - 5
     );

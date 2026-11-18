@@ -70,7 +70,7 @@ class ReportExportService {
     );
 
     final safeMonth = _monthAbbr(month);
-    final filename  = 'YS_${labourName.replaceAll(' ', '_')}_${safeMonth}_$year.pdf';
+    final filename  = 'Trackify_${labourName.replaceAll(' ', '_')}_${safeMonth}_$year.pdf';
 
     await _saveOrShare(
       filename: filename,
@@ -119,7 +119,7 @@ class ReportExportService {
     );
 
     final safeMonth = _monthAbbr(month);
-    final filename  = 'YS_${labourName.replaceAll(' ', '_')}_${safeMonth}_$year.xlsx';
+    final filename  = 'Trackify_${labourName.replaceAll(' ', '_')}_${safeMonth}_$year.xlsx';
 
     await _saveOrShare(
       filename: filename,
@@ -134,7 +134,7 @@ class ReportExportService {
     final bytes = await _buildClosingReportPdf(report);
     
     final safeSite = report.siteName.replaceAll(' ', '_');
-    final filename  = 'YS_Closing_${safeSite}_${report.date}.pdf';
+    final filename  = 'Trackify_Closing_${safeSite}_${report.date}.pdf';
 
     await _saveOrShare(
       filename: filename,
@@ -442,7 +442,7 @@ class ReportExportService {
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('Confidential · YS Construction · Generated ${DateFormat('dd MMM yyyy').format(now)}',
+              pw.Text('Confidential · Trackify · Generated ${DateFormat('dd MMM yyyy').format(now)}',
                 style: pw.TextStyle(font: reg, fontSize: 7.5, color: _textS)),
               pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}',
                 style: pw.TextStyle(font: bold, fontSize: 7.5, color: _navy)),
@@ -477,7 +477,7 @@ class ReportExportService {
                               color: _gold,
                               borderRadius: pw.BorderRadius.circular(2))),
                           pw.SizedBox(width: 10),
-                          pw.Text('YS CONSTRUCTION',
+                          pw.Text('TRACKIFY',
                             style: pw.TextStyle(
                               font: bold, fontSize: 22,
                               color: _gold, letterSpacing: 1.5)),
@@ -905,7 +905,7 @@ class ReportExportService {
     int r = 0;
 
     // Title
-    setVal(summary, r, 0, 'YS CONSTRUCTION — LABOUR SALARY REPORT',
+    setVal(summary, r, 0, 'TRACKIFY — LABOUR SALARY REPORT',
       navyHdr(workbook));
     summary.merge(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: r),
       xl.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: r));

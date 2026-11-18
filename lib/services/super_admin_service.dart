@@ -74,11 +74,11 @@ class SuperAdminService {
       }
 
       // 7. Active Contractor Name
-      String activeContractorName = 'YS Construction';
+      String activeContractorName = 'Trackify';
       if (activeContractorId.isNotEmpty) {
         final doc = await _firestore.collection('users').doc(activeContractorId).get().timeout(const Duration(seconds: 10));
         if (doc.exists) {
-          activeContractorName = doc.data()?['name'] ?? 'YS Construction';
+          activeContractorName = doc.data()?['name'] ?? 'Trackify';
         }
       }
 
