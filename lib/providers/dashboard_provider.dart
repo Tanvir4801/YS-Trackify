@@ -6,6 +6,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
+import '../services/notification_service.dart';
+
 class DashboardProvider extends ChangeNotifier {
   DashboardProvider({
     FirebaseFirestore? firestore,
@@ -262,7 +264,24 @@ class DashboardProvider extends ChangeNotifier {
     halfToday = tempHalf;
     totalExpenseToday = tempExpense;
     weekAttendance = weekMap;
+    _syncAttendanceReminder();
     notifyListeners();
+  }
+
+  int _lastNotifiedTotal = -1;
+  int _lastNotifiedMarked = -1;
+
+  void _syncAttendanceReminder() {
+    if (totalLabour <= 0) return;
+    final marked = (presentToday + absentToday + halfToday).clamp(0, totalLabour);
+    if (totalLabour != _lastNotifiedTotal || marked != _lastNotifiedMarked) {
+      _lastNotifiedTotal = totalLabour;
+      _lastNotifiedMarked = marked;
+      NotificationService.instance.syncTodayAttendanceReminder(
+        totalLabours: totalLabour,
+        markedCount: marked,
+      );
+    }
   }
 
   String _todayString() {

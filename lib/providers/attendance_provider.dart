@@ -11,6 +11,7 @@ import '../models/daily_labour_summary.dart';
 import '../models/labour_model.dart';
 import '../models/temp_labour_entry.dart';
 import '../services/attendance_service.dart';
+import '../services/notification_service.dart';
 import '../services/session_service.dart';
 import '../services/temp_labour_service.dart';
 import '../services/telemetry_service.dart';
@@ -93,8 +94,30 @@ class AttendanceProvider extends ChangeNotifier {
     _startAttendanceStream(uid);
   }
 
+  int _lastNotifiedTotal = -1;
+  int _lastNotifiedMarked = -1;
+
   void _computePendingPool(String uid) {
     final markedIds = attendanceMap.keys.toSet();
+
+    // Automatically keep today's scheduled supervisor day-end notifications synced
+    final now = DateTime.now();
+    final isToday = selectedDate.year == now.year &&
+        selectedDate.month == now.month &&
+        selectedDate.day == now.day;
+    if (isToday && labours.isNotEmpty) {
+      final total = labours.length;
+      final marked = markedIds.length;
+      if (total != _lastNotifiedTotal || marked != _lastNotifiedMarked) {
+        _lastNotifiedTotal = total;
+        _lastNotifiedMarked = marked;
+        NotificationService.instance.syncTodayAttendanceReminder(
+          totalLabours: total,
+          markedCount: marked,
+        );
+      }
+    }
+
     notifyListeners();
   }
 
